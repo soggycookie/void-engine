@@ -1,0 +1,73 @@
+#pragma once
+#include "void/pch.h"
+#include "void/renderer_api.h"
+#include "void/common_type.h"
+
+#include <d3d11.h>
+#include <dxgi.h>
+#include <d3dcompiler.h>
+
+#include <directxmath.h>
+#include <DirectXPackedVector.h>
+
+namespace VoidEngine
+{
+
+#define ASSERT_HR(hr) if(FAILED(hr)) { assert(0);}
+#define HR(hr) if(FAILED(hr)) { return false; }
+    template<typename T>
+    inline void SafeRelease( T& ptr )
+    {
+        if ( ptr != NULL )
+        {
+            ptr->Release();
+            ptr = NULL;
+        }
+    }
+
+    struct D3D11_Context
+    {
+        IDXGISwapChain* swapchain = nullptr;
+        ID3D11Device* device = nullptr;
+        ID3D11DeviceContext* deviceContext = nullptr;
+        ID3D11RenderTargetView* renderTargetView = nullptr;
+        ID3D11DepthStencilView* depthStencilView = nullptr;
+        D3D_FEATURE_LEVEL featureLevel;
+        D3D11_VIEWPORT viewport;
+    };
+
+    class D3D11_RendererAPI : public RendererAPI
+    {
+    public:
+        void Clear() override;
+        bool Init(int width, int height, void* outputWindow) override;
+        void Update() override;
+
+        void NewFrame() override;
+
+        void EndFrame() override;
+    
+        void* GetContext() override
+        {
+            return &m_context;
+        }
+
+        void* CreateAndSubmitBuffer(void* const data, size_t byteSize, BufferType type) override;
+
+        void ReleaseBuffer(GraphicBuffer& buffer) override;
+
+    private:
+        void SetUpDemo();
+
+        ID3DBlob* CompileShader(const std::wstring& file, const char* entry, const char* target);
+        
+        ID3D11PixelShader* m_pixelShader;
+        ID3D11VertexShader* m_vertexShader;
+        ID3D11Buffer* m_boxVertexBuffer;
+        ID3D11Buffer* m_boxIndexBuffer;
+        ID3D11InputLayout* m_inputLayout;
+
+    private:
+        D3D11_Context m_context;
+    };
+}
