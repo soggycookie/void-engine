@@ -26,7 +26,7 @@ namespace VoidEngine
         SIMPLE_LOG("Resource cache Init");
         s_resourceAllocator = resourceAllocator;
         s_resourceLookUpAllocator = resourceLookUpAlloc;
-        s_resourceLookUpTable = FlatHashMap<ResourceGUID, ResourceRef>(s_resourceLookUpAllocator);
+        s_resourceLookUpTable = std::move(FlatHashMap<ResourceGUID, ResourceRef>(s_resourceLookUpAllocator));
     }
 
     void ResourceCache::DestroyAll()

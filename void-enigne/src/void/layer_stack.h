@@ -22,6 +22,9 @@ namespace VoidEngine
         void PopLayer(Layer* layer);
         void PopOverLay(Layer* layer);
 
+        DynamicArray<Layer*>::Iterator Begin();
+        DynamicArray<Layer*>::Iterator End();
+
     private:
         DynamicArray<Layer*> m_layers;
         uint32_t m_index;

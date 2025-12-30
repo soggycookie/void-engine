@@ -11,7 +11,7 @@ namespace VoidEngine
 
         virtual ~Layer() = default;
 
-        virtual void OnDeteach() = 0;
+        virtual void OnDetach() = 0;
         virtual void OnUpdate(double dt) = 0;
         virtual void OnAttach() = 0;
         virtual void OnEvent(const Event& e) = 0;
@@ -23,7 +23,7 @@ namespace VoidEngine
     public:
         GameLayer() = default;
 
-        void OnDeteach() override;
+        void OnDetach() override;
         void OnAttach() override;
         void OnUpdate(double dt) override;
         void OnEvent(const Event& e) override;

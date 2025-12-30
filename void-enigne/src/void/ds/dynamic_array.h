@@ -17,30 +17,42 @@ namespace VoidEngine
     public:
         struct Iterator
         {
-        public:
-            T* ptr;
+        private:
+            friend class DynamicArray;
+
+            T* m_ptr;
+
+        private:
+            Iterator(T* ptr)
+                : m_ptr(ptr)
+            {
+            }
         
         public:
-            static Iterator& Null()
-            {
-                static Iterator instance {nullptr};
 
-                return instance;
+            T& operator*() noexcept
+            {
+                return *m_ptr;
             }
 
-            T& operator*()
+            const T& operator*() const noexcept
             {
-                return *ptr;
+                return *m_ptr;
             }
 
             T* operator->() noexcept
             {
-                return ptr;
+                return m_ptr;
+            }
+            
+            const T* operator->() const noexcept
+            {
+                return m_ptr;
             }
 
             Iterator& operator++()
             {
-                ++ptr;
+                ++m_ptr;
                 return *this;
             }
 
@@ -53,7 +65,7 @@ namespace VoidEngine
             
             Iterator& operator--()
             {
-                --ptr;
+                --m_ptr;
                 return *this;
             }
 
@@ -64,24 +76,24 @@ namespace VoidEngine
                 return tmp;
             }
             
-            Iterator operator-(size_t index)
+            Iterator operator-(int64_t index) const
             {
-                return Iterator{ptr - index};
+                return Iterator(m_ptr - index);
             }
             
-            Iterator operator+(size_t index)
+            Iterator operator+(int64_t index) const
             {
-                return Iterator{ptr + index};
+                return Iterator(m_ptr + index);
             }
 
             bool operator==(const Iterator& other) const
             {
-                return ptr == other.ptr;
+                return m_ptr == other.m_ptr;
             }
 
             bool operator!=(const Iterator& other) const
             {
-                return ptr != other.ptr;
+                return m_ptr != other.m_ptr;
             }
         };
 
@@ -233,7 +245,7 @@ namespace VoidEngine
     
             // Construct new object in-place at emplacedIt
  
-            new (emplacedIt.ptr) T(std::forward<Args>(args)...);
+            new (emplacedIt.m_ptr) T(std::forward<Args>(args)...);
             
 
             m_count++;
@@ -264,27 +276,27 @@ namespace VoidEngine
     
             // Construct new object in-place at emplacedIt
  
-            new (emplacedIt.ptr) T(value);
+            new (emplacedIt.m_ptr) T(value);
 
             m_count++;
         }
 
         
 
-        void Remove(Iterator& it)
+        void Remove(Iterator it)
         {
-            if(it == Iterator::Null())
+            if(it == End())
             {
                 //log
                 return;
             }
 
-            T* movedAddr = it.ptr + 1;
+            T* movedAddr = it.m_ptr + 1;
             uintptr_t endAddr = reinterpret_cast<uintptr_t>(m_data + m_count * m_alignedSize);
             uintptr_t removedAddr = reinterpret_cast<uintptr_t>(movedAddr);
             size_t moveSize = (endAddr - removedAddr) ;
 
-            std::memmove(it.ptr, movedAddr, moveSize);
+            std::memmove(it.m_ptr, movedAddr, moveSize);
             m_count--;
         }
 
@@ -301,7 +313,7 @@ namespace VoidEngine
             m_count--;
         }
 
-        Iterator& Find(const T& value)
+        Iterator Find(const T& value)
         {
             for(auto it = Begin(); it != End(); it++)
             {
@@ -311,7 +323,7 @@ namespace VoidEngine
                 }
             }
 
-            return Iterator::Null();
+            return End();
         }
 
         size_t GetCount() const
@@ -333,12 +345,12 @@ namespace VoidEngine
 
         Iterator Begin()
         {
-            return Iterator {reinterpret_cast<T*>(m_data)};
+            return Iterator(reinterpret_cast<T*>(m_data));
         }
 
         Iterator End()
         {
-            return Iterator {reinterpret_cast<T*>(m_data + m_count * m_alignedSize)};
+            return Iterator(reinterpret_cast<T*>(m_data + m_count * m_alignedSize));
         }
 
     private:

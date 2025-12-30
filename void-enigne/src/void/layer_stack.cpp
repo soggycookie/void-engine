@@ -6,7 +6,8 @@ namespace VoidEngine
     {
         for(auto it = m_layers.Begin(); it != m_layers.End(); it++)
         {
-            
+            (*it)->OnDetach();
+            MemorySystem::PersistantAllocator()->Free(*it);
         }
     }
 
@@ -31,7 +32,7 @@ namespace VoidEngine
         {
             m_layers.Remove(it);
             m_index--;
-            layer->OnDeteach();
+            layer->OnDetach();
         }
     }
 
@@ -42,7 +43,17 @@ namespace VoidEngine
         if(it != m_layers.End())
         {
             m_layers.Remove(it);
-            layer->OnDeteach();
+            layer->OnDetach();
         }
+    }
+
+    DynamicArray<Layer*>::Iterator LayerStack::Begin()
+    {
+        return m_layers.Begin();
+    }
+    
+    DynamicArray<Layer*>::Iterator LayerStack::End()
+    {
+        return m_layers.End();
     }
 }

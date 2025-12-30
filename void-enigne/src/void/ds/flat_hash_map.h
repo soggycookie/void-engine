@@ -35,22 +35,18 @@ namespace VoidEngine
         struct Iterator
         {
         private:
+            friend class FlatHashMap;
+
             Bucket* m_ptr;
-        
-        public:
+        private:
             Iterator(Bucket* ptr)
                 : m_ptr(ptr)
             {
             }
 
-            static Iterator& Null()
-            {
-                static Iterator instance {nullptr};
+        public:
 
-                return instance;
-            }
-
-            bool IsValid()
+            bool IsValid() const
             {
                 return m_ptr->header.occupied;
             }
@@ -61,6 +57,16 @@ namespace VoidEngine
             }
 
             Key& GetKey()
+            {
+                return *(reinterpret_cast<Key*>(m_ptr->key));
+            }
+            
+            const Value& GetValue() const
+            {
+                return *(reinterpret_cast<Value*>(m_ptr->value));
+            }
+
+            const Key& GetKey() const
             {
                 return *(reinterpret_cast<Key*>(m_ptr->key));
             }
@@ -77,7 +83,30 @@ namespace VoidEngine
                 ++(*this);
                 return tmp;
             }
+
+            Iterator& operator--()
+            {
+                --m_ptr;
+                return *this;
+            }
+
+            Iterator operator--(int)
+            {
+                Iterator tmp = *this;
+                --(*this);
+                return tmp;
+            }
+
+            Iterator operator-(int64_t index) const
+            {
+                return Iterator(m_ptr - index);
+            }
             
+            Iterator operator+(int64_t index) const
+            {
+                return Iterator(m_ptr + index);
+            }   
+
             bool operator==(const Iterator& other) const
             {
                 return m_ptr == other.m_ptr;
@@ -339,6 +368,7 @@ namespace VoidEngine
             return false;
         }
 
+        //NEVER USE THIS IN ITERAION LOOP
         void Remove(const Key& key)
         {
             size_t index = Hash(key) & (m_bucketCount - 1);
@@ -483,23 +513,20 @@ namespace VoidEngine
                 return *this;
             }
 
-            if(m_data)
+            if(m_data && m_allocator)
             {
                 m_allocator->Free(m_data);
-                m_data = map.m_data;
-                map.m_data = nullptr;
             }
 
-            if(!map.m_allocator)
-            {
-                m_allocator = map.m_allocator;
-                map.m_allocator = nullptr;
-            }
 
+            m_allocator = map.m_allocator;
+            m_data = map.m_data;
             m_count = map.m_count;
             m_bucketCount = map.m_bucketCount;
             m_alignedNodeSize = map.m_alignedNodeSize;
 
+            map.m_data = nullptr;
+            map.m_allocator = nullptr;
             map.m_count = 0;
             map.m_bucketCount = 0;
             map.m_alignedNodeSize = 0; 
@@ -509,7 +536,7 @@ namespace VoidEngine
 
         Iterator Begin()
         {
-            return Iterator (reinterpret_cast<Bucket*>(m_data));
+            return Iterator(reinterpret_cast<Bucket*>(m_data));
         }
 
         Iterator End()

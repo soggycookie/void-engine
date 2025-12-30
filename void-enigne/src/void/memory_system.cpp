@@ -16,4 +16,8 @@ namespace VoidEngine
         s_resourceAllocator         = PoolAllocator(config.resourceAllocatorSize, config.resourceChunkSize, config.resourceAlignment);
         s_resourceStreamAllocator   = FreeListAllocator(config.resourceStreamAllocatorSize);
     }
+
+    void MemorySystem::ShutDown()
+    {
+    }
 }

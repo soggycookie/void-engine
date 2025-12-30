@@ -19,11 +19,6 @@ namespace VoidEngine
         m_isResizing = false;
         
         m_window = Window::Create(WindowProperty(), [this](Event& e){OnEvent(e);});
-        
-        if(!m_window->Init())
-        {
-            return false;
-        }
 
         void* layerStackAddr = MemorySystem::PersistantAllocator()->Alloc(sizeof(LayerStack));
         m_layerStack = new (layerStackAddr) LayerStack(MemorySystem::PersistantAllocator());
@@ -31,6 +26,11 @@ namespace VoidEngine
         void* gameLayerAddr = MemorySystem::PersistantAllocator()->Alloc(sizeof(GameLayer));
         GameLayer* gameLayer = new (gameLayerAddr) GameLayer();
         m_layerStack->PushLayer(gameLayer);
+        
+        if(!m_window->Init())
+        {
+            return false;
+        }
 
         ResourceSystem::StartUp(&MemorySystem::s_resourceLookUpAllocator, 
                                 &MemorySystem::s_resourceAllocator,
@@ -46,6 +46,15 @@ namespace VoidEngine
 
     void Application::ShutDown()
     {
+        m_layerStack->~LayerStack();
+        MemorySystem::PersistantAllocator()->Free(m_layerStack);
+
+        Profiler::ShutDown();
+        Renderer::ShutDown();
+        ResourceSystem::ShutDown();
+
+        MemorySystem::ShutDown();
+
         std::cout << "window time: " << m_window->GetWindowTime() << std::endl;
         m_isRunning = false;
     }
@@ -56,19 +65,14 @@ namespace VoidEngine
         {          
             m_window->Update();
             //SIMPLE_LOG(m_window->GetDeltaTime());
-            Renderer::Update();
+
+            for(auto it = m_layerStack->Begin(); it != m_layerStack->End(); it++)
+            {
+                (*it)->OnUpdate(m_window->GetDeltaTime());
+            }
+
         }
     }
-
-    //void Application::PushLayer(Layer* layer)
-    //{
-    //    m_layers.PushBack(layer);
-    //}
-
-    //void Application::PushOverLay(Layer* layer)
-    //{
-    //
-    //}
 
     //TODO: create layer to dispatch event to lower layers
     void Application::OnEvent(Event& e)
@@ -96,12 +100,12 @@ namespace VoidEngine
             }
             case EventType::KEY_PRESSED:
             {
-                std::cout << "Key Pressed" << std::endl;
+                //std::cout << "Key Pressed" << std::endl;
                 break;
             }
             case EventType::KEY_RELEASED:
             {
-                std::cout << "Key Released" << std::endl;
+                //std::cout << "Key Released" << std::endl;
                 break;
             }
             case EventType::MOUSE_MOVE:
@@ -111,6 +115,11 @@ namespace VoidEngine
 
                 break;
             }
+        }
+
+        for(auto it = m_layerStack->Begin(); it != m_layerStack->End(); it++)
+        {
+            (*it)->OnEvent(e);
         }
     }
 }

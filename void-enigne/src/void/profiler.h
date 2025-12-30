@@ -15,6 +15,7 @@ namespace VoidEngine
         friend class Application;
 
         static void StartUp(Window* window);
+        static void ShutDown() {}
 
     private:
         static Window* s_window;

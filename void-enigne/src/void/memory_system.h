@@ -21,6 +21,7 @@ namespace VoidEngine
         friend class Application;
 
         static void StartUp(const EngineConfig& config);
+        static void ShutDown();
 
     private:
         static FreeListAllocator s_enginePersistantAllocator;
