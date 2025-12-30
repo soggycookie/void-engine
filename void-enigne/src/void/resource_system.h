@@ -17,19 +17,14 @@ namespace VoidEngine
         }
 
         template<typename T, typename... Args>
-        static T* Create(ResourceGUID guid, ResourceType type, Args&&... args)
+        static T* Create(ResourceGUID guid, Args&&... args)
         {
             static_assert(
-                ResourceTypeTraits<T>::type == type,
+                ResourceTypeTraits<T>::type != ResourceType::UNKNOWN,
                 "Type and template type mismatch! [ResourceSystem.Create]"
             );
 
-            if(type == ResourceType::UNKNOWN)
-            {
-                SIMPLE_LOG("Resource type can not be unknown! [ResourceSystem.Create]");
-            }
-
-            return ResourceCache::Create(guid, type, args);  
+            return ResourceCache::Create<T>(guid, std::forward<Args>(args)...);  
         }
 
         template<typename T>
@@ -37,7 +32,7 @@ namespace VoidEngine
         {
             static_assert(
                 ResourceTypeTraits<T>::type != ResourceType::UNKNOWN,
-                "T is not a registered resource type [ResourceSystem.Destroy]"
+                "T is not a registered resource type [ResourceSystem.Release]"
             );
 
             ResourceCache::Release<T>(rsrc.GUID());
@@ -46,11 +41,17 @@ namespace VoidEngine
         template<typename T>
         static T* Acquire(const ResourceGUID& guid)
         {
-            auto resourceRef = ResourceCache::Acquire(guid);
 
             static_assert(
-                ResourceTypeTraits<T>::type == resourceRef.type,
-                "Type and template type mismatch! [ResourceSystem.Create]"
+                ResourceTypeTraits<T>::type != ResourceType::UNKNOWN,
+                "T is not a registered resource type [ResourceSystem.Acquire]"
+            );
+
+            auto resourceRef = ResourceCache::Acquire(guid);
+
+            assert(
+                ResourceTypeTraits<T>::type == resourceRef.type &&
+                "Resource type and template type mismatch! [ResourceSystem.Acquire]"
             );
 
             return resourceRef.As<T>();   

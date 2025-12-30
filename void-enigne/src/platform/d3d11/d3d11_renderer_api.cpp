@@ -307,7 +307,12 @@ namespace VoidEngine
 
     void D3D11_RendererAPI::ReleaseBuffer(GraphicBuffer& buffer)
     {
-        buffer.As<ID3D11Buffer*>()->Release();
+        auto buf = buffer.As<ID3D11Buffer*>();
+        
+        if(buf)
+        {
+            buf->Release();
+        }
     }
 
     void D3D11_RendererAPI::SetUpDemo()

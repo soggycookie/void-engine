@@ -3,6 +3,7 @@
 #include "ds/flat_hash_map.h"
 #include "allocator/pool_allocator.h"
 #include "resource.h"
+#include "resource_type_traits.h"
 
 namespace VoidEngine
 {
@@ -33,7 +34,7 @@ namespace VoidEngine
         static ResourceRef Acquire(ResourceGUID guid);
 
         template<typename T, typename... Args>
-        static T* Create(ResourceGUID guid, ResourceType type, Args&&... args)
+        static T* Create(ResourceGUID guid, Args&&... args)
         {
             if(s_resourceLookUpTable.ContainsKey(guid))
             {
@@ -46,7 +47,8 @@ namespace VoidEngine
                 void* resourceAddr = s_resourceAllocator->Alloc(0);
                 T* rsrc = new (resourceAddr) T(guid, std::forward<Args>(args)...);
                 
-                s_resourceLookUpTable.Insert(guid, {rsrc, type, 1});
+                std::cout << "[ResourceCache] Inserted resource! GUID: " << guid << " , type: "  << std::endl;
+                s_resourceLookUpTable.Insert(guid, {rsrc, ResourceTypeTraits<T>::type, 1});
                 
                 return rsrc;
             }

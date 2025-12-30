@@ -68,33 +68,104 @@ namespace VoidEngine
         {"TEXCOORD", 0, 16, TypeFormat::FORMAT_R32G32_FLOAT}
     };
 
+    enum class ShaderType
+    {
+        VERTEX,
+        PIXEL
+    };
+
+    class GraphicShader
+    {
+    public:
+
+        GraphicShader(ShaderType type, void* compiledSrc = nullptr)
+            : m_type(type), m_compiledSrc(compiledSrc)
+        {
+        }
+        
+        void SetCompiledSrc(void* compiledSrc)
+        {
+            m_compiledSrc = compiledSrc;
+        }
+
+        GraphicShader& operator=(GraphicShader&& shader) = delete;
+        GraphicShader& operator=(const GraphicShader& shader) = delete;
+
+        ShaderType GetShaderType()
+        {
+            return m_type;
+        }
+
+
+    private:
+        void* m_compiledSrc;
+        ShaderType m_type;
+    };
+
     class ShaderResource
     {
     public:
-        static ResourceType ResourceType()
+        ShaderResource(ResourceGUID guid)
+            : m_guid(guid),
+            m_vertexShader(ShaderType::VERTEX),
+            m_pixelShader(ShaderType::PIXEL)
+        {
+        }
+
+        static ResourceType GetResourceType()
         {
             return ResourceType::SHADER;
         }
 
+        const ResourceGUID& GetGUID()
+        {
+            return m_guid;
+        }
+
+        void SetVertexShaderCompiledSrc(void* compiledSrc)
+        {
+            m_vertexShader.SetCompiledSrc(compiledSrc);
+        }
+        
+        void SetPixelShaderCompiledSrc(void* compiledSrc)
+        {
+            m_pixelShader.SetCompiledSrc(compiledSrc);
+        }
+
     private:
         ResourceGUID m_guid;
+        GraphicShader m_vertexShader;
+        GraphicShader m_pixelShader;
     };
 
     class MaterialResource
     {
-        ResourceGUID guid;
-        ShaderResource* shader;
+    public:
+        MaterialResource(ResourceGUID guid, ShaderResource* shader = nullptr)
+            : m_guid(guid), m_shader(shader)
+        {
+        }
 
-        static ResourceType ResourceType()
+        static ResourceType GetResourceType()
         {
             return ResourceType::MATERIAL;
         }
+
+        const ResourceGUID& GetGUID()
+        {
+            return m_guid;
+        }
+
+    private:
+        ResourceGUID m_guid;
+        ShaderResource* m_shader;
+
     };
 
     class MeshResource
     {
     public:
-        MeshResource(ResourceGUID guid, bool canCpuRead = false)
+        MeshResource(ResourceGUID guid, bool canCpuRead)
             : m_guid(guid), m_vertexData(nullptr), m_vertexCount(0),
             m_indexData(nullptr), m_indexCount(0), 
             m_descriptor(nullptr), m_descriptorCount(0),
@@ -108,7 +179,7 @@ namespace VoidEngine
         MeshResource(ResourceGUID guid, 
                      Vertex* vertexData, size_t vertexCount, 
                      uint32_t* indexData, size_t indexCount, 
-                     bool canCpuRead = false)
+                     bool canCpuRead)
             : m_guid(guid), m_vertexData(vertexData), m_vertexCount(vertexCount),
             m_indexData(indexData), m_indexCount(indexCount), 
             m_descriptor(nullptr), m_descriptorCount(0),
@@ -124,12 +195,12 @@ namespace VoidEngine
             Destroy();
         }
 
-        static ResourceType ResourceType()
+        static ResourceType GetResourceType()
         {
             return ResourceType::MESH;
         }
 
-        const ResourceGUID& GUID()
+        const ResourceGUID& GetGUID()
         {
             return m_guid;
         }

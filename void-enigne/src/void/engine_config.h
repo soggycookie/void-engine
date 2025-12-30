@@ -9,7 +9,7 @@ namespace VoidEngine
 #define DEFAULT_RESOURCE_LOOKUP_ALLOC_SIZE  MB(2)
 #define DEFAULT_RESOURCE_STREAM_ALLOC_SIZE  MB(128)
 #define DEFAULT_RESOURCE_ALLOC_SIZE         MB(16)
-#define DEFAULT_RESOURCE_CHUNK_SIZE         32
+#define DEFAULT_RESOURCE_CHUNK_SIZE         128
 
     struct EngineConfig
     {

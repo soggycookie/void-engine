@@ -113,6 +113,10 @@ namespace VoidEngine
             size_t size = sizeof(T);
 
             static_assert(std::is_destructible_v<T>, "Type must be destructible! [DynamicArray]");
+            static_assert(
+                std::is_move_constructible_v<T> || std::is_copy_constructible_v<T>,
+                "Type must be copye or move constructible! [DynamicArray]"
+            );
 
             if(m_capacity <= 0)
             {
@@ -283,21 +287,56 @@ namespace VoidEngine
 
         
 
-        void Remove(Iterator it)
+        void Remove(Iterator iterator)
         {
-            if(it == End())
+            if(iterator == End())
             {
-                //log
                 return;
             }
 
-            T* movedAddr = it.m_ptr + 1;
-            uintptr_t endAddr = reinterpret_cast<uintptr_t>(m_data + m_count * m_alignedSize);
-            uintptr_t removedAddr = reinterpret_cast<uintptr_t>(movedAddr);
-            size_t moveSize = (endAddr - removedAddr) ;
+            uintptr_t removeAddr =
+                reinterpret_cast<uintptr_t>(iterator.m_ptr);
 
-            std::memmove(it.m_ptr, movedAddr, moveSize);
-            m_count--;
+            uintptr_t baseAddr =
+                reinterpret_cast<uintptr_t>(m_data);
+
+            size_t index =
+                (removeAddr - baseAddr) / m_alignedSize;
+
+            uintptr_t lastAddr =
+                baseAddr + (m_count - 1) * m_alignedSize;
+
+            constexpr bool canMemMove =
+                std::is_trivially_move_assignable_v<T> &&
+                std::is_trivially_destructible_v<T>;
+
+            if constexpr(canMemMove)
+            {
+                size_t tailCount = m_count - index - 1;
+
+                if(tailCount > 0)
+                {
+                    std::memmove(
+                        reinterpret_cast<void*>(removeAddr),
+                        reinterpret_cast<void*>(removeAddr + m_alignedSize),
+                        tailCount * m_alignedSize
+                    );
+                }
+            }
+            else
+            {
+                for(size_t i = index; i + 1 < m_count; ++i)
+                {
+                    T* dst = reinterpret_cast<T*>(baseAddr + i * m_alignedSize);
+                    T* src = reinterpret_cast<T*>(baseAddr + (i + 1) * m_alignedSize);
+
+                    *dst = std::move(*src);
+                }
+
+                reinterpret_cast<T*>(lastAddr)->~T();
+            }
+
+            --m_count;
         }
 
         void RemoveAt(size_t index)

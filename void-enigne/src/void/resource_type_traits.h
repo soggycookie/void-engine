@@ -4,11 +4,13 @@
 namespace VoidEngine
 {
     template<typename T>
-    struct ResourceTypeTraits {
-        static constexpr ResourceType type = ResourceType::UNKNOWN;
+    struct ResourceTypeTraits 
+    {
+        static const ResourceType type = ResourceType::UNKNOWN;
     };
 
-    template<> struct ResourceTypeTraits<MeshResource> {
-        static constexpr ResourceType type = ResourceType::MESH;
+    template<> struct ResourceTypeTraits<MeshResource> 
+    {
+        static const ResourceType type = ResourceType::MESH;
     };
 }

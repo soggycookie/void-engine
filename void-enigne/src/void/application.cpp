@@ -27,6 +27,8 @@ namespace VoidEngine
         GameLayer* gameLayer = new (gameLayerAddr) GameLayer();
         m_layerStack->PushLayer(gameLayer);
         
+        //layer should before this because events dispatch to app 
+        // then dispatch to layers, which should already exist
         if(!m_window->Init())
         {
             return false;
@@ -41,6 +43,7 @@ namespace VoidEngine
 
         Profiler::StartUp(m_window);
         
+
         return true;
     }
 
@@ -61,6 +64,7 @@ namespace VoidEngine
 
     void Application::Update()
     {
+        MeshResource* mesh = ResourceSystem::Create<MeshResource>(123, false);
         while(m_isRunning)
         {          
             m_window->Update();
