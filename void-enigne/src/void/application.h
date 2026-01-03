@@ -5,6 +5,7 @@
 #include "engine_config.h"
 #include "event/event.h"
 #include "layer_stack.h"
+#include "game_layer.h"
 #include "ds/dynamic_array.h"
 
 namespace VoidEngine
@@ -35,6 +36,7 @@ namespace VoidEngine
     private:
         LayerStack* m_layerStack;
         Window* m_window;
+        GameLayer* m_gameLayer;
         EngineConfig m_config;
         bool m_isRunning = true;
         bool m_isResizing = false;

@@ -54,12 +54,15 @@ namespace VoidEngine
 
         void* CreateAndSubmitBuffer(void* const data, size_t byteSize, BufferType type) override;
 
-        void ReleaseBuffer(GraphicBuffer& buffer) override;
+        void DestroyBuffer(GraphicBuffer& buffer) override;
+        
+        void* CompileShader(const wchar_t* file, const char* entry, const char* target) override;
+        void* CreateShader(void* compiledSrc, ShaderType type) override;
+        void DestroyShader(GraphicShader& shader) override;
 
     private:
         void SetUpDemo();
 
-        ID3DBlob* CompileShader(const std::wstring& file, const char* entry, const char* target);
         
         ID3D11PixelShader* m_pixelShader;
         ID3D11VertexShader* m_vertexShader;

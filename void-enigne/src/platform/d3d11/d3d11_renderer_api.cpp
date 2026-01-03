@@ -7,6 +7,12 @@
 
 namespace VoidEngine
 {
+    struct ScreenVertex
+    {
+        float pos[4];   // x, y, z, w  (clip space)
+        float uv[2];    // texture coords
+    };
+
     void D3D11_RendererAPI::NewFrame()
     {
         using namespace DirectX;
@@ -95,8 +101,6 @@ namespace VoidEngine
         swapchainDesc.Windowed = TRUE;
 
         UINT deviceFlag = 0;
-
-#define VOID_DEBUG
 
 #ifdef VOID_DEBUG
         deviceFlag = D3D11_CREATE_DEVICE_DEBUG;
@@ -256,12 +260,6 @@ namespace VoidEngine
         return true;
     }
 
-    struct ScreenVertex
-    {
-        float pos[4];   // x, y, z, w  (clip space)
-        float uv[2];    // texture coords
-    };
-
     void* D3D11_RendererAPI::CreateAndSubmitBuffer(void* const data, size_t byteSize, BufferType type)
     {
         D3D11_SUBRESOURCE_DATA subrsrc;
@@ -305,7 +303,7 @@ namespace VoidEngine
         return buffer;
     }
 
-    void D3D11_RendererAPI::ReleaseBuffer(GraphicBuffer& buffer)
+    void D3D11_RendererAPI::DestroyBuffer(GraphicBuffer& buffer)
     {
         auto buf = buffer.As<ID3D11Buffer*>();
         
@@ -359,9 +357,9 @@ namespace VoidEngine
 
         ASSERT_HR(m_context.device->CreateBuffer(&ibDesc, &ibRsc, &m_boxIndexBuffer));
 
-        std::wstring shaderFilePath = L"src//resource//shader//platform//d3d11//square_demo.hlsl"; 
-        ID3DBlob* compiledVertex = CompileShader(shaderFilePath, "VSMain", "vs_5_0");
-        ID3DBlob* compiledPixel = CompileShader(shaderFilePath, "PSMain", "ps_5_0");
+        const wchar_t* shaderFilePath = L"src//asset//shader//platform//d3d11//square_demo.hlsl"; 
+        ID3DBlob* compiledVertex = static_cast<ID3DBlob*>(CompileShader(shaderFilePath, "VSMain", "vs_5_0"));
+        ID3DBlob* compiledPixel = static_cast<ID3DBlob*>(CompileShader(shaderFilePath, "PSMain", "ps_5_0"));
 
         m_context.device->CreateVertexShader(
             compiledVertex->GetBufferPointer(),
@@ -419,31 +417,113 @@ namespace VoidEngine
 
     }
 
-    ID3DBlob* D3D11_RendererAPI::CompileShader(const std::wstring& file, const char* entry, const char* target)
+    void* D3D11_RendererAPI::CompileShader(const wchar_t* file, const char* entry, const char* target)
      {
-        ID3DBlob* compiledShader;
-        ID3DBlob* error;
+        ID3DBlob* compiledShader = nullptr;
+        ID3DBlob* error = nullptr;
 
         HRESULT hr = D3DCompileFromFile(
-            file.c_str(), nullptr, 
+            file, nullptr, 
             D3D_COMPILE_STANDARD_FILE_INCLUDE, 
             entry, target,
+#ifdef VOID_DEBUG
             D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
+#else
+            0,
+#endif
             0,
             &compiledShader,
             &error
         );
 
-        //HR(hr);
-
         if (error)
         {
-            OutputDebugString((char*)error->GetBufferPointer());
+            SIMPLE_LOG((char*)error->GetBufferPointer());
             error->Release();
         }
 
         return SUCCEEDED(hr) ? compiledShader : nullptr;
      }
 
+    void* D3D11_RendererAPI::CreateShader(void* compiledSrc, ShaderType type)
+    {
+        ID3DBlob* src = static_cast<ID3DBlob*>(compiledSrc);
+
+        switch(type)
+        {
+            case ShaderType::VERTEX:
+            {
+                ID3D11VertexShader* vertexShader;
+
+                m_context.device->CreateVertexShader(
+                    src->GetBufferPointer(),
+                    src->GetBufferSize(),
+                    nullptr,
+                    &vertexShader
+                );        
+                
+                return vertexShader;
+            }
+            case ShaderType::PIXEL:
+            {
+                ID3D11PixelShader* pixelShader;
+
+                m_context.device->CreatePixelShader(
+                    src->GetBufferPointer(),
+                    src->GetBufferSize(),
+                    nullptr,
+                    &pixelShader
+                );        
+                
+                return pixelShader;            
+            }
+            default:
+            {
+                return nullptr;
+            }
+        }
+
+        return nullptr;
+    }
+
+    void D3D11_RendererAPI::DestroyShader(GraphicShader& shader)
+    {
+        switch(shader.GetShaderType())
+        {
+            case ShaderType::VERTEX:
+            {
+                auto s = shader.As<ID3D11VertexShader*>();
+        
+                if(s)
+                {
+                    s->Release();
+                }        
+                break;
+            }
+            case ShaderType::PIXEL:
+            {
+                auto s = shader.As<ID3D11PixelShader*>();
+        
+                if(s)
+                {
+                    s->Release();
+                }        
+                break;            
+            }
+            default:
+            {
+                
+                SIMPLE_LOG("[D3D11_RendererAPI] Destroy unknown shader type!");
+                break;
+            }
+        }
+
+        auto cs = shader.CompiledSrcAs<ID3DBlob*>();
+        
+        if(cs)
+        {
+            cs->Release();
+        }
+    }
 }
 

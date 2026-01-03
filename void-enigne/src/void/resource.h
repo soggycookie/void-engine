@@ -2,6 +2,7 @@
 #include "pch.h"
 #include "common_type.h"
 #include "graphic_buffer.h"
+#include "graphic_shader.h"
 
 #include <d3d11.h>
 #include <dxgi.h>
@@ -68,40 +69,6 @@ namespace VoidEngine
         {"TEXCOORD", 0, 16, TypeFormat::FORMAT_R32G32_FLOAT}
     };
 
-    enum class ShaderType
-    {
-        VERTEX,
-        PIXEL
-    };
-
-    class GraphicShader
-    {
-    public:
-
-        GraphicShader(ShaderType type, void* compiledSrc = nullptr)
-            : m_type(type), m_compiledSrc(compiledSrc)
-        {
-        }
-        
-        void SetCompiledSrc(void* compiledSrc)
-        {
-            m_compiledSrc = compiledSrc;
-        }
-
-        GraphicShader& operator=(GraphicShader&& shader) = delete;
-        GraphicShader& operator=(const GraphicShader& shader) = delete;
-
-        ShaderType GetShaderType()
-        {
-            return m_type;
-        }
-
-
-    private:
-        void* m_compiledSrc;
-        ShaderType m_type;
-    };
-
     class ShaderResource
     {
     public:
@@ -122,6 +89,16 @@ namespace VoidEngine
             return m_guid;
         }
 
+    private:
+        friend class ResourceSystem;
+        friend class ResourceCache;
+
+        ~ShaderResource()
+        {
+            m_vertexShader.Destroy();
+            m_pixelShader.Destroy();
+        }
+
         void SetVertexShaderCompiledSrc(void* compiledSrc)
         {
             m_vertexShader.SetCompiledSrc(compiledSrc);
@@ -132,6 +109,8 @@ namespace VoidEngine
             m_pixelShader.SetCompiledSrc(compiledSrc);
         }
 
+        void SubmitShaderToGpu();
+
     private:
         ResourceGUID m_guid;
         GraphicShader m_vertexShader;
@@ -141,9 +120,19 @@ namespace VoidEngine
     class MaterialResource
     {
     public:
-        MaterialResource(ResourceGUID guid, ShaderResource* shader = nullptr)
+        MaterialResource(ResourceGUID guid, ShaderResource* shader)
             : m_guid(guid), m_shader(shader)
         {
+        }
+        
+        MaterialResource(ResourceGUID guid, MaterialResource* material)
+            : m_guid(guid), m_shader(material->m_shader)
+        {
+        }
+
+        ~MaterialResource()
+        {
+            
         }
 
         static ResourceType GetResourceType()
@@ -190,11 +179,6 @@ namespace VoidEngine
         {
         }
 
-        ~MeshResource()
-        {
-            Destroy();
-        }
-
         static ResourceType GetResourceType()
         {
             return ResourceType::MESH;
@@ -217,14 +201,18 @@ namespace VoidEngine
             m_indexCount = indexCount;
         }
 
-        void SubmitMeshData();
+        void SubmitMeshToGpu();
 
         void SetVertexDescriptor(VertexDescriptor* descriptors, size_t count);
-
+    
     private:
         friend class ResourceCache;
 
-        void Destroy();
+        ~MeshResource()
+        {
+            m_vertexBuffer.Destroy();
+            m_indexBuffer.Destroy();
+        }
 
     private:
         ResourceGUID m_guid;

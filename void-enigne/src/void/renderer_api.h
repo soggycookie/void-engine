@@ -17,7 +17,11 @@ namespace VoidEngine
         virtual void* GetContext() = 0;
 
         virtual void* CreateAndSubmitBuffer(void* const data, size_t byteSize, BufferType type) = 0;
-        virtual void ReleaseBuffer(GraphicBuffer& buffer) = 0;
+        virtual void DestroyBuffer(GraphicBuffer& buffer) = 0;
+
+        virtual void* CompileShader(const wchar_t* file, const char* entry, const char* target) = 0;
+        virtual void* CreateShader(void* compiledSrc, ShaderType type) = 0;
+        virtual void DestroyShader(GraphicShader& shader) = 0;
 
     };
 

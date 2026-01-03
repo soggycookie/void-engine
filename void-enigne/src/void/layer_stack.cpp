@@ -2,7 +2,7 @@
 
 namespace VoidEngine
 {
-    LayerStack::~LayerStack()
+    void LayerStack::DestroyAll()
     {
         for(auto it = m_layers.Begin(); it != m_layers.End(); it++)
         {

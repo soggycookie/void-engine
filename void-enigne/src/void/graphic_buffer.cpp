@@ -3,13 +3,22 @@
 
 namespace VoidEngine
 {
-    void GraphicBuffer::Submit(void* const data, size_t byteSize)
+    void GraphicBuffer::SubmitToGpu(void* const data, size_t byteSize)
     {
         m_nativeHandle = Renderer::CreateAndSubmitBuffer(data, byteSize, m_bufferType);
 
         if(!m_nativeHandle)
         {
-            assert(0 && "Failed to create and submit buffer! [GraphicBuffer]");
+#ifdef VOID_DEBUG
+            assert(0 && "[GraphicBuffer] Failed to submit buffer!");
+#else
+            SIMPLE_LOG("[GraphicBuffer] Failed to submit buffer!");
+#endif
         }
     }
+
+     void GraphicBuffer::Destroy()
+     {
+        Renderer::DestroyBuffer(*this);        
+     }
 }

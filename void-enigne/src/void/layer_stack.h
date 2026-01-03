@@ -14,7 +14,9 @@ namespace VoidEngine
         {
         }
         
-        ~LayerStack();
+        ~LayerStack() = default;
+
+        void DestroyAll();
 
         void PushLayer(Layer* layer);
         void PushOverLay(Layer* layer);

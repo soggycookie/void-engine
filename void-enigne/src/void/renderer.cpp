@@ -60,18 +60,32 @@ namespace VoidEngine
         return false;
     }
 
+    ////////////////////    Buffer
+
     void* Renderer::CreateAndSubmitBuffer(void* const data, size_t byteSize, BufferType type)
     {
         return s_rendererAPI->CreateAndSubmitBuffer(data, byteSize, type);
     }
 
-    void Renderer::ReleaseBuffer(GraphicBuffer& buffer)
+    void Renderer::DestroyBuffer(GraphicBuffer& buffer)
     {
-        s_rendererAPI->ReleaseBuffer(buffer);
+        s_rendererAPI->DestroyBuffer(buffer);
     }
-    //void Renderer::SubmitBufferData(const GraphicBuffer& buffer)
-    //{
-    //    //s_rendererAPI->SubmitBufferData(buffer);
-    //}
 
+    ////////////////////    Shader
+
+    void* Renderer::CompileShader(const wchar_t* file, const char* entry, const char* target)
+    {
+        return s_rendererAPI->CompileShader(file, entry, target);
+    }
+    
+    void* Renderer::CreateShader(void* compiledSrc, ShaderType type)
+    {
+        return s_rendererAPI->CreateShader(compiledSrc, type);
+    }
+
+    void Renderer::DestroyShader(GraphicShader& shader)
+    {
+        s_rendererAPI->DestroyShader(shader);
+    }
 }

@@ -1,26 +1,18 @@
 #include "resource.h"
-#include "void/renderer.h"
 
 namespace VoidEngine
 {
-
-    void MeshResource::Destroy()
-    {
-        Renderer::ReleaseBuffer(m_vertexBuffer);
-        Renderer::ReleaseBuffer(m_indexBuffer);
-    }
-
-    void MeshResource::SubmitMeshData()
+    void MeshResource::SubmitMeshToGpu()
     {
         if(m_isSubmitted)
         {
-            SIMPLE_LOG("Graphic Buffer already submitted! [MeshResource]");
+            SIMPLE_LOG("[Resource.Mesh] Graphic Buffer already submitted!");
             return;
         }
 
         m_isSubmitted = true;
-        m_vertexBuffer.Submit(m_vertexData, sizeof(Vertex) * m_vertexCount);
-        m_indexBuffer.Submit(m_indexData, sizeof(uint32_t) * m_indexCount);
+        m_vertexBuffer.SubmitToGpu(m_vertexData, sizeof(Vertex) * m_vertexCount);
+        m_indexBuffer.SubmitToGpu(m_indexData, sizeof(uint32_t) * m_indexCount);
     }
 
     void MeshResource::SetVertexDescriptor(VertexDescriptor* descriptors, size_t count)
@@ -28,5 +20,10 @@ namespace VoidEngine
             
     }
 
+    void ShaderResource::SubmitShaderToGpu()
+    {
+        m_vertexShader.SubmitToGpu();
+        m_pixelShader.SubmitToGpu();
+    }
 
 }

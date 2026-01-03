@@ -38,8 +38,9 @@ namespace VoidEngine
         {
             if(s_resourceLookUpTable.ContainsKey(guid))
             {
+#ifdef VOID_DEBUG
                 assert(0 && "Failed to create resource! [ResourceCache]");        
-                
+#endif
                 return nullptr;
             }
             else
@@ -47,7 +48,9 @@ namespace VoidEngine
                 void* resourceAddr = s_resourceAllocator->Alloc(0);
                 T* rsrc = new (resourceAddr) T(guid, std::forward<Args>(args)...);
                 
-                std::cout << "[ResourceCache] Inserted resource! GUID: " << guid << " , type: "  << std::endl;
+#ifdef VOID_DEBUG
+                std::cout << "[ResourceCache] Inserted resource! GUID: " << guid << " , type: " << typeid(T).name()  << std::endl;
+#endif
                 s_resourceLookUpTable.Insert(guid, {rsrc, ResourceTypeTraits<T>::type, 1});
                 
                 return rsrc;

@@ -43,6 +43,11 @@ namespace VoidEngine
                         resourceRef.As<MeshResource>()->~MeshResource();
                         break;
                     }
+                    case ResourceType::SHADER:
+                    {
+                        resourceRef.As<ShaderResource>()->~ShaderResource();
+                        break;
+                    }
                     default:
                     {
                         assert(0 && "Destroy unknown resource type! [ResourceCache]");

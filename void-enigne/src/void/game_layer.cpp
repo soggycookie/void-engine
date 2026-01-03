@@ -1,6 +1,6 @@
-#include "layer.h"
+#include "game_layer.h"
 #include "renderer.h"
-
+#include "resource_system.h"
 namespace VoidEngine
 {
     void GameLayer::OnAttach()
@@ -10,7 +10,16 @@ namespace VoidEngine
 
     void GameLayer::OnUpdate(double dt)
     {
-        Renderer::Update();
+        if(!m_initResource)
+        {
+            MeshResource* mesh = ResourceSystem::Create<MeshResource>(123, false);
+            ResourceSystem::Load(L"src//asset//shader//square_demo.hlsl");
+            m_initResource = true;
+        }
+        else
+        {
+            Renderer::Update();
+        }
     }
 
     void GameLayer::OnDetach()

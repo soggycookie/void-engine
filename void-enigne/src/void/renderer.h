@@ -2,6 +2,7 @@
 #include "pch.h"
 #include "renderer_api.h"
 #include "graphic_buffer.h"
+#include "graphic_shader.h"
 
 namespace VoidEngine
 {
@@ -26,10 +27,17 @@ namespace VoidEngine
 
         static void NewFrame();
         static void EndFrame();
-    
+        
+
         static void* CreateAndSubmitBuffer(void* const data, size_t byteSize, BufferType type);
         //static void SubmitBufferData(const GraphicBuffer& buffer);
-        static void ReleaseBuffer(GraphicBuffer& buffer);
+        static void DestroyBuffer(GraphicBuffer& buffer);
+
+        static void* CompileShader(const wchar_t* file, const char* entry, const char* target);
+        static void* CreateShader(void* compiledSrc, ShaderType type);
+        static void DestroyShader(GraphicShader& shader);
+
+
     private:
         friend class Application;
     

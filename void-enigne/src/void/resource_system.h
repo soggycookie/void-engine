@@ -9,11 +9,11 @@ namespace VoidEngine
     class ResourceSystem
     {
     public:
-        static void Load(const ResourceGUID& guid, ResourceType type);
         
         static ResourceGUID GenerateGUID()
         {
-            return 1;
+            static size_t guid = 0;
+            return guid++;
         }
 
         template<typename T, typename... Args>
@@ -69,6 +69,7 @@ namespace VoidEngine
             ResourceCache::Destroy(guid);
         }
 
+        static void Load(const std::wstring_view file);
     private:
         friend class Application;
 

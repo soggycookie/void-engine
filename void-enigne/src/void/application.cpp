@@ -24,8 +24,8 @@ namespace VoidEngine
         m_layerStack = new (layerStackAddr) LayerStack(MemorySystem::PersistantAllocator());
 
         void* gameLayerAddr = MemorySystem::PersistantAllocator()->Alloc(sizeof(GameLayer));
-        GameLayer* gameLayer = new (gameLayerAddr) GameLayer();
-        m_layerStack->PushLayer(gameLayer);
+        m_gameLayer = new (gameLayerAddr) GameLayer();
+        m_layerStack->PushLayer(m_gameLayer);
         
         //layer should before this because events dispatch to app 
         // then dispatch to layers, which should already exist
@@ -49,7 +49,7 @@ namespace VoidEngine
 
     void Application::ShutDown()
     {
-        m_layerStack->~LayerStack();
+        m_layerStack->DestroyAll();
         MemorySystem::PersistantAllocator()->Free(m_layerStack);
 
         Profiler::ShutDown();
@@ -64,17 +64,15 @@ namespace VoidEngine
 
     void Application::Update()
     {
-        MeshResource* mesh = ResourceSystem::Create<MeshResource>(123, false);
         while(m_isRunning)
         {          
             m_window->Update();
             //SIMPLE_LOG(m_window->GetDeltaTime());
 
-            for(auto it = m_layerStack->Begin(); it != m_layerStack->End(); it++)
+            for(auto it = m_layerStack->End(); it != m_layerStack->Begin();)
             {
-                (*it)->OnUpdate(m_window->GetDeltaTime());
+                (*(--it))->OnUpdate(m_window->GetDeltaTime());
             }
-
         }
     }
 
@@ -102,28 +100,11 @@ namespace VoidEngine
                 m_isResizing = false;
                 break;
             }
-            case EventType::KEY_PRESSED:
-            {
-                //std::cout << "Key Pressed" << std::endl;
-                break;
-            }
-            case EventType::KEY_RELEASED:
-            {
-                //std::cout << "Key Released" << std::endl;
-                break;
-            }
-            case EventType::MOUSE_MOVE:
-            {
-                MouseMovedEvent& mme = dynamic_cast<MouseMovedEvent&>(e);
-                //std::cout << mme.GetX() << " " << mme.GetY() << std::endl;
-
-                break;
-            }
         }
 
-        for(auto it = m_layerStack->Begin(); it != m_layerStack->End(); it++)
+        for(auto it = m_layerStack->End(); it != m_layerStack->Begin();)
         {
-            (*it)->OnEvent(e);
+            (*(--it))->OnEvent(e);
         }
     }
 }

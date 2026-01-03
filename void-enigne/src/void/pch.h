@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <sstream>
 #include <functional>
 #include <algorithm>
@@ -22,4 +23,7 @@
 #define DEFAULT_ALIGNMENT alignof(std::max_align_t)
 
 #define SIMPLE_LOG(x) std::cout << x << std::endl; 
+
+#define VOID_DEBUG
+
 

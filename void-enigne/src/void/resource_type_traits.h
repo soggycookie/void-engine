@@ -13,4 +13,9 @@ namespace VoidEngine
     {
         static const ResourceType type = ResourceType::MESH;
     };
+
+    template<> struct ResourceTypeTraits<ShaderResource> 
+    {
+        static const ResourceType type = ResourceType::SHADER;
+    };
 }

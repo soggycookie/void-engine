@@ -32,10 +32,11 @@ namespace VoidEngine
         template<typename T>
         T As()
         {
-            return reinterpret_cast<T>(m_nativeHandle);
+            return static_cast<T>(m_nativeHandle);
         }
 
-        void Submit(void* const data, size_t byteSize);
+        void SubmitToGpu(void* const data, size_t byteSize);
+        void Destroy();
 
     private:
         void* m_nativeHandle;
