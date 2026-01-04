@@ -72,12 +72,6 @@ namespace VoidEngine
     class ShaderResource
     {
     public:
-        ShaderResource(ResourceGUID guid)
-            : m_guid(guid),
-            m_vertexShader(ShaderType::VERTEX),
-            m_pixelShader(ShaderType::PIXEL)
-        {
-        }
 
         static ResourceType GetResourceType()
         {
@@ -93,21 +87,11 @@ namespace VoidEngine
         friend class ResourceSystem;
         friend class ResourceCache;
 
-        ~ShaderResource()
-        {
-            m_vertexShader.Destroy();
-            m_pixelShader.Destroy();
-        }
+        ShaderResource(ResourceGUID guid);
+        ~ShaderResource();
 
-        void SetVertexShaderCompiledSrc(void* compiledSrc)
-        {
-            m_vertexShader.SetCompiledSrc(compiledSrc);
-        }
-        
-        void SetPixelShaderCompiledSrc(void* compiledSrc)
-        {
-            m_pixelShader.SetCompiledSrc(compiledSrc);
-        }
+        void SetVertexShaderCompiledSrc(void* compiledSrc);
+        void SetPixelShaderCompiledSrc(void* compiledSrc);
 
         void SubmitShaderToGpu();
 
@@ -120,20 +104,9 @@ namespace VoidEngine
     class MaterialResource
     {
     public:
-        MaterialResource(ResourceGUID guid, ShaderResource* shader)
-            : m_guid(guid), m_shader(shader)
-        {
-        }
+        MaterialResource(ResourceGUID guid, ResourceGUID shader);
         
-        MaterialResource(ResourceGUID guid, MaterialResource* material)
-            : m_guid(guid), m_shader(material->m_shader)
-        {
-        }
-
-        ~MaterialResource()
-        {
-            
-        }
+        ~MaterialResource();
 
         static ResourceType GetResourceType()
         {
@@ -147,37 +120,32 @@ namespace VoidEngine
 
     private:
         ResourceGUID m_guid;
-        ShaderResource* m_shader;
+        ResourceGUID m_shader;
 
+    };
+
+    class InputLayoutResource
+    {
+    private:
+        friend class ResourceSystem;
+
+        InputLayoutResource();
+        ~InputLayoutResource();
+
+
+    private:
+        void* m_nativeHandle;
     };
 
     class MeshResource
     {
     public:
-        MeshResource(ResourceGUID guid, bool canCpuRead)
-            : m_guid(guid), m_vertexData(nullptr), m_vertexCount(0),
-            m_indexData(nullptr), m_indexCount(0), 
-            m_descriptor(nullptr), m_descriptorCount(0),
-            m_vertexBuffer(nullptr, BufferType::VERTEX_BUFFER),
-            m_indexBuffer(nullptr, BufferType::INDEX_BUFFER),
-            m_canCpuRead(canCpuRead), m_isSetVertexDesc(false),
-            m_isSubmitted(false)
-        {
-        }
+        MeshResource(ResourceGUID guid, bool canCpuRead);
 
         MeshResource(ResourceGUID guid, 
                      Vertex* vertexData, size_t vertexCount, 
                      uint32_t* indexData, size_t indexCount, 
-                     bool canCpuRead)
-            : m_guid(guid), m_vertexData(vertexData), m_vertexCount(vertexCount),
-            m_indexData(indexData), m_indexCount(indexCount), 
-            m_descriptor(nullptr), m_descriptorCount(0),
-            m_vertexBuffer(nullptr, BufferType::VERTEX_BUFFER),
-            m_indexBuffer(nullptr, BufferType::INDEX_BUFFER),
-            m_canCpuRead(canCpuRead), m_isSetVertexDesc(false),
-            m_isSubmitted(false)
-        {
-        }
+                     bool canCpuRead);
 
         static ResourceType GetResourceType()
         {
@@ -194,7 +162,6 @@ namespace VoidEngine
             m_vertexData = vertexData;
             m_vertexCount = vertexCount;
         }
-
         void SetIndexData(uint32_t* indexData, size_t indexCount)
         {
             m_indexData = indexData;
@@ -208,11 +175,7 @@ namespace VoidEngine
     private:
         friend class ResourceCache;
 
-        ~MeshResource()
-        {
-            m_vertexBuffer.Destroy();
-            m_indexBuffer.Destroy();
-        }
+        ~MeshResource();
 
     private:
         ResourceGUID m_guid;

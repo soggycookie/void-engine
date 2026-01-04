@@ -418,13 +418,13 @@ namespace VoidEngine
     }
 
     void* D3D11_RendererAPI::CompileShader(const wchar_t* file, const char* entry, const char* target)
-     {
+    {
         ID3DBlob* compiledShader = nullptr;
         ID3DBlob* error = nullptr;
 
         HRESULT hr = D3DCompileFromFile(
-            file, nullptr, 
-            D3D_COMPILE_STANDARD_FILE_INCLUDE, 
+            file, nullptr,
+            D3D_COMPILE_STANDARD_FILE_INCLUDE,
             entry, target,
 #ifdef VOID_DEBUG
             D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
@@ -436,14 +436,14 @@ namespace VoidEngine
             &error
         );
 
-        if (error)
+        if(error)
         {
-            SIMPLE_LOG((char*)error->GetBufferPointer());
+            SIMPLE_LOG((char*) error->GetBufferPointer());
             error->Release();
         }
 
         return SUCCEEDED(hr) ? compiledShader : nullptr;
-     }
+    }
 
     void* D3D11_RendererAPI::CreateShader(void* compiledSrc, ShaderType type)
     {
@@ -524,6 +524,12 @@ namespace VoidEngine
         {
             cs->Release();
         }
+    }
+
+    void D3D11_RendererAPI::Draw(MeshResource* mesh, MaterialResource* material)
+    {
+        //mesh has vertex descriptor
+
     }
 }
 

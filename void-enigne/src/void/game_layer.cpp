@@ -13,7 +13,10 @@ namespace VoidEngine
         if(!m_initResource)
         {
             MeshResource* mesh = ResourceSystem::Create<MeshResource>(123, false);
-            ResourceSystem::Load(L"src//asset//shader//square_demo.hlsl");
+            auto shader = ResourceSystem::Load<ShaderResource>(L"src//asset//shader//square_demo.hlsl");
+            auto material = ResourceSystem::Create<MaterialResource>(ResourceSystem::GenerateGUID(), shader->GetGUID());
+            
+            SIMPLE_LOG(ResourceSystem::InspectRef(shader->GetGUID()));
             m_initResource = true;
         }
         else

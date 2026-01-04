@@ -34,7 +34,7 @@ namespace VoidEngine
         static ResourceRef Acquire(ResourceGUID guid);
 
         template<typename T, typename... Args>
-        static T* Create(ResourceGUID guid, Args&&... args)
+        static T* Create(ResourceGUID guid, int32_t ref, Args&&... args)
         {
             if(s_resourceLookUpTable.ContainsKey(guid))
             {
@@ -51,7 +51,7 @@ namespace VoidEngine
 #ifdef VOID_DEBUG
                 std::cout << "[ResourceCache] Inserted resource! GUID: " << guid << " , type: " << typeid(T).name()  << std::endl;
 #endif
-                s_resourceLookUpTable.Insert(guid, {rsrc, ResourceTypeTraits<T>::type, 1});
+                s_resourceLookUpTable.Insert(guid, {rsrc, ResourceTypeTraits<T>::type, ref});
                 
                 return rsrc;
             }
@@ -68,7 +68,7 @@ namespace VoidEngine
                 if(resourceRef.ref == 0)
                 {
                     T* rsrc = resourceRef.As<T>();
-                    rsrc.~T();
+                    rsrc->~T();
                     s_resourceLookUpTable.Remove(guid);
                     s_resourceAllocator->Free(rsrc);                
                 }
@@ -96,6 +96,12 @@ namespace VoidEngine
         }
 
         static void DestroyAll();
+
+        static void DestroyUnused();
+
+#ifdef VOID_DEBUG
+        static int32_t InspectRef(ResourceGUID guid);
+#endif
 
     private:
         static FlatHashMap<ResourceGUID, ResourceRef> s_resourceLookUpTable;

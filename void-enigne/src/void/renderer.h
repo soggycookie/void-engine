@@ -38,6 +38,8 @@ namespace VoidEngine
         static void DestroyShader(GraphicShader& shader);
 
 
+        static void Draw(MeshResource* mesh, MaterialResource* material);
+
     private:
         friend class Application;
     

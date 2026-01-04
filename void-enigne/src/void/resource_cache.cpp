@@ -48,9 +48,14 @@ namespace VoidEngine
                         resourceRef.As<ShaderResource>()->~ShaderResource();
                         break;
                     }
+                    case ResourceType::MATERIAL:
+                    {
+                        resourceRef.As<MaterialResource>()->~MaterialResource();
+                        break;
+                    }
                     default:
                     {
-                        assert(0 && "Destroy unknown resource type! [ResourceCache]");
+                        SIMPLE_LOG("[ResourceCache] Destroy unknown resource type!");
                         break;
                     }
                 }
@@ -61,24 +66,61 @@ namespace VoidEngine
         }
         s_resourceAllocator->Clear();
     }
-    /////////////////////////////////////////////
+    
+    void ResourceCache::DestroyUnused()
+    {
+        for(auto it = s_resourceLookUpTable.Begin(); it != s_resourceLookUpTable.End(); it++)
+        {
+            if(it.IsValid())
+            {
+                auto resourceRef = it.GetValue();
 
-    //FreeListAllocator* ResourceStream::s_resourceStreamAllocator = nullptr;
+                if(resourceRef.ref == 0)
+                {
+                    switch(resourceRef.type)
+                    {
+                        case ResourceType::MESH:
+                        {
+                            resourceRef.As<MeshResource>()->~MeshResource();
+                            break;
+                        }
+                        case ResourceType::SHADER:
+                        {
+                            resourceRef.As<ShaderResource>()->~ShaderResource();
+                            break;
+                        }
+                        case ResourceType::MATERIAL:
+                        {
+                            resourceRef.As<MaterialResource>()->~MaterialResource();
+                            break;
+                        }
+                        default:
+                        {
+                            assert(0 && "Destroy unknown resource type! [ResourceCache]");
+                            break;
+                        }
+                    }
 
-    //void ResourceStream::Init(FreeListAllocator* allocator)
-    //{
-    //    s_resourceStreamAllocator = allocator;
-    //}
+                    s_resourceAllocator->Free(resourceRef.rsrc);
+                    s_resourceLookUpTable.Remove(it.GetKey());
+                }
+            }
+        }
+    }
 
-    //void ResourceStream::LoadResourceFile(const ResourceGUID& file, void** outAddr)
-    //{
-    //    //detect file extension
-
-
-    //}
-    //
-    //void ResourceStream::Unload(void* resource)
-    //{
-    //    s_resourceStreamAllocator->Free(resource);
-    //}
+#ifdef VOID_DEBUG
+        int32_t ResourceCache::InspectRef(ResourceGUID guid)
+        {
+            if(s_resourceLookUpTable.ContainsKey(guid))
+            {
+                auto& resourceRef = s_resourceLookUpTable[guid];
+                return resourceRef.ref;
+            }
+            else
+            {
+                SIMPLE_LOG("Key not existed [ResourceCache]");
+            }            
+            return -1;
+        }
+#endif
 }

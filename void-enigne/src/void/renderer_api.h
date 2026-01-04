@@ -23,6 +23,8 @@ namespace VoidEngine
         virtual void* CreateShader(void* compiledSrc, ShaderType type) = 0;
         virtual void DestroyShader(GraphicShader& shader) = 0;
 
+        virtual void Draw(MeshResource* mesh, MaterialResource* material) = 0;
+
     };
 
 }

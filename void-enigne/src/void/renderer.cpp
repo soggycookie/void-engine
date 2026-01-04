@@ -88,4 +88,9 @@ namespace VoidEngine
     {
         s_rendererAPI->DestroyShader(shader);
     }
+
+    void Renderer::Draw(MeshResource* mesh, MaterialResource* material)
+    {
+        s_rendererAPI->Draw(mesh, material);
+    }
 }

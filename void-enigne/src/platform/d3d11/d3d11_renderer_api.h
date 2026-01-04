@@ -60,6 +60,7 @@ namespace VoidEngine
         void* CreateShader(void* compiledSrc, ShaderType type) override;
         void DestroyShader(GraphicShader& shader) override;
 
+        void Draw(MeshResource* mesh, MaterialResource* material) override;
     private:
         void SetUpDemo();
 

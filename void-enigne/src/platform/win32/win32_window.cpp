@@ -93,7 +93,6 @@ namespace VoidEngine
             {
                 ApplicationEnterResizeEvent e;
                 window->DispatchEvent(e);
-                std::cout << "SIZE MOVE" << std::endl;
                 break;
             }
             case WM_EXITSIZEMOVE :
@@ -102,7 +101,6 @@ namespace VoidEngine
                 ClientDimension dimension = GetClientDimension(hwnd);
                 ApplicationExitResizeEvent e(dimension);
                 window->DispatchEvent(e);
-                std::cout << "EXIT SIZE MOVE" << std::endl;
                 break;
             }
             case WM_PAINT:
@@ -132,7 +130,6 @@ namespace VoidEngine
             case WM_MOVING:
             {
                 Renderer::EndFrame();
-                //SIMPLE_LOG("MOVING");
                 break;
             }
             //////////////////////////////////////////////////////////////
