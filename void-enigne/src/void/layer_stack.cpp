@@ -7,13 +7,13 @@ namespace VoidEngine
         for(auto it = m_layers.Begin(); it != m_layers.End(); it++)
         {
             (*it)->OnDetach();
-            MemorySystem::PersistantAllocator()->Free(*it);
+            MemorySystem::GeneralAllocator()->Free(*it);
         }
     }
 
     void LayerStack::PushLayer(Layer* layer)
     {
-        m_layers.Insert(m_layers.Begin() + m_index, layer);
+        m_layers.Push(m_layers.Begin() + m_index, layer);
         m_index++;
         layer->OnAttach();
     }

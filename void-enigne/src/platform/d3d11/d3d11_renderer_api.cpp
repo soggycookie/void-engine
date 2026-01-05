@@ -1,6 +1,7 @@
 #include "void/pch.h"
 #include "d3d11_renderer_api.h"
 #include "void/global_persistant_allocator.h"
+#include "void/memory_system.h"
 
 #include <d3dcompiler.h>
 #pragma comment(lib, "d3dcompiler.lib")
@@ -12,6 +13,12 @@ namespace VoidEngine
         float pos[4];   // x, y, z, w  (clip space)
         float uv[2];    // texture coords
     };
+
+    D3D11_RendererAPI::D3D11_RendererAPI()
+        : m_inputLayouts(MemorySystem::GeneralAllocator())
+    {
+    
+    }
 
     void D3D11_RendererAPI::NewFrame()
     {

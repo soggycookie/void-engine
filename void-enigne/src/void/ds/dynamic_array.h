@@ -9,7 +9,7 @@
 namespace VoidEngine
 {
 
-#define DEFAULT_CAPACITY 10
+#define DEFAULT_CAPACITY 16
 
     template<typename T>
     class DynamicArray
@@ -104,7 +104,7 @@ namespace VoidEngine
         {
         }
 
-        DynamicArray(FreeListAllocator* allocator, size_t capacity,const T& defaultValue)
+        DynamicArray(FreeListAllocator* allocator, size_t capacity, const T& defaultValue)
             : m_allocator(allocator), m_alignedSize(0), 
             m_arrBytes(0), m_count(0), m_capacity(capacity)
         {
@@ -191,22 +191,16 @@ namespace VoidEngine
             
         }
 
-        void Resize(size_t capacity)
-        {
-                
-        }
-
         void PushBack(const T& value)
         {
             if(m_count >= m_capacity)
             {
-                Resize(100);
+                Resize(m_capacity * 1.5f);
             }
 
-            T* element = reinterpret_cast<T*>(m_data + m_count * m_alignedSize);
+            void* addr = (m_data + m_count * m_alignedSize);
+            new (addr) T(value);
             m_count++;
-
-            *element = value;
         }
 
         template<typename... Args>
@@ -214,12 +208,11 @@ namespace VoidEngine
         {
             if(m_count >= m_capacity)
             {
-                Resize(100);
+                Resize(m_capacity * 1.5f);
             }
 
             void* addr = (m_data + m_count * m_alignedSize);
             new (addr) T(std::forward<Args>(args)...);         
-
             m_count++;
         }
 
@@ -228,7 +221,7 @@ namespace VoidEngine
         {
             if(m_count >= m_capacity)
             {
-                Resize(100);
+                Resize(m_capacity * 1.5f);
             }
 
             if (emplacedIt != End()) {
@@ -240,7 +233,6 @@ namespace VoidEngine
                     *it = std::move(*(it - 1));
                 }
         
-                // Destroy the old object at emplacedIt
                 if constexpr(std::is_destructible_v<T>)
                 {
                     (*emplacedIt).~T();
@@ -255,11 +247,11 @@ namespace VoidEngine
             m_count++;
         }
 
-        void Insert(Iterator emplacedIt, const T& value)
+        void Push(Iterator emplacedIt, const T& value)
         {
             if(m_count >= m_capacity)
             {
-                Resize(100);
+                Resize(m_capacity * 1.5f);
             }
 
             if (emplacedIt != End()) {
@@ -284,9 +276,7 @@ namespace VoidEngine
 
             m_count++;
         }
-
         
-
         void Remove(Iterator iterator)
         {
             if(iterator == End())
@@ -307,7 +297,7 @@ namespace VoidEngine
                 baseAddr + (m_count - 1) * m_alignedSize;
 
             constexpr bool canMemMove =
-                std::is_trivially_move_assignable_v<T> &&
+                std::is_trivially_copyable_v<T> &&
                 std::is_trivially_destructible_v<T>;
 
             if constexpr(canMemMove)
@@ -325,7 +315,7 @@ namespace VoidEngine
             }
             else
             {
-                for(size_t i = index; i + 1 < m_count; ++i)
+                for(size_t i = index; i + 1 < m_count; i++)
                 {
                     T* dst = reinterpret_cast<T*>(baseAddr + i * m_alignedSize);
                     T* src = reinterpret_cast<T*>(baseAddr + (i + 1) * m_alignedSize);
@@ -370,6 +360,11 @@ namespace VoidEngine
             return m_count;
         }
 
+        size_t GetCapacity() const
+        {
+            return m_capacity;
+        }
+
         T& operator[](size_t index)
         {
             if(index >= m_count)
@@ -392,6 +387,44 @@ namespace VoidEngine
             return Iterator(reinterpret_cast<T*>(m_data + m_count * m_alignedSize));
         }
 
+    private:
+        void Resize(size_t newCapacity)
+        {
+            uint8_t* newData = static_cast<uint8_t*>(m_allocator->Alloc(newCapacity * m_alignedSize));
+
+            if(!newData)
+            {
+                assert(0 && "[DynamicArray] Failed to resize!");
+                return;
+            }
+
+            if constexpr(std::is_trivially_copyable_v<T> && 
+                         std::is_trivially_destructible_v<T>)
+            {
+                std::memmove(newData, m_data, m_count * m_alignedSize);
+            }
+            else
+            {
+                uintptr_t baseAddr =
+                    reinterpret_cast<uintptr_t>(m_data);
+                
+                uintptr_t newBaseAddr =
+                    reinterpret_cast<uintptr_t>(newData);
+
+                for(size_t i = 0; i < m_count; i++)
+                {
+                    void* dstAddr = (newBaseAddr + i * m_alignedSize);
+                    T* src = reinterpret_cast<T*>(baseAddr + i * m_alignedSize);
+
+                    new (dstAddr) T(std::move(*src));
+                    src->~T();
+                }
+            }
+
+            m_allocator->Free(m_data);
+            m_data = newData;
+            m_capacity = newCapacity;
+        }
     private:
         FreeListAllocator* m_allocator;
         uint8_t* m_data;

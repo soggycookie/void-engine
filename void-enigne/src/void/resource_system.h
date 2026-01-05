@@ -132,7 +132,7 @@ namespace VoidEngine
     private:
         friend class Application;
 
-        static void StartUp(FreeListAllocator* resourceLookUpAlloc, PoolAllocator* resourceAlloc, FreeListAllocator* streamAlloc);
+        static void StartUp(FreeListAllocator* resourceLookUpAlloc, PoolAllocator* resourceAlloc);
         static void ShutDown();
 
 

@@ -172,6 +172,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\platform\d3d11\d3d11_renderer_api.h" />
+    <ClInclude Include="src\test\dynamic_array\dynamic_array_test.h" />
+    <ClInclude Include="src\test\flathashmap\fhs_test.h" />
     <ClInclude Include="src\void\game_layer.h" />
     <ClInclude Include="src\void\graphic_buffer.h" />
     <ClInclude Include="src\void\graphic_shader.h" />

@@ -20,10 +20,10 @@ namespace VoidEngine
         
         m_window = Window::Create(WindowProperty(), [this](Event& e){OnEvent(e);});
 
-        void* layerStackAddr = MemorySystem::PersistantAllocator()->Alloc(sizeof(LayerStack));
-        m_layerStack = new (layerStackAddr) LayerStack(MemorySystem::PersistantAllocator());
+        void* layerStackAddr = MemorySystem::GeneralAllocator()->Alloc(sizeof(LayerStack));
+        m_layerStack = new (layerStackAddr) LayerStack(MemorySystem::GeneralAllocator());
 
-        void* gameLayerAddr = MemorySystem::PersistantAllocator()->Alloc(sizeof(GameLayer));
+        void* gameLayerAddr = MemorySystem::GeneralAllocator()->Alloc(sizeof(GameLayer));
         m_gameLayer = new (gameLayerAddr) GameLayer();
         m_layerStack->PushLayer(m_gameLayer);
         
@@ -35,8 +35,7 @@ namespace VoidEngine
         }
 
         ResourceSystem::StartUp(&MemorySystem::s_resourceLookUpAllocator, 
-                                &MemorySystem::s_resourceAllocator,
-                                &MemorySystem::s_resourceStreamAllocator);
+                                &MemorySystem::s_resourceAllocator);
         
         Renderer::StartUp(m_window);
         Renderer::SetGraphicAPI(GraphicAPI::D3D11);
@@ -50,7 +49,7 @@ namespace VoidEngine
     void Application::ShutDown()
     {
         m_layerStack->DestroyAll();
-        MemorySystem::PersistantAllocator()->Free(m_layerStack);
+        MemorySystem::GeneralAllocator()->Free(m_layerStack);
 
         Profiler::ShutDown();
         Renderer::ShutDown();

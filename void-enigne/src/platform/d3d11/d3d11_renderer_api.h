@@ -2,6 +2,7 @@
 #include "void/pch.h"
 #include "void/renderer_api.h"
 #include "void/common_type.h"
+#include "void/ds/flat_hash_map.h"
 
 #include <d3d11.h>
 #include <dxgi.h>
@@ -39,6 +40,27 @@ namespace VoidEngine
     class D3D11_RendererAPI : public RendererAPI
     {
     public:
+        struct InputLayoutKey
+        {
+            size_t vertexFormatHash;
+            ResourceGUID shader;
+
+            bool operator==(const InputLayoutKey& other) const
+            {
+                return (vertexFormatHash == other.vertexFormatHash)
+                    && (shader == other.shader);
+            }
+
+            bool operator!=(const InputLayoutKey& other) const
+            {
+                return (vertexFormatHash != other.vertexFormatHash)
+                    || (shader != other.shader);
+            }
+        };
+
+    public:
+        D3D11_RendererAPI();
+
         void Clear() override;
         bool Init(int width, int height, void* outputWindow) override;
         void Update() override;
@@ -73,5 +95,19 @@ namespace VoidEngine
 
     private:
         D3D11_Context m_context;
+        FlatHashMap<InputLayoutKey, ID3D11InputLayout*> m_inputLayouts;
+    };
+}
+
+namespace std {
+    template<>
+    struct hash<VoidEngine::D3D11_RendererAPI::InputLayoutKey> {
+        size_t operator()(const VoidEngine::D3D11_RendererAPI::InputLayoutKey& key) const
+        {
+            size_t h1 = hash<size_t>{}(key.shader);
+            size_t h2 = key.vertexFormatHash;
+
+            return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+        }
     };
 }

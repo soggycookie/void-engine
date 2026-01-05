@@ -12,9 +12,9 @@ namespace VoidEngine
     {
     public:
 
-        static FreeListAllocator* PersistantAllocator()
+        static FreeListAllocator* GeneralAllocator()
         {
-            return &s_enginePersistantAllocator;
+            return &s_generalAllocator;
         }
 
     private:
@@ -24,11 +24,9 @@ namespace VoidEngine
         static void ShutDown();
 
     private:
-        static FreeListAllocator s_enginePersistantAllocator;
+        static FreeListAllocator s_generalAllocator;
         static LinearAllocator s_perFrameAllocator;
-
         static FreeListAllocator s_resourceLookUpAllocator;
-        static FreeListAllocator s_resourceStreamAllocator;
         static PoolAllocator s_resourceAllocator;
 
     };

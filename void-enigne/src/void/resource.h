@@ -124,19 +124,6 @@ namespace VoidEngine
 
     };
 
-    class InputLayoutResource
-    {
-    private:
-        friend class ResourceSystem;
-
-        InputLayoutResource();
-        ~InputLayoutResource();
-
-
-    private:
-        void* m_nativeHandle;
-    };
-
     class MeshResource
     {
     public:

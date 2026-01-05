@@ -7,15 +7,14 @@ namespace VoidEngine
 {
 
 
-    void ResourceSystem::StartUp(FreeListAllocator* resourceLookUpAlloc, PoolAllocator* resourceAlloc, FreeListAllocator* streamAlloc)
+    void ResourceSystem::StartUp(FreeListAllocator* resourceLookUpAlloc, PoolAllocator* resourceAlloc)
     {
-        if(!resourceLookUpAlloc || !resourceAlloc || !streamAlloc)
+        if(!resourceLookUpAlloc || !resourceAlloc )
         {
             assert(0 && "Allocators can not be null! [ResourceSystem]");
             return;
         }
 
-        //ResourceStream::Init(streamAlloc);
         ResourceCache::Init(resourceLookUpAlloc, resourceAlloc);
     }
 
