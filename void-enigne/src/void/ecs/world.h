@@ -35,6 +35,12 @@ namespace VoidEngine
             template<typename T>
             void Add(const T& data);
 
+            template<typename T>
+            void Remove();
+
+            template<typename T>
+            T* Get();
+
         private:
             EntityId id;
             World* scene;
@@ -54,6 +60,30 @@ namespace VoidEngine
             //NOTE: WE HAVE TO REWRITE THEM MOSTLY TO DEFER THE ARCHETYPE CHANGE
 
             ////////////////////////////////////////////////////////////////
+
+            template<typename T>
+            T* Get(EntityId id)
+            {
+                auto it = m_entityRecords.find(id);
+
+                if(it != m_entityRecords.end())
+                {
+                    Archetype* archetype = it->second.archetype;
+
+                    auto componentIt = archetype->componentSet.Search(GetComponentId<T>());
+                    if(componentIt != archetype->componentSet.End())
+                    {
+                        uint32_t colIndex = componentIt - archetype->componentSet.Begin();
+                        T* colData = reinterpret_cast<T*>(archetype->data.columns[colIndex].colData);
+
+                        return &colData[it->second.row - 1];
+                    }
+                    assert(0 && "Component does not exist!");
+                }
+                assert(0 && "Entity does not exist!");
+                
+                return nullptr;
+            }
 
 //#define ECS_AUTO_REGISTER
 
@@ -88,7 +118,7 @@ namespace VoidEngine
 
                 if(destArchetype->capacity == destArchetype->count)
                 {
-                    EnsureCapacity(*destArchetype, srcArchetype->count);
+                    EnsureCapacity(*destArchetype, 1);
                 }
 
                 SwapBack(record);
@@ -221,11 +251,11 @@ namespace VoidEngine
                         uint32_t destColIndex = it - destArchetype->componentSet.Begin(); 
                         const ComponentColumn& destCol = destArchetype->data.columns[destColIndex];
                         uint8_t* destAddr = destCol.colData +
-                            destArchetype->count * destCol.size;
+                            destArchetype->count * destCol.typeInfo.size;
 
                         if(destCol.typeInfo.isTriviallyCopyable)
                         {
-                            std::memcpy(destAddr, srcAddr, destCol.size);
+                            std::memcpy(destAddr, srcAddr, destCol.typeInfo.size);
                         }
                         else if(destCol.typeInfo.isMoveContructible)
                         {
@@ -236,19 +266,17 @@ namespace VoidEngine
                             destCol.typeHook.copy(destAddr, srcAddr);
                         }
 
-                        if(!destCol.isTriviallyDestructible)
+                        if(!destCol.typeInfo.isTriviallyDestructible)
                         {
-                            destCol.dtor(srcAddr);
+                            destCol.typeHook.dtor(srcAddr);
                         }
                     }
                 }
+                
 
-                if(srcArchetype)
-                {
-                    srcArchetype->data.entities.pop_back();
-                    srcArchetype->count--;
-                }
 
+                srcArchetype->data.entities.pop_back();
+                srcArchetype->count--;
                 destArchetype->data.entities.push_back(id);
                 destArchetype->count++;
 
@@ -458,17 +486,18 @@ namespace VoidEngine
                     assert(0 && "Component is not registered!");
                 }
 
-                const std::vector<ArchetypeRecord>& archetypeList = it->second;
+                const std::vector<ArchetypeRecord>& archetypeList = it->second.records;
 
                 for(uint32_t i = 0; i < archetypeList.size(); i++)
                 {
                     Archetype* archetype = archetypeList[i].type;
                     const std::vector<EntityId>& entities = archetype->data.entities;
-                    const std::vector<ComponentColumn>& cols = archetype->data.columns;
+                    std::vector<ComponentColumn>& cols = archetype->data.columns;
                     for(uint32_t entityIndex = 0; entityIndex < entities.size(); entityIndex++)
                     {
                         Entity e(entities[entityIndex], this);
-                        T* componentData = static_cast<T*>(cols[archetypeList[i].column]);
+                        T* componentData = reinterpret_cast<T*>(cols[archetypeList[i].column].colData + 
+                                                                entityIndex * cols[archetypeList[i].column].typeInfo.size);
                         func(e, *componentData);
                     }
                 }
@@ -544,7 +573,7 @@ namespace VoidEngine
                     else
                     {
                         //lazy load
-                        ArchetypeEdge edge;
+
                         destComponentSet = srcArchetype->componentSet;
                         if(isAdded)
                         {
@@ -581,6 +610,7 @@ namespace VoidEngine
                             destArchetype = CreateAndGetArchetype<T>(destComponentSet);
                         }
 
+                        ArchetypeEdge edge;
                         edge.added = isAdded ? destArchetype : nullptr;
                         edge.removed = isAdded ? nullptr : destArchetype;
 
@@ -890,6 +920,19 @@ namespace VoidEngine
         {
             scene->Add<T>(id, data);
         }
+
+        template<typename T>
+        void  Entity::Remove()
+        {
+            scene->Remove<T>(id);
+        }
+
+        template<typename T>
+        T* Entity::Get()
+        {
+            return scene->Get<T>(id);
+        }
+
     }
 }
 

@@ -102,6 +102,11 @@ namespace VoidEngine
                 return std::lower_bound(m_components.begin(), m_components.end(), id);
             }
             
+            bool Contains(ComponentId id)
+            {
+                return std::binary_search(m_components.begin(), m_components.end(), id);
+            }
+            
             std::vector<ComponentId>::iterator Begin()
             {
                 return m_components.begin();
@@ -296,62 +301,6 @@ namespace VoidEngine
             static uint32_t id = ComponentIdGenerator::Generate();
             return id;
         }
-        
-        template<typename T>
-        class ComponentTypeMetaData
-        {
-        public:
-            ComponentTypeMetaData() = default;
-
-            static ComponentTypeMetaData& Get()
-            {
-                static ComponentTypeMetaData metaData;
-                
-                return metaData;
-            }
-
-            ComponentTypeMetaData& SetCtorHook(std::function<void(void*)> ctor)
-            {
-                typeHook.ctor = ctor;
-
-                return *this;
-            }
-            
-            ComponentTypeMetaData& SetDtorHook(std::function<void(void*)> dtor)
-            {
-                typeHook.dtor = dtor;
-
-                return *this;
-            }
-
-            ComponentTypeMetaData& SetCopyHook(std::function<void(void*, const void*)> copy)
-            {
-                typeHook.copy = copy;
-
-                return *this;
-            }
-            
-            ComponentTypeMetaData& SetMoveHook(std::function<void(void*, void*)> move)
-            {
-                typeHook.move = move;
-
-                return *this;
-            }
-
-        public:
-            const ComponentTypeInfo typeInfo = 
-            {
-                //should be aligned size
-                sizeof(T),
-                alignof(T),
-                std::is_trivially_copyable_v<T>,
-                std::is_trivially_destructible_v<T>,
-                std::is_move_constructible_v<T> && !std::is_trivially_move_constructible_v<T>
-            };
-
-            ComponentTypeHook typeHook;
-        };
-
 
 
 #define ECS_ENTITY_ID_BITS      32
@@ -406,21 +355,21 @@ namespace VoidEngine
             ComponentInfo& SetDtorHook(std::function<void(void*)> dtor)
             {
                 typeHook.dtor = dtor;
-
+                typeInfo.isTriviallyDestructible = false;
                 return *this;
             }
 
             ComponentInfo& SetCopyHook(std::function<void(void*, const void*)> copy)
             {
                 typeHook.copy = copy;
-
+                typeInfo.isTriviallyCopyable = false;
                 return *this;
             }
             
             ComponentInfo& SetMoveHook(std::function<void(void*, void*)> move)
             {
                 typeHook.move = move;
-
+                typeInfo.isMoveContructible = true;
                 return *this;
             }
         };

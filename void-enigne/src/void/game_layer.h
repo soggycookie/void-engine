@@ -9,6 +9,16 @@ namespace VoidEngine
     {
         uint32_t x, y;
     };
+    
+    struct Velocity
+    {
+        float x, y;
+    };
+
+    struct Rotation
+    {
+        float x, y;
+    };
 
     class GameLayer : public Layer
     {
