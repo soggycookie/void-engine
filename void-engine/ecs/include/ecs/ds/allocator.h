@@ -10,8 +10,14 @@
 
 namespace ECS
 {
-    struct Allocator
+    class Allocator
     {
-        
+    public:
+        void* Alloc(size_t size);
+        void Free(size_t size, void* addr);
+
+    public:
+        BlockAllocator chunks;
+        SparseSet sparse;
     };
 }

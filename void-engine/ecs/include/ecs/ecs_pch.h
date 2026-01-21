@@ -18,4 +18,4 @@
 #include <set>
 #include <unordered_set>
 
-#include "ecs_platforms.h"
+#include "ecs_utils.h"
