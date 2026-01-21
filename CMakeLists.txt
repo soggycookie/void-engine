@@ -5,22 +5,25 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS        OFF)
 
 set(VOID_PROJECT_NAME "void-engine")
-set(VOID_ENGINE_FOLDER "void-engine")
-set(VOID_ENGINE_SRC "void-engine/src/void")
-set(VOID_ENGINE_PLATFORM_SRC "void-engine/src/platform")
-
 project(${VOID_PROJECT_NAME})
 
-set(VOID_PRECOMPILED_HEADER "${PROJECT_SOURCE_DIR}/${VOID_ENGINE_SRC}/pch.h")
-set(VOID_ENGINE_INCLUDE "${PROJECT_SOURCE_DIR}/void-engine/src")
+set(VOID_ENGINE_EXEC "void-engine")
+set(VOID_ENGINE_SRC "void-engine/void/src")
+set(VOID_ENGINE_INCLUDE "void-engine/void/include")
+set(VOID_ENGINE_PLATFORM_SRC "void-engine/void/src/platform")
+set(VOID_ENGINE_INCLUDE_PLATFORM "void-engine/void/include/platform")
+set(VOID_PRECOMPILED_HEADER "${VOID_ENGINE_INCLUDE}/pch.h")
 
 file(GLOB_RECURSE VOID_ENGINE_SRC_FILES CONFIGURE_DEPENDS
     "${VOID_ENGINE_SRC}/*.cpp"  
 )
 
-add_executable(${VOID_PROJECT_NAME} ${VOID_ENGINE_SRC_FILES})
 
-set_target_properties(${VOID_PROJECT_NAME} PROPERTIES
+
+
+add_executable(${VOID_ENGINE_EXEC} ${VOID_ENGINE_SRC_FILES})
+
+set_target_properties(${VOID_ENGINE_EXEC} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
     LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
     ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
@@ -28,10 +31,23 @@ set_target_properties(${VOID_PROJECT_NAME} PROPERTIES
     PDB_OUTPUT_DIRECTORY     "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
 )
 
-target_precompile_headers(${VOID_PROJECT_NAME} PRIVATE ${VOID_PRECOMPILED_HEADER})
 
-target_include_directories(${VOID_PROJECT_NAME} 
+target_precompile_headers(${VOID_ENGINE_EXEC} PRIVATE ${VOID_PRECOMPILED_HEADER})
+
+target_include_directories(${VOID_ENGINE_EXEC} 
   PRIVATE ${VOID_ENGINE_INCLUDE}
+)
+
+add_custom_command(TARGET ${VOID_ENGINE_EXEC} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${PROJECT_SOURCE_DIR}/void-engine/asset"
+        "$<TARGET_FILE_DIR:${VOID_ENGINE_EXEC}>/asset"
+)
+
+target_compile_definitions(${VOID_ENGINE_EXEC}
+    PRIVATE
+		VOID_DEV_MODE
+        $<$<CONFIG:Debug>:VOID_DEBUG>
 )
 
 if(WIN32)
@@ -40,12 +56,17 @@ if(WIN32)
 		"${VOID_ENGINE_PLATFORM_SRC}/win32/*.cpp"
 	)
     
-	target_sources(${VOID_PROJECT_NAME}
+	target_sources(${VOID_ENGINE_EXEC}
         PRIVATE
             ${VOID_ENGINE_PLATFORM_SRC_FILES}
     )
 
-    target_link_libraries(${VOID_PROJECT_NAME}
+	target_include_directories(${VOID_ENGINE_EXEC} 
+	  PRIVATE "${VOID_ENGINE_INCLUDE_PLATFORM}/d3d11"
+	  PRIVATE "${VOID_ENGINE_INCLUDE_PLATFORM}/win32"
+	)
+
+    target_link_libraries(${VOID_ENGINE_EXEC}
         PRIVATE
             d3d11
             dxgi
@@ -57,18 +78,41 @@ if(WIN32)
 
 endif()
 
-add_custom_command(TARGET ${VOID_PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${PROJECT_SOURCE_DIR}/void-engine/asset"
-        "$<TARGET_FILE_DIR:${VOID_PROJECT_NAME}>/asset"
+set(VOID_ECS_LIB "ecs")
+set(VOID_ECS_SRC "void-engine/ecs/src")
+set(VOID_ECS_INCLUDE "void-engine/ecs/include/ecs")
+set(VOID_ECS_API_INCLUDE "void-engine/ecs/include/public_api")
+set(VOID_ECS_PRECOMPILED_HEADER "${VOID_ECS_INCLUDE}/ecs_pch.h")
+
+file(GLOB_RECURSE VOID_ECS_SRC_FILES CONFIGURE_DEPENDS
+    "${VOID_ECS_SRC}/*.cpp"  
 )
 
-target_compile_definitions(void-engine
+add_library(${VOID_ECS_LIB} STATIC ${VOID_ECS_SRC_FILES})
+
+set_target_properties(${VOID_ECS_LIB} PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
+    LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
+    ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
+    VS_GLOBAL_IntDir         "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
+    PDB_OUTPUT_DIRECTORY     "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
+)
+
+target_precompile_headers(${VOID_ECS_LIB} PRIVATE ${VOID_ECS_PRECOMPILED_HEADER})
+
+target_compile_definitions(${VOID_ECS_LIB}
     PRIVATE
-        $<$<CONFIG:Debug>:VOID_DEBUG>
+        $<$<CONFIG:Debug>:ECS_DEBUG>
+	PUBLIC
+		"ECS_STATIC"
 )
 
-target_compile_definitions(void-engine
-   PRIVATE
-       VOID_DEV_MODE
+target_include_directories(${VOID_ECS_LIB} 
+  PRIVATE ${VOID_ECS_INCLUDE}
+  PUBLIC ${VOID_ECS_API_INCLUDE}
+)
+
+target_link_libraries(${VOID_ENGINE_EXEC}
+    PRIVATE
+	${VOID_ECS_LIB} 
 )
