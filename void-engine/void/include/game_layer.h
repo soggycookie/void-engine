@@ -1,7 +1,7 @@
 #pragma once
 #include "layer.h"
 #include "resource.h"
-//#include "ecs/ecs_world.h"
+#include "ecs.h"
 
 namespace VoidEngine
 {
@@ -35,7 +35,7 @@ namespace VoidEngine
         void OnEvent(const Event& e) override;
 
     private:
-        //ECS::World world;
+        ECS::World* world;
         size_t m_gameTime;
         double elapsedTime;
         MeshResource* mesh;

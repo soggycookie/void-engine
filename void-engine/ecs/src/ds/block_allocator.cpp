@@ -26,9 +26,10 @@ namespace ECS
             assert(chunkHead && "Chunk Head is null!");
         }
 
+        auto chunk = chunkHead;
         chunkHead = chunkHead->next;
 
-        return chunkHead;
+        return chunk;
     }
 
     void* BlockAllocator::Calloc()

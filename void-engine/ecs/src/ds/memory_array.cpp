@@ -10,7 +10,7 @@ namespace ECS
         m_capacity = capacity;
         m_count = 0;
 
-        Alloc(allocator);
+        m_array = Alloc(allocator);
     }
 
     bool MemoryArray::IsReqGrow() const
@@ -88,7 +88,7 @@ namespace ECS
         }
 
         m_capacity = newCapacity;
-        Alloc(allocator);
+        m_array = Alloc(allocator);
     }
 
 

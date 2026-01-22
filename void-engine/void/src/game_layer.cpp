@@ -50,6 +50,8 @@ namespace VoidEngine
         //std::cout << "Entity id: " << e.GetId() << " , gen count: " << e.GetGenCount() << std::endl;
         //std::cout << "Entity id: " << e.GetId() << " , gen count: " << e.GetGenCount() << std::endl;
         
+        world = ECS::CreateWorld();
+        void* data = ECS::Alloc(world, 8);
      /*   world.Register<Position>();
         world.Register<Velocity>();
         world.Register<Rotation>();

@@ -9,9 +9,9 @@ namespace ECS
 #define GB(x) (1024 * MB(x))
 
 #define OFFSET_ELEMENT(addr, size, count) \
-    reinterpret_cast<void*>((reinterpret_cast<uintptr_t>(addr) + size * count))
+    reinterpret_cast<void*>((reinterpret_cast<uintptr_t>(addr) + (size) * (count)))
 #define CAST_OFFSET_ELEMENT(addr, T, size, count) \
-    reinterpret_cast<T*>((reinterpret_cast<uintptr_t>(addr) + size * count))
+    reinterpret_cast<T*>((reinterpret_cast<uintptr_t>(addr) + (size) * (count)))
 #define CAST(addr, T) static_cast<T*>(addr)
 
 #define OFFSET_MEM_ARR_ELEMENT(arr, index) \

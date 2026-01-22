@@ -13,8 +13,7 @@ namespace ECS
         m_dense.Init(allocator, sizeof(uint64_t), alignof(uint64_t), 1);
         m_sparse.Init(allocator, sizeof(SparsePage), alignof(SparsePage), 0);
 
-        CAST(m_dense.GetFirstElement(), uint64_t)[0] = 0;
-        m_dense.IncreCount();
+        CAST(m_dense.PushBack(), uint64_t)[0] = 0;
     }
 
     uint32_t SparseSet::GetPageIndex(uint64_t id)
@@ -48,7 +47,7 @@ namespace ECS
 
         m_sparse.Grow(m_allocator, pageIndex + 1);
 
-        SparsePage* newPage = CAST(m_sparse.GetElement(pageIndex), SparsePage);
+        SparsePage* newPage = CAST(m_sparse.PushBack(), SparsePage);
         
         assert(newPage && "New page failed to create!");
 
@@ -149,13 +148,22 @@ namespace ECS
                 void* oldDense = m_dense.GetArray();
                 uint32_t oldDenseSize = m_dense.GetAlignedElementSize() * m_dense.GetCapacity();
 
+                //NOTE: consider this approach. 
+                //Allocator null make dense allocate ineffciently by increasing just 1
                 m_dense.Grow(m_allocator, m_dense.GetCapacity() + 1);
                 
                 std::memcpy(m_dense.GetArray(), oldDense, oldDenseSize);
 
                 if(oldDense)
                 {
-                    m_allocator->Free(oldDenseSize, oldDense);
+                    if(m_allocator)
+                    {
+                        m_allocator->Free(oldDenseSize, oldDense);
+                    }
+                    else
+                    {
+                        std::free(oldDense);
+                    }
                 }
             }
 
