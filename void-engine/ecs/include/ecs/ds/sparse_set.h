@@ -1,9 +1,11 @@
 #pragma once
-#include "allocator.h"
-#include "dynamic_array.h"
+#include "memory_array.h"
 
 namespace ECS
 {
+    class WorldAllocator;
+    class BlockAllocator;
+
     constexpr uint32_t SparsePageBit = 6;
     constexpr uint32_t SparsePageSize = 1 << SparsePageBit;
 
@@ -17,26 +19,38 @@ namespace ECS
     {
     public:
         SparseSet()
-            : m_dense(), m_sparse(), m_count(0),
+            : m_dense(), m_sparse(), m_count(0), m_alignedElementSize(0),
             m_allocator(nullptr), m_pageAllocator(nullptr)
         {
         }
 
-        void Init(Allocator* allocator, BlockAllocator* pageAllocator);
-        void PushBackDense();
+        void Init(WorldAllocator* allocator, BlockAllocator* pageAllocator, 
+                  uint32_t elementSize, uint32_t elementAlignment);
+        
+        //this will grow dense and sparse if needed
         void PushBack(uint64_t id);
+
+        bool isValidDense(uint64_t id);
+
+        void* GetSparsePageData(uint64_t id);
+
+        void CallocPageDenseIndex(SparsePage* page);
+        void AllocPageData(SparsePage* page);
+
         uint32_t GetPageIndex(uint64_t id);
         uint32_t GetPageOffset(uint64_t id);
 
-        SparsePage* GetSparsePage(uint64_t id);
+        SparsePage* GetSparsePage(uint32_t pageIndex);
         SparsePage* CreateSparsePage(uint32_t pageIndex);
+        SparsePage* CreateOrGetSparsePage(uint32_t pageIndex);
 
     private:
-        DynamicArray m_dense;
-        DynamicArray m_sparse;
-        Allocator* m_allocator;
+        MemoryArray m_dense;
+        MemoryArray m_sparse;
+        WorldAllocator* m_allocator;
         BlockAllocator* m_pageAllocator;
         uint32_t m_count;
+        uint32_t m_alignedElementSize;
     };
 }
 

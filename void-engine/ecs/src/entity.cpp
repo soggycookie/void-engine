@@ -1,5 +1,5 @@
-#include "ecs_entity.h"
-#include "ecs_world.h"
+#include "entity.h"
+#include "world.h"
 
 namespace VoidEngine
 {

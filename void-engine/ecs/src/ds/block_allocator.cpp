@@ -31,8 +31,31 @@ namespace ECS
         return chunkHead;
     }
 
+    void* BlockAllocator::Calloc()
+    {
+        if(chunkCount <= MinChunkCount)
+        {
+            return std::calloc(1, dataSize);
+        }
+
+        if(!chunkHead)
+        {
+            chunkHead = CreateBlock();
+            assert(chunkHead && "Chunk Head is null!");
+        }
+
+        chunkHead = chunkHead->next;
+
+        std::memset(chunkHead, 0, chunkSize);
+
+        return chunkHead;        
+    }
+
+
     void BlockAllocator::Free(void* addr)
     {
+        //TODO: Check if addr is valid
+
         if(chunkCount <= MinChunkCount)
         {
             std::free(addr);

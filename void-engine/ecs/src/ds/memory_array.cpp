@@ -1,58 +1,70 @@
-#include "ds/dynamic_array.h"
+#include "ds/memory_array.h"
+#include "ds/world_allocator.h"
 
 namespace ECS
 {
-    void DynamicArray::Init(Allocator* allocator, size_t elementSize, size_t elementAlignment, uint32_t capacity)
+    void MemoryArray::Init(WorldAllocator* allocator, uint32_t elementSize, uint32_t elementAlignment, uint32_t capacity)
     {
         assert(elementSize && "Elemenet size is 0!");
         m_alignedElementSize = Align(elementSize, elementAlignment);
         m_capacity = capacity;
         m_count = 0;
-        m_array = Alloc(allocator);
+
+        Alloc(allocator);
     }
 
-    bool DynamicArray::IsReqGrow() const
+    bool MemoryArray::IsReqGrow() const
     {
         return m_count == m_capacity;
     }
     
-    bool DynamicArray::IncreCount()
+    bool MemoryArray::IncreCountCheck()
     {
         if(m_count + 1 <= m_capacity)
         {
-            ++m_count;
             return true;
         }
 
         return false;
     }
+    
+    void MemoryArray::IncreCount()
+    {
+        ++m_count;
+    }
 
-    uint32_t DynamicArray::GetCount()
+    uint32_t MemoryArray::GetCount()
     {
         return m_count;
     }
-    uint32_t DynamicArray::GetAlignedElementSize()
+
+    uint32_t MemoryArray::GetCapacity()
+    {
+        return m_capacity;
+    }
+
+    uint32_t MemoryArray::GetAlignedElementSize()
     {
         return m_alignedElementSize;
     }
 
-    void* DynamicArray::GetArray()
+    void* MemoryArray::GetArray()
     {
         return m_array;
     }
 
 
-    void* DynamicArray::GetBackElement()
+    void* MemoryArray::GetBackElement()
     {
         return OFFSET_ELEMENT(m_array, m_alignedElementSize, m_count - 1);
     }
 
-    void* DynamicArray::GetFirstElement()
+    void* MemoryArray::GetFirstElement()
     {
         return m_array;
     }
 
-    void* DynamicArray::GetElement(uint32_t index)
+    void* MemoryArray::GetElement(uint32_t index)
     {
         if(index >= m_count)
         {
@@ -62,43 +74,47 @@ namespace ECS
         return OFFSET_ELEMENT(m_array, m_alignedElementSize, index);
     }
 
-    void* DynamicArray::PushBack(Allocator* allocator)
+    void* MemoryArray::PushBack()
     {
-        m_count++;
+        ++m_count;
         return OFFSET_ELEMENT(m_array, m_alignedElementSize, m_count - 1);
     }
 
-    void* DynamicArray::Grow(Allocator* allocator, uint32_t newCapacity)
+    void MemoryArray::Grow(WorldAllocator* allocator, uint32_t newCapacity)
     {
         if(newCapacity <= m_capacity)
         {
-            return nullptr;
+            return;
         }
 
         m_capacity = newCapacity;
-        return Alloc(allocator);
+        Alloc(allocator);
     }
 
 
-    void* DynamicArray::Alloc(Allocator* allocator)
+    void* MemoryArray::Alloc(WorldAllocator* allocator)
     {
         size_t size = m_alignedElementSize * m_capacity;
         if(size == 0)
         {
             return nullptr;
         }
-
+        void* data = nullptr;
         if(!allocator)
         {
-            return std::malloc(size);
+            data = std::malloc(size);
         }
         else
         {
-            return allocator->Alloc(size);
+            data = allocator->Alloc(size);
         }
+
+        assert(data && "Array failed to alloc!");
+
+        return data;
     }
 
-    void DynamicArray::Free(Allocator* allocator)
+    void MemoryArray::Free(WorldAllocator* allocator)
     {
         if(m_array)
         {

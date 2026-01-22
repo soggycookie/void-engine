@@ -1,38 +1,43 @@
-#include "allocator.h"
+#pragma once
 /*
     Serve as a memory provider
 */
 
 namespace ECS
 {
-    class DynamicArray
+    class WorldAllocator;
+
+    class MemoryArray
     {
     public:
-        DynamicArray()
+        MemoryArray()
             : m_array(nullptr), m_count(0), m_capacity(0), m_alignedElementSize(0)
         {
         }
 
-        void Init(Allocator* allocator, size_t elementSize, size_t elementAlignment, uint32_t capacity);
+        void Init(WorldAllocator* allocator, uint32_t elementSize, uint32_t elementAlignment, uint32_t capacity);
         bool IsReqGrow() const;
 
-        bool IncreCount();
+        bool IncreCountCheck();
+        void IncreCount();
+        
         uint32_t GetCount();
+        uint32_t GetCapacity();
         uint32_t GetAlignedElementSize();
 
         void* GetArray();
 
         //This function will not grow the capacity
         //We can check ifReqGrow then do the Grow manually
-        void* PushBack(Allocator* allocator);
+        void* PushBack();
 
         void* GetBackElement();
         void* GetFirstElement();
         void* GetElement(uint32_t index);
 
-        void* Grow(Allocator* allocator, uint32_t newCapacity);
-        void* Alloc(Allocator* allocator);
-        void Free(Allocator* allocator);
+        void Grow(WorldAllocator* allocator, uint32_t newCapacity);
+        void* Alloc(WorldAllocator* allocator);
+        void Free(WorldAllocator* allocator);
 
     private:
         void* m_array;
