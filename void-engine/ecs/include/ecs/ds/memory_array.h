@@ -11,11 +11,11 @@ namespace ECS
     {
     public:
         MemoryArray()
-            : m_array(nullptr), m_count(0), m_capacity(0), m_alignedElementSize(0)
+            : m_array(nullptr), m_count(0), m_capacity(0), m_elementSize(0)
         {
         }
 
-        void Init(WorldAllocator* allocator, uint32_t elementSize, uint32_t elementAlignment, uint32_t capacity);
+        void Init(WorldAllocator* allocator, uint32_t elementSize, uint32_t capacity);
         bool IsReqGrow() const;
 
         bool IncreCountCheck();
@@ -23,7 +23,7 @@ namespace ECS
         
         uint32_t GetCount();
         uint32_t GetCapacity();
-        uint32_t GetAlignedElementSize();
+        uint32_t GetElementSize();
 
         void* GetArray();
 
@@ -43,7 +43,7 @@ namespace ECS
         void* m_array;
         uint32_t m_count;
         uint32_t m_capacity;
-        uint32_t m_alignedElementSize;
+        uint32_t m_elementSize;
     };
 
 }

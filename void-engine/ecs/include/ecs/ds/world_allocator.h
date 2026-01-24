@@ -10,13 +10,17 @@
 
 namespace ECS
 {
+
+    constexpr uint32_t WorldAllocDefaultDense = 64;
+
     class WorldAllocator
     {
     public:
         void Init();
 
         void* Alloc(uint32_t size);
-        void* AllocN(uint32_t alignedElementSize, uint32_t capacity, uint32_t& newCapacity);
+        void* AllocN(uint32_t elementSize, uint32_t capacity, uint32_t& newCapacity);
+        void* CallocN(uint32_t elementSize, uint32_t capacity, uint32_t& newCapacity);
         void* Calloc(uint32_t size);
         void Free(uint32_t size, void* addr);
 

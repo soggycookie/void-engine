@@ -320,7 +320,6 @@ namespace VoidEngine
 
                     if(PSL > bucket->header.PSL)
                     {
-                        assert(0 && "Key does not exist! [FlatHashMap.Remove]");
                         return;
                     }
 

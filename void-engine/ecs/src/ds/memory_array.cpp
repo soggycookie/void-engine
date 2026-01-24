@@ -3,10 +3,10 @@
 
 namespace ECS
 {
-    void MemoryArray::Init(WorldAllocator* allocator, uint32_t elementSize, uint32_t elementAlignment, uint32_t capacity)
+    void MemoryArray::Init(WorldAllocator* allocator, uint32_t elementSize, uint32_t capacity)
     {
         assert(elementSize && "Elemenet size is 0!");
-        m_alignedElementSize = Align(elementSize, elementAlignment);
+        m_elementSize = elementSize;
         m_capacity = capacity;
         m_count = 0;
 
@@ -43,9 +43,9 @@ namespace ECS
         return m_capacity;
     }
 
-    uint32_t MemoryArray::GetAlignedElementSize()
+    uint32_t MemoryArray::GetElementSize()
     {
-        return m_alignedElementSize;
+        return m_elementSize;
     }
 
     void* MemoryArray::GetArray()
@@ -56,7 +56,7 @@ namespace ECS
 
     void* MemoryArray::GetBackElement()
     {
-        return OFFSET_ELEMENT(m_array, m_alignedElementSize, m_count - 1);
+        return OFFSET_ELEMENT(m_array, m_elementSize, m_count - 1);
     }
 
     void* MemoryArray::GetFirstElement()
@@ -71,13 +71,13 @@ namespace ECS
             return nullptr;
         }
 
-        return OFFSET_ELEMENT(m_array, m_alignedElementSize, index);
+        return OFFSET_ELEMENT(m_array, m_elementSize, index);
     }
 
     void* MemoryArray::PushBack()
     {
         ++m_count;
-        return OFFSET_ELEMENT(m_array, m_alignedElementSize, m_count - 1);
+        return OFFSET_ELEMENT(m_array, m_elementSize, m_count - 1);
     }
 
     void MemoryArray::Grow(WorldAllocator* allocator, uint32_t newCapacity)
@@ -94,7 +94,7 @@ namespace ECS
 
     void* MemoryArray::Alloc(WorldAllocator* allocator)
     {
-        size_t size = m_alignedElementSize * m_capacity;
+        size_t size = m_elementSize * m_capacity;
         if(size == 0)
         {
             return nullptr;
@@ -106,7 +106,9 @@ namespace ECS
         }
         else
         {
-            data = allocator->Alloc(size);
+            uint32_t newcapacity = 0;
+            data = allocator->AllocN(m_elementSize, m_capacity, newcapacity);
+            m_capacity = newcapacity;
         }
 
         assert(data && "Array failed to alloc!");
@@ -124,7 +126,7 @@ namespace ECS
             }
             else
             {
-                allocator->Free(m_alignedElementSize * m_capacity, m_array);
+                allocator->Free(m_elementSize * m_capacity, m_array);
             }
         }
     }

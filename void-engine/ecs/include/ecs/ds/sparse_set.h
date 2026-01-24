@@ -19,13 +19,13 @@ namespace ECS
     {
     public:
         SparseSet()
-            : m_dense(), m_sparse(), m_count(0), m_alignedElementSize(0),
+            : m_dense(), m_sparse(), m_count(0), m_elementSize(0),
             m_allocator(nullptr), m_pageAllocator(nullptr)
         {
         }
 
         void Init(WorldAllocator* allocator, BlockAllocator* pageAllocator, 
-                  uint32_t elementSize, uint32_t elementAlignment);
+                  uint32_t elementSize, uint32_t defaultDense);
         
         //this will grow dense and sparse if needed
         void PushBack(uint64_t id);
@@ -40,9 +40,11 @@ namespace ECS
         uint32_t GetPageIndex(uint64_t id);
         uint32_t GetPageOffset(uint64_t id);
 
-        SparsePage* GetSparsePage(uint32_t pageIndex);
-        SparsePage* CreateSparsePage(uint32_t pageIndex);
-        SparsePage* CreateOrGetSparsePage(uint32_t pageIndex);
+        SparsePage* GetSparsePage(uint64_t id);
+        SparsePage* CreateSparsePage(uint64_t id);
+        SparsePage* CreateOrGetSparsePage(uint64_t id);
+
+        void Destroy();
 
     private:
         MemoryArray m_dense;
@@ -50,7 +52,7 @@ namespace ECS
         WorldAllocator* m_allocator;
         BlockAllocator* m_pageAllocator;
         uint32_t m_count;
-        uint32_t m_alignedElementSize;
+        uint32_t m_elementSize;
     };
 }
 

@@ -1,5 +1,5 @@
 #include "world.h"
-
+#include "ds/hash_map.h"
 
 namespace ECS
 {
@@ -20,6 +20,43 @@ namespace ECS
     {
         m_store.reserve(300);
         allocator.Init();
+
+        //MemoryArray arr;
+        //arr.Init(&allocator, sizeof(uint32_t), 2);
+        //std::cout << arr.GetCapacity() << std::endl;
+
+        HashMap<uint64_t, uint64_t> map;
+        map.Init(&allocator, 4);
+        map.Insert(1, 20);
+        map.Insert(2, 302);
+        map.Insert(12, 85);
+        map.Insert(22, 185);
+
+        //std::cout << map.ContainsKey(1) << std::endl;
+        //std::cout << map.ContainsKey(2) << std::endl;
+        //std::cout << map.ContainsKey(3) << std::endl;
+        //std::cout << map.ContainsKey(22) << std::endl;
+        std::cout << map[1] << std::endl;
+        std::cout << map[2] << std::endl;
+        std::cout << map[12] << std::endl;
+        std::cout << "================" << std::endl;
+        map.Insert(12, 200);
+        std::cout << map.GetValue(12) << std::endl;
+
+        map.Insert(3, 221);
+        std::cout << map.ContainsKey(3) << std::endl;
+        std::cout << map.ContainsKey(1) << std::endl;
+        std::cout << map.ContainsKey(2) << std::endl;
+        std::cout << map.ContainsKey(12) << std::endl;
+        std::cout << map.ContainsKey(22) << std::endl;
+
+        map.Remove(12);
+        std::cout << "================" << std::endl;
+        std::cout << map.ContainsKey(3) << std::endl;
+        std::cout << map.ContainsKey(1) << std::endl;
+        std::cout << map.ContainsKey(2) << std::endl;
+        std::cout << map.ContainsKey(12) << std::endl;
+        std::cout << map.ContainsKey(22) << std::endl;
     }
 
     World::~World()

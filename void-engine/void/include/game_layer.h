@@ -20,6 +20,13 @@ namespace VoidEngine
         float x, y;
     };
 
+    struct Test
+    {
+        size_t a;
+        size_t c;
+        int b;
+    };
+
     class GameLayer : public Layer
     {
     public:

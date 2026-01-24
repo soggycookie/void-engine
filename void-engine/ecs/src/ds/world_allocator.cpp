@@ -4,8 +4,8 @@ namespace ECS
 {
     void WorldAllocator::Init()
     {
-        m_chunks.Init(SparsePageSize * Align(sizeof(BlockAllocator), alignof(BlockAllocator)));   
-        m_sparse.Init(nullptr, &m_chunks, sizeof(BlockAllocator), alignof(BlockAllocator));
+        m_chunks.Init(SparsePageSize * sizeof(BlockAllocator));   
+        m_sparse.Init(nullptr, &m_chunks, sizeof(BlockAllocator), WorldAllocDefaultDense);
     }
 
     void* WorldAllocator::Alloc(uint32_t size)
@@ -52,7 +52,7 @@ namespace ECS
         }
         else
         {
-            block = CAST(m_sparse.GetSparsePageData(id), BlockAllocator);
+            block = PTR_CAST(m_sparse.GetSparsePageData(id), BlockAllocator);
         }
 
         assert(block && "Block allocator is null!");
@@ -60,18 +60,30 @@ namespace ECS
         return block;
     }
 
-    void* WorldAllocator::AllocN(uint32_t alignedElementSize, uint32_t capacity, uint32_t& newCapacity)
+    void* WorldAllocator::AllocN(uint32_t elementSize, uint32_t capacity, uint32_t& newCapacity)
     {
-        assert(alignedElementSize || capacity && "Alloc 0 byte!");
+        assert(elementSize || capacity && "Alloc 0 byte!");
 
-        uint32_t alignedSize = Align(alignedElementSize, 16);
-        uint32_t size = alignedSize * capacity;
+        uint32_t alignedSize = Align(elementSize * capacity, 16);
 
-        newCapacity = size / alignedElementSize;
+        newCapacity = alignedSize / elementSize;
 
-        BlockAllocator* block = GetOrCreateBalloc(size);
+        BlockAllocator* block = GetOrCreateBalloc(alignedSize);
 
         return block->Alloc();
+    }
+
+    void* WorldAllocator::CallocN(uint32_t elementSize, uint32_t capacity, uint32_t& newCapacity)
+    {
+        assert(elementSize || capacity && "Alloc 0 byte!");
+
+        uint32_t alignedSize = Align(elementSize * capacity, 16);
+
+        newCapacity = alignedSize / elementSize;
+
+        BlockAllocator* block = GetOrCreateBalloc(alignedSize);
+
+        return block->Calloc();
     }
 
 }

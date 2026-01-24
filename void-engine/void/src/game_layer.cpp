@@ -48,92 +48,11 @@ namespace VoidEngine
         material = ResourceSystem::Create<MaterialResource>(ResourceSystem::GenerateGUID(), shader->GetGUID());
 
         //std::cout << "Entity id: " << e.GetId() << " , gen count: " << e.GetGenCount() << std::endl;
-        //std::cout << "Entity id: " << e.GetId() << " , gen count: " << e.GetGenCount() << std::endl;
+        std::cout << sizeof(Test) << std::endl;
         
         world = ECS::CreateWorld();
         void* data = ECS::Alloc(world, 8);
-     /*   world.Register<Position>();
-        world.Register<Velocity>();
-        world.Register<Rotation>();
 
-
-        ECS::Entity e = world.CreateEntity();
-        ECS::Entity e1 = world.CreateEntity();
-        ECS::Entity e2 = world.CreateEntity();
-        ECS::Entity e3 = world.CreateEntity();
-        ECS::Entity e4 = world.CreateEntity();
-        
-        e.Add<Position>({1,1});
-        e1.Add<Position>({200, 973});
-        e2.Add<Position>({24800, 8973});
-        e3.Add<Position>({920, 72});
-        e4.Add<Position>({39, 2});
-
-        e.Add<Velocity>({0.23f, 0.58f});
-
-        world.Each<Position>(
-            [](ECS::Entity e, Position& pos)
-            {
-                std::cout << "Position " << std::endl;
-                std::cout << "x: " << pos.x << std::endl;
-                std::cout << "y: " << pos.y << std::endl;
-            }
-        );
-        
-        world.Each<Velocity>(
-            [](ECS::Entity e, Velocity& pos)
-            {
-                std::cout << "Vel " << std::endl;
-                std::cout << "x: " << pos.x << std::endl;
-                std::cout << "y: " << pos.y << std::endl;
-            }
-        );
-
-        e.Destroy();
-
-
-        std::cout << "============================"  << std::endl;
-        world.Each<Position>(
-            [](ECS::Entity e, Position& pos)
-            {
-                std::cout << "Position " << std::endl;
-                std::cout << "x: " << pos.x << std::endl;
-                std::cout << "y: " << pos.y << std::endl;
-            }
-        );
-
-        world.Each<Velocity>(
-            [](ECS::Entity e, Velocity& pos)
-            {
-                std::cout << "Vel " << std::endl;
-                std::cout << "x: " << pos.x << std::endl;
-                std::cout << "y: " << pos.y << std::endl;
-            }
-        );*/
-
-        //Position* eP = e.Get<Position>();
-        //std::cout << "x: " << eP->x << std::endl;
-        //std::cout << "y: " << eP->y << std::endl;
-        //e1.Add<Velocity>({0.5f, 0.5f});
-        //e2.Add<Velocity>({1.3f, 2.25f});
-        //world.Each<Velocity>(
-        //    [](ECS::Entity e, Velocity& pos)
-        //    {
-        //        std::cout << "velocity " << std::endl;
-        //        std::cout << "x: " << pos.x << std::endl;
-        //        std::cout << "y: " << pos.y << std::endl;
-        //    }
-        //);
-
-        //e2.Add<Rotation>({24.3f, 28.0f});
-        //world.Each<Rotation>(
-        //    [](ECS::Entity e, Rotation& pos)
-        //    {
-        //        std::cout << "Rotation " << std::endl;
-        //        std::cout << "x: " << pos.x << std::endl;
-        //        std::cout << "y: " << pos.y << std::endl;
-        //    }
-        //);
     }   
 
     void GameLayer::OnEvent(const Event& e)
