@@ -20,6 +20,7 @@ namespace ECS
 
         bool IncreCountCheck();
         void IncreCount();
+        void DecreCount();
         
         uint32_t GetCount();
         uint32_t GetCapacity();

@@ -32,6 +32,16 @@ namespace ECS
     {
         ++m_count;
     }
+    
+    void MemoryArray::DecreCount()
+    {
+        if(m_count == 0)
+        {
+            return;
+        }
+
+        --m_count;
+    }
 
     uint32_t MemoryArray::GetCount()
     {
