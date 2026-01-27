@@ -29,6 +29,6 @@ namespace ECS
 
     public:
         BlockAllocator m_chunks;
-        SparseSet m_sparse;
+        SparseSet<BlockAllocator> m_sparse;
     };
 }

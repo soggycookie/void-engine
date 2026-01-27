@@ -15,6 +15,7 @@ namespace ECS
         void* data;
     };
 
+    template<typename T>
     class SparseSet
     {
     public:
@@ -54,5 +55,11 @@ namespace ECS
         uint32_t m_count;
         uint32_t m_elementSize;
     };
+
 }
+
+/*
+    Template function definition
+*/
+#include "sparse_set.inl"
 

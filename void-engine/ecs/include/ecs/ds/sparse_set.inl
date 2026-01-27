@@ -1,9 +1,9 @@
-#include "ds/sparse_set.h"
-#include "ds/world_allocator.h"
+#include "world_allocator.h"
 
 namespace ECS
 {
-    void SparseSet::Init(WorldAllocator* allocator, BlockAllocator* pageAllocator, 
+    template<typename T>
+    void SparseSet<T>::Init(WorldAllocator* allocator, BlockAllocator* pageAllocator, 
                          uint32_t elementSize, uint32_t defaultDense)
     {
         m_allocator = allocator;
@@ -16,16 +16,20 @@ namespace ECS
         PTR_CAST(m_dense.PushBack(), uint64_t)[0] = 0;
     }
 
-    uint32_t SparseSet::GetPageIndex(uint64_t id)
+    template<typename T>
+    uint32_t SparseSet<T>::GetPageIndex(uint64_t id)
     {
         return id >> SparsePageBit;
     }
-    uint32_t SparseSet::GetPageOffset(uint64_t id)
+
+    template<typename T>
+    uint32_t SparseSet<T>::GetPageOffset(uint64_t id)
     {
         return id & (SparsePageSize - 1);
     }
 
-    SparsePage* SparseSet::GetSparsePage(uint64_t id)
+    template<typename T>
+    SparsePage* SparseSet<T>::GetSparsePage(uint64_t id)
     {
         uint32_t pageIndex = GetPageIndex(id);
 
@@ -37,7 +41,8 @@ namespace ECS
         return CAST_OFFSET_MEM_ARR_ELEMENT(m_sparse, pageIndex, SparsePage);
     }
 
-    SparsePage* SparseSet::CreateSparsePage(uint64_t id)
+    template<typename T>
+    SparsePage* SparseSet<T>::CreateSparsePage(uint64_t id)
     {
         uint32_t pageIndex = GetPageIndex(id);
 
@@ -80,7 +85,8 @@ namespace ECS
         return newPage;
     }
 
-    SparsePage* SparseSet::CreateOrGetSparsePage(uint64_t id)
+    template<typename T>
+    SparsePage* SparseSet<T>::CreateOrGetSparsePage(uint64_t id)
     {
         SparsePage* page = GetSparsePage(id);
 
@@ -92,7 +98,8 @@ namespace ECS
         return page;
     }
 
-    void SparseSet::CallocPageDenseIndex(SparsePage* page)
+    template<typename T>
+    void SparseSet<T>::CallocPageDenseIndex(SparsePage* page)
     {
         assert(page && "Page is null");
 
@@ -107,7 +114,8 @@ namespace ECS
         assert(page->denseIndex && "Page dense index is null!");
     }
 
-    void SparseSet::AllocPageData(SparsePage* page)
+    template<typename T>
+    void SparseSet<T>::AllocPageData(SparsePage* page)
     {
         assert(page && "Page is null");
 
@@ -129,7 +137,8 @@ namespace ECS
         assert(page->denseIndex && "Page data index is null!");
     }
 
-    void SparseSet::PushBack(uint64_t id)
+    template<typename T>
+    void SparseSet<T>::PushBack(uint64_t id)
     {
         uint32_t pageIndex = GetPageIndex(id);
         uint32_t pageOffset = GetPageOffset(id);
@@ -172,7 +181,8 @@ namespace ECS
         }
     }
 
-    bool SparseSet::isValidDense(uint64_t id)
+    template<typename T>
+    bool SparseSet<T>::isValidDense(uint64_t id)
     {
         SparsePage* page = GetSparsePage(GetPageIndex(id));
 
@@ -186,7 +196,8 @@ namespace ECS
         return denseIndex != 0;
     }
 
-    void* SparseSet::GetSparsePageData(uint64_t id)
+    template<typename T>
+    void* SparseSet<T>::GetSparsePageData(uint64_t id)
     {
         SparsePage* page = GetSparsePage(GetPageIndex(id));
         assert(page && "page is not initialized!");
