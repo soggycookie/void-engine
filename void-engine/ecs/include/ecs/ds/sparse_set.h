@@ -21,7 +21,7 @@ namespace ECS
     {
     public:
         SparseSet()
-            : m_dense(), m_sparse(), m_count(0),
+            : m_dense(), m_sparse(), m_count(0), m_reservedFreeId(false),
             m_allocator(nullptr), m_pageAllocator(nullptr)
         {
             static_assert(std::is_constructible_v<T>);
@@ -38,7 +38,8 @@ namespace ECS
             static_assert(std::is_destructible_v<T>);
         }
 
-        void Init(WorldAllocator* allocator, BlockAllocator* pageAllocator, uint32_t defaultDense);
+        void Init(WorldAllocator* allocator, BlockAllocator* pageAllocator, 
+                  uint32_t defaultDense, bool reservedFreeId);
         
 
         bool isValidDense(uint64_t id);
@@ -47,13 +48,13 @@ namespace ECS
         T* GetPageData(uint64_t id);
         uint32_t GetDenseIndex(uint64_t id);
 
-        void SwapDense(uint32_t srcIndex, uint32_t destIndex);
+        void SwapDense(uint32_t srcIndex, uint32_t destIndex, bool swapPageDense);
 
         uint32_t GetPageIndex(uint32_t id);
         uint32_t GetPageOffset(uint32_t id);
         
         //this will grow dense and sparse if needed
-        void PushBack(uint64_t id, T&& element);
+        void PushBack(uint64_t id, T&& element, bool newId = true);
 
         void CallocPageDenseIndex(SparsePage<T>* page);
         void AllocPageData(SparsePage<T>* page);
@@ -66,14 +67,19 @@ namespace ECS
 
         void Destroy();
 
-        void PrintDense();
+        void PrintAllDense();
+        void PrintAliveDense();
+        void PrintDeadDense();
+
+        uint64_t GetReservedFreeId();
 
     private:
         MemoryArray m_dense;
         MemoryArray m_sparse;
         WorldAllocator* m_allocator;
         BlockAllocator* m_pageAllocator;
-        uint32_t m_count;
+        uint32_t m_count; //Alive id
+        bool m_reservedFreeId;
     };
 
 }

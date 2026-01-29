@@ -3,10 +3,12 @@
 namespace ECS
 {
     template<typename T>
-    void SparseSet<T>::Init(WorldAllocator* allocator, BlockAllocator* pageAllocator, uint32_t defaultDense)
+    void SparseSet<T>::Init(WorldAllocator* allocator, BlockAllocator* pageAllocator, 
+                            uint32_t defaultDense,  bool reservedFreeId)
     {
         m_allocator = allocator;
         m_pageAllocator = pageAllocator;
+        m_reservedFreeId = reservedFreeId;
 
         defaultDense = defaultDense == 0 ? 1 : defaultDense;
 
@@ -136,7 +138,7 @@ namespace ECS
     }
 
     template<typename T>
-    void SparseSet<T>::PushBack(uint64_t id, T&& element)
+    void SparseSet<T>::PushBack(uint64_t id, T&& element, bool newId)
     {
         uint32_t lowId = CAST(id, uint32_t);
 
@@ -149,8 +151,11 @@ namespace ECS
         
         if(denseIndex == 0)
         {
+            uint64_t freeId = 0;
+            uint32_t nextAliveCount = m_count + 1;
             uint32_t denseCount = m_dense.GetCount();
-            page->denseIndex[pageOffset] = denseCount;
+
+            page->denseIndex[pageOffset] = nextAliveCount;
             
             if(m_dense.IsReqGrow())
             {
@@ -181,9 +186,21 @@ namespace ECS
                 Dense must support add new ID, or reused ID
             */
 
-
-            PTR_CAST(m_dense.GetFirstElement(), uint64_t)[denseCount] = id;
-            m_dense.IncreCount();
+            if(newId)
+            {
+                if(denseCount > nextAliveCount)
+                {
+                    PTR_CAST(m_dense.GetFirstElement(), uint64_t)[denseCount] = id;
+                    m_dense.IncreCount();
+                    SwapDense(denseCount, nextAliveCount, false);
+                }
+                else
+                {
+                    PTR_CAST(m_dense.GetFirstElement(), uint64_t)[nextAliveCount] = id;
+                    m_dense.IncreCount();
+                
+                }
+            }
 
             new (GetPageData(lowId)) T(std::move(element));
 
@@ -267,26 +284,31 @@ namespace ECS
         }
 
         if(m_count > 1){
-            //if(m_reservedFreeId)
-            //{
-            //    SwapDense(denseIndex, m_count);
-            //}
-            //else
-            //{
-                SwapDense(denseIndex, m_dense.GetCount() - 1);
+            if(m_reservedFreeId)
+            {
+                if(denseIndex != m_count)
+                {
+                    SwapDense(denseIndex, m_count, true);
+                }
+            }
+            else
+            {
+                if(denseIndex != m_dense.GetCount() - 1)
+                {
+                    SwapDense(denseIndex, m_dense.GetCount() - 1, true);
+                }
                 m_dense.DecreCount();
-            //}
+            }
         }
         else
         {
-            //if(m_reservedFreeId)
-            //{
-            //  
-            //}
-            //else
-            //{
+            if(m_reservedFreeId)
+            {
+            }
+            else
+            {
                 m_dense.DecreCount();
-            //}
+            }
         }
 
         T* data = GetPageData(lowId);        
@@ -314,8 +336,17 @@ namespace ECS
         return denseIndex;
     }
 
+    /// <summary>
+    /// Swap Page Dense is for reused id flow
+    /// where the page dense is set correctly before
+    /// it just has to swap the dense array to work
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="srcIndex"></param>
+    /// <param name="destIndex"></param>
+    /// <param name="swapPageDense"></param>
     template<typename T>
-    void SparseSet<T>::SwapDense(uint32_t srcIndex, uint32_t destIndex)
+    void SparseSet<T>::SwapDense(uint32_t srcIndex, uint32_t destIndex, bool swapPageDense)
     {
         assert(destIndex || srcIndex);
         assert(srcIndex < m_dense.GetCount());
@@ -324,28 +355,70 @@ namespace ECS
         uint64_t srcId = *CAST_OFFSET_MEM_ARR_ELEMENT(m_dense, srcIndex, uint64_t);
         uint64_t destId = *CAST_OFFSET_MEM_ARR_ELEMENT(m_dense, destIndex, uint64_t);
 
-        SparsePage<T>* srcPage = GetSparsePage(srcId);
-        SparsePage<T>* destPage = GetSparsePage(destId);
-
-        assert(srcPage);
-        assert(destPage);
-
         PTR_CAST(m_dense.GetArray(), uint64_t)[srcIndex] = destId;
         PTR_CAST(m_dense.GetArray(), uint64_t)[destIndex] = srcId;
 
-        srcPage->denseIndex[GetPageOffset(srcId)] = destIndex;
-        destPage->denseIndex[GetPageOffset(destId)] = srcIndex;
+        if(swapPageDense)
+        {
+            SparsePage<T>* srcPage = GetSparsePage(srcId);
+            SparsePage<T>* destPage = GetSparsePage(destId);
 
+            assert(srcPage);
+            assert(destPage);
+
+
+            srcPage->denseIndex[GetPageOffset(srcId)] = destIndex;
+            destPage->denseIndex[GetPageOffset(destId)] = srcIndex;
+        }
     }
 
     template<typename T>
-    void SparseSet<T>::PrintDense()
+    void SparseSet<T>::PrintAllDense()
     {
         for(uint32_t i = 0; i < m_dense.GetCount(); i++)
         {
             std::cout << PTR_CAST(m_dense.GetArray(), uint64_t)[i] << ", ";
         }
         std::cout << std::endl;
+    }
+
+    template<typename T>
+    void SparseSet<T>::PrintAliveDense()
+    {
+        for(uint32_t i = 0; i <= m_count; i++)
+        {
+            std::cout << PTR_CAST(m_dense.GetArray(), uint64_t)[i] << ", ";
+        }
+        std::cout << std::endl;
+    }
+
+    template<typename T>
+    void SparseSet<T>::PrintDeadDense()
+    {
+        for(uint32_t i = m_count + 1; i < m_dense.GetCount(); i++)
+        {
+            std::cout << PTR_CAST(m_dense.GetArray(), uint64_t)[i] << ", ";
+        }
+        std::cout << std::endl;
+    }
+
+    template<typename T>
+    uint64_t SparseSet<T>::GetReservedFreeId()
+    {
+        if(!m_reservedFreeId)
+        {
+            return 0;
+        }
+
+        if(m_dense.GetCount() <= (m_count + 1))
+        {
+            return 0;
+        }
+
+        uint64_t id = *CAST_OFFSET_ELEMENT(m_dense.GetArray(), uint64_t, 
+                                          m_dense.GetElementSize(), m_count + 1);
+
+        return id;
     }
 
 }

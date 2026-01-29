@@ -5,7 +5,7 @@ namespace ECS
     void WorldAllocator::Init()
     {
         m_chunks.Init(SparsePageSize * sizeof(BlockAllocator));   
-        m_sparse.Init(nullptr, &m_chunks, WorldAllocDefaultDense);
+        m_sparse.Init(nullptr, &m_chunks, WorldAllocDefaultDense, false);
     }
 
     void* WorldAllocator::Alloc(uint32_t size)
