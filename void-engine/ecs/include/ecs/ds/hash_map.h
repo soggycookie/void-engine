@@ -153,6 +153,30 @@ namespace ECS
             static_assert(std::is_destructible_v<Key> && std::is_destructible_v<Value>);
         }
 
+        HashMap(HashMap&& other)
+        {
+            m_allocator = other.m_allocator;
+            m_array = other.m_array;
+            m_bucketCount = other.m_bucketCount;
+            m_count = other.m_count;
+
+            other.m_array = nullptr;
+            other.m_count = 0;
+        }
+
+        HashMap& operator=(HashMap&& other) noexcept
+        {
+            m_allocator = other.m_allocator;
+            m_array = other.m_array;
+            m_bucketCount = other.m_bucketCount;
+            m_count = other.m_count;
+
+            other.m_array = nullptr;
+            other.m_count = 0;        
+
+            return *this;
+        }
+
         void Init(WorldAllocator* allocator, uint32_t bucketCount)
         {
             m_allocator = allocator;

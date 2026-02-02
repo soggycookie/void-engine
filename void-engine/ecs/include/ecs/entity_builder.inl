@@ -2,9 +2,9 @@
 namespace ECS
 {
     template<typename Component>
-    EntityBuilder& EntityBuilder::AddComponent(const Component& c)
+    EntityBuilder& EntityBuilder::AddComponent()
     {
-
+        m_world->AddComponent<Component>(m_id);
         return *this;
     }
 
@@ -26,5 +26,19 @@ namespace ECS
     {
 
         return *this;
+    }
+
+    template<typename Component>
+    EntityBuilder& EntityBuilder::Set(Component&& c)
+    {
+        m_world->Set<Component>(m_id, std::forward<Component>(c));
+
+        return *this;
+    }
+
+    template<typename Component>
+    Component& EntityBuilder::Get()
+    {
+        return m_world->Get<Component>(m_id);
     }
 }

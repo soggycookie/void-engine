@@ -154,7 +154,7 @@ namespace ECS
 
     template<typename T>
     template<typename U>
-    void SparseSet<T>::PushBack(uint64_t id, U&& element, bool newId)
+    uint32_t SparseSet<T>::PushBack(uint64_t id, U&& element, bool newId)
     {
         uint32_t lowId = CAST(id, uint32_t);
 
@@ -220,10 +220,13 @@ namespace ECS
             new (GetPageData(lowId)) T(std::move(element));
 
             ++m_count;
+
+            return nextAliveCount;
         }
         else
         {
             std::cout << "Id exist!" << std::endl;
+            return 0;
         }
     }
 

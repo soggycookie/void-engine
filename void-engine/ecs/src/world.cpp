@@ -14,6 +14,7 @@ namespace ECS
     Entity World::CreateEntity()
     {
         uint64_t id = m_entityIndex.GetReservedFreeId();
+
         bool newId = false;
         if(id == 0)
         {
@@ -24,12 +25,20 @@ namespace ECS
             id = m_nextFreeId;
         }
         Entity e(id, this);
-        e.IncreGenCount();
+        
+        if(!newId)
+        {
+            e.IncreGenCount();
+        }
 
-        EntityRecord r = {};
+        EntityRecord r;
+        r.archetype = nullptr;
+        r.dense = 0;
+        r.row = 0;
         std::snprintf(r.name, 16, "Entity");
 
-        m_entityIndex.PushBack(e.GetFullId(), r, newId);
+        r.dense = m_entityIndex.PushBack(e.GetFullId(), r, newId);
+        GetEntityRecord(e.GetFullId())->dense = r.dense;
 
         return e;
     }
@@ -47,12 +56,20 @@ namespace ECS
             id = m_nextFreeId;
         }
         Entity e(id, this);
-        e.IncreGenCount();
+        
+        if(!newId)
+        {
+            e.IncreGenCount();
+        }
 
-        EntityRecord r = {};
+        EntityRecord r;
+        r.archetype = nullptr;
+        r.dense = 0;
+        r.row = 0;
         std::snprintf(r.name, 16, name);
 
-        m_entityIndex.PushBack(e.GetFullId(), r, newId);
+        r.dense = m_entityIndex.PushBack(e.GetFullId(), r, newId);
+        GetEntityRecord(e.GetFullId())->dense = r.dense;
 
         return e;
     }
@@ -62,12 +79,15 @@ namespace ECS
         if(!m_entityIndex.isValidDense(id))
         {
             Entity e(id, this);
-            e.IncreGenCount();
 
-            EntityRecord r = {};
+            EntityRecord r;
+            r.archetype = nullptr;
+            r.dense = 0;
+            r.row = 0;
             std::snprintf(r.name, 16, "Entity");
 
-            m_entityIndex.PushBack(e.GetFullId(), r, true);
+            r.dense = m_entityIndex.PushBack(e.GetFullId(), r, true);
+            GetEntityRecord(e.GetFullId())->dense = r.dense;
             
             return e;
         }
@@ -83,13 +103,22 @@ namespace ECS
 
                 freeId = m_nextFreeId;
             }
-            Entity e(freeId, this);
-            e.IncreGenCount();
             
-            EntityRecord r = {};
+            Entity e(freeId, this);
+            
+            if(!newId)
+            {
+                e.IncreGenCount();
+            }
+            
+            EntityRecord r;
+            r.archetype = nullptr;
+            r.dense = 0;
+            r.row = 0;
             std::snprintf(r.name, 16, "Entity");
 
-            m_entityIndex.PushBack(e.GetFullId(), r, newId);
+            r.dense = m_entityIndex.PushBack(e.GetFullId(), r, newId);
+            GetEntityRecord(e.GetFullId())->dense = r.dense;
             
             return e;
         }
@@ -100,12 +129,15 @@ namespace ECS
         if(!m_entityIndex.isValidDense(id))
         {
             Entity e(id, this);
-            e.IncreGenCount();
 
-            EntityRecord r = {};
+            EntityRecord r;
+            r.archetype = nullptr;
+            r.dense = 0;
+            r.row = 0;
             std::snprintf(r.name, 16, name);
 
-            m_entityIndex.PushBack(e.GetFullId(), r, true);
+            r.dense = m_entityIndex.PushBack(e.GetFullId(), r, true);
+            GetEntityRecord(e.GetFullId())->dense = r.dense;
             
             return e;
         }
@@ -122,13 +154,21 @@ namespace ECS
                 freeId = m_nextFreeId;
             }
             Entity e(freeId, this);
-            e.IncreGenCount();
             
-            EntityRecord r = {};
+            if(!newId)
+            {
+                e.IncreGenCount();
+            }
+            
+            EntityRecord r;
+            r.archetype = nullptr;
+            r.dense = 0;
+            r.row = 0;
             std::snprintf(r.name, 16, name);
 
-            m_entityIndex.PushBack(e.GetFullId(), r, newId);
-            
+            r.dense = m_entityIndex.PushBack(e.GetFullId(), r, newId);
+            GetEntityRecord(e.GetFullId())->dense = r.dense;
+
             return e;
         }
     }
@@ -163,10 +203,18 @@ namespace ECS
         m_allocators.archetypes.Init(SparsePageCount * sizeof(Archetype));
     }
 
-    //Entity* World::GetEntity(EntityId id)
-    //{
-    //    return m_entityIndex.GetPageData(id);
-    //}
+    Entity World::GetEntity(EntityId id)
+    {
+        EntityRecord* r = m_entityIndex.GetPageData(id);
+        uint32_t dense = r->dense;
+        uint64_t versionedId = m_entityIndex.GetDenseArr()[dense];
+        if(!r || versionedId != id)
+        {
+            return Entity(0, this);    
+        }
+
+        return Entity(id, this);
+    }
 
 
 

@@ -28,7 +28,7 @@ namespace ECS
     
     public:
         template<typename Component>
-        EntityBuilder& AddComponent(const Component& c);
+        EntityBuilder& AddComponent();
         
         template<typename Component>
         EntityBuilder& RemoveComponent();
@@ -39,6 +39,11 @@ namespace ECS
         template<typename FirstComponent, typename... Components>
         EntityBuilder& RemoveComponents();
 
+        template<typename Component>
+        EntityBuilder& Set(Component&& c);
+
+        template<typename Component>
+        Component& Get();
     protected:
         World* m_world;
     };
