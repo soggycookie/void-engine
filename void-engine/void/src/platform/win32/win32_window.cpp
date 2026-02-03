@@ -31,8 +31,7 @@ namespace VoidEngine
     //Win32 window definition
     Window* Window::Create(const WindowProperty& property ,EventCallback func)
     {
-        void* windowAddr = GlobalPersistantAllocator::Get().Alloc(sizeof(Win32Window), alignof(Win32Window));
-        return new (windowAddr) Win32Window(property, func);
+        return new Win32Window(property, func);
     }
 
     /*

@@ -78,7 +78,7 @@ namespace VoidEngine
         
         std::cout << e.Get<Velocity>().x <<", " << e.Get<Velocity>().y << std::endl;
 
-
+        ECS::DestroyWorld(world);
     }   
 
     void GameLayer::OnEvent(const Event& e)

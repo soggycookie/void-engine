@@ -11,6 +11,12 @@ namespace ECS
         return w;
     }
 
+    void DestroyWorld(World* world)
+    {
+        world->Destroy();
+        delete world;
+    }
+
     Entity World::CreateEntity()
     {
         uint64_t id = m_entityIndex.GetReservedFreeId();

@@ -48,7 +48,7 @@ namespace ECS
             count = other.count;
         }
 
-        ComponentSet& operator=(ComponentSet&& other)
+        ComponentSet& operator=(ComponentSet&& other) noexcept
         {
             ids = other.ids;
             count = other.count;
@@ -262,7 +262,7 @@ namespace ECS
             other.components.count = 0;
         }
 
-        Archetype& operator=(Archetype&& other)
+        Archetype& operator=(Archetype&& other) noexcept
         {
             columns = other.columns;
             entities = other.entities;

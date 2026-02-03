@@ -48,6 +48,16 @@ namespace ECS
         bool isValidDense(uint64_t id);
         bool isValidPage(uint64_t id);
 
+        uint64_t GetId(uint32_t denseIndex)
+        {
+            if(denseIndex >= m_dense.GetCount())
+            {
+                return 0;
+            }
+
+            return *PTR_CAST(m_dense.GetElement(denseIndex), uint64_t);
+        }
+
         uint64_t* GetDenseArr()
         {
             return PTR_CAST(m_dense.GetArray(), uint64_t);

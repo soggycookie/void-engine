@@ -471,6 +471,60 @@ namespace ECS
             return component;
         }
 
+        void Destroy()
+        {
+            //clear archetype
+            for(uint32_t aIdx = 1; aIdx <= m_archetypes.GetCount(); aIdx++)
+            {
+                Archetype* archetype = m_archetypes.GetPageData(m_archetypes.GetId(aIdx));
+                assert(archetype);
+
+                for(uint32_t cIdx = 0; cIdx < archetype->components.count; cIdx++)
+                {
+                    Column& col = archetype->columns[cIdx];
+                    TypeInfo& ti = *col.typeInfo; 
+
+                    if(ti.hook.dtor)
+                    {
+                        for(uint32_t row = 0; row < archetype->count; row++)
+                        {
+                            void* component = OFFSET(col.data, (ti.size * row));
+                            
+                            ti.hook.dtor(component);
+                        }
+                    }
+
+                    m_wAllocator.Free(ti.size * archetype->capacity, col.data);
+                }
+
+                m_wAllocator.Free(sizeof(EntityId) * archetype->capacity, archetype->entities);
+                m_wAllocator.Free(sizeof(Column) * archetype->components.count, archetype->columns);
+                archetype->addedEdges.Destroy();
+                archetype->removedEdges.Destroy();
+            }
+
+
+
+            m_archetypes.Destroy();
+            m_entityIndex.Destroy();
+            m_componentRecords.Destroy();
+            m_mappedArchetype.Destroy();
+            m_typeInfos.Destroy();
+
+            m_allocators.archetypes.Destroy();
+
+            for(uint32_t bIdx = 1; bIdx <= m_wAllocator.m_sparse.GetCount(); bIdx++)
+            {
+                BlockAllocator* ba = m_wAllocator.m_sparse.GetPageData(m_wAllocator.m_sparse.GetId(bIdx));
+                assert(ba);
+
+                ba->Destroy();
+            }
+
+            m_wAllocator.m_sparse.Destroy();
+            m_wAllocator.m_chunks.Destroy();
+        }
+
     public:
         WorldAllocator m_wAllocator;        
         Allocators m_allocators;        

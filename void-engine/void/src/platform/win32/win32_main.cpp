@@ -1,6 +1,6 @@
+
 #include "pch.h"
 #include "windows.h"
-#include "global_persistant_allocator.h"
 
 #include <cstddef>
 
@@ -667,14 +667,14 @@ public:
 
 int main()
 {
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+
     using namespace VoidEngine;
-    GlobalPersistantAllocator::SetBufferSize(KB(4));
 
     Application* app = new Application();
 
     if(app->StartUp())
     {
-        //SIMPLE_LOG(GlobalPersistantAllocator::Get().UsedSize());
         app->Update();
     }
     app->ShutDown();

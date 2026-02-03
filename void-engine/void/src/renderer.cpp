@@ -33,8 +33,7 @@ namespace VoidEngine
                 if(s_graphicAPI != api)
                 {
                     //TODO: free old renderer api
-                    void* rendererAddr = GlobalPersistantAllocator::Get().Alloc(sizeof(D3D11_RendererAPI), alignof(D3D11_RendererAPI));
-                    s_rendererAPI = new (rendererAddr) D3D11_RendererAPI();
+                    s_rendererAPI = new D3D11_RendererAPI();
                     auto dimension = s_window->GetDimension();
                     s_rendererAPI->Init(dimension.width, dimension.height, s_window->GetDisplayWindow());
                     s_graphicAPI = api;

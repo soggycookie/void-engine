@@ -44,6 +44,7 @@ namespace VoidEngine
         static void ShutDown()
         {
             s_rendererAPI->Clear();
+            delete s_rendererAPI;
         }
 
         static void StartUp(Window* window)

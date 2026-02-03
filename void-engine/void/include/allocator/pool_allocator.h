@@ -64,7 +64,7 @@ namespace VoidEngine
                 return;
             }
 
-            free(m_baseAddr);
+            std::free(m_baseAddr);
         }
 
         PoolAllocator& operator=(PoolAllocator&& allocator) noexcept

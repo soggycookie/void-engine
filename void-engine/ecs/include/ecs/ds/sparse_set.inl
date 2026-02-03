@@ -467,29 +467,32 @@ namespace ECS
             
             assert(page);
 
-            if(m_allocator)
-            {
-                m_allocator->Free(SparsePageCount * sizeof(uint32_t), page->denseIndex);
-            }
-            else
-            {
-                std::free(page->denseIndex);
-            }
-
-            if(m_pageAllocator)
-            {
-                m_pageAllocator->Free(page->data);
-            }
-            else
+            if(page->denseIndex && page->data)
             {
                 if(m_allocator)
                 {
-                    m_allocator->Free(SparsePageCount * sizeof(T), page->data);
+                    m_allocator->Free(SparsePageCount * sizeof(uint32_t), page->denseIndex);
                 }
                 else
                 {
-                    std::free(page->data);
-                }            
+                    std::free(page->denseIndex);
+                }
+
+                if(m_pageAllocator)
+                {
+                    m_pageAllocator->Free(page->data);
+                }
+                else
+                {
+                    if(m_allocator)
+                    {
+                        m_allocator->Free(SparsePageCount * sizeof(T), page->data);
+                    }
+                    else
+                    {
+                        std::free(page->data);
+                    }            
+                }
             }
         }
 

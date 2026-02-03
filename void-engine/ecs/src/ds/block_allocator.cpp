@@ -122,4 +122,16 @@ namespace ECS
         return firstChunk;
     }
 
+    void BlockAllocator::Destroy()
+    {
+        BlockAllocatorBlock* block = m_blockHead;
+        while(block)
+        {
+            auto freeBlock = block;
+            block = block->next;
+
+            std::free(freeBlock);
+        }
+    }
+
 }

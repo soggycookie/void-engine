@@ -52,12 +52,14 @@ namespace VoidEngine
         MemorySystem::GeneralAllocator()->Free(m_layerStack);
 
         Profiler::ShutDown();
-        Renderer::ShutDown();
         ResourceSystem::ShutDown();
+        Renderer::ShutDown();
 
         MemorySystem::ShutDown();
         std::cout << "window time: " << m_window->GetWindowTime() << std::endl;
         m_isRunning = false;
+
+        delete m_window;
     }
 
     void Application::Update()

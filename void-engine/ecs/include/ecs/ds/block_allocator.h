@@ -34,6 +34,7 @@ constexpr uint32_t PageSize = KB(4);
         void* Alloc();
         void* Calloc();
         void Free(void* addr);
+        void Destroy();
 
     private:
         BlockAllocatorChunk* CreateBlock();

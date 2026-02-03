@@ -11,4 +11,6 @@ namespace ECS
 
     World* CreateWorld();
 
+    void DestroyWorld(World* world);
+
 }

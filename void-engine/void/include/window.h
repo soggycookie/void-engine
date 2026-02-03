@@ -2,7 +2,6 @@
 
 #include "pch.h"
 #include "event/event.h"
-#include "global_persistant_allocator.h"
 
 namespace VoidEngine
 {
