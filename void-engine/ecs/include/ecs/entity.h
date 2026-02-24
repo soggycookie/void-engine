@@ -11,7 +11,7 @@ namespace ECS
         These ecs operations will apply immediately
     */
 
-    class EntityMutator : public Id, public EntityCommandBase
+    class EntityMutator : public Id, public IEntityCommand
     {
     protected:
         EntityMutator(EntityId id, World* world)
@@ -32,7 +32,7 @@ namespace ECS
         EntityMutator& operator=(EntityMutator&& other) = default;
         EntityMutator& operator=(const EntityMutator& other) = default;
 
-    public:
+    protected:
 
         void AddComponentImpl(EntityId cId) override;
         void AddTagImpl(EntityId cId) override;

@@ -219,7 +219,7 @@ namespace ECS
     template<typename T>
     void World::AddPair(EntityId id, EntityId second)
     {
-        EntityId pairId = MakePair(ComponentTypeId<T>::id, second);
+        EntityId pairId = MakeRelationship(ComponentTypeId<T>::id, second);
         TypeInfo* pTi = m_typeInfos.GetValue(ComponentTypeId<T>::id);
         
         if(!m_componentIndex.ContainsKey(pairId))

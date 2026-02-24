@@ -43,7 +43,7 @@ namespace ECS
     using HiEntityId = uint32_t;
     using GenCount = uint16_t;
 
-    inline EntityId MakePair(EntityId first, EntityId sec)
+    inline EntityId MakeRelationship(EntityId first, EntityId sec)
     {
         constexpr uint32_t mask = 0xFFFFFFFFULL;
 
@@ -122,7 +122,10 @@ namespace ECS
 
         void Destroy(WorldAllocator& wAllocator)
         {
-            wAllocator.Free(sizeof(T) * capacity, store);
+            if(store)
+            {
+                wAllocator.Free(sizeof(T) * capacity, store);
+            }
         }
     };
 
@@ -144,12 +147,6 @@ namespace ECS
             other.count = 0;            
         }
 
-        ComponentSet(const ComponentSet& other)
-        {
-            idArr = other.idArr;
-            count = other.count;
-        }
-
         ComponentSet& operator=(ComponentSet&& other) noexcept
         {
             idArr = other.idArr;
@@ -157,14 +154,6 @@ namespace ECS
 
             other.idArr = nullptr;
             other.count = 0;
-
-            return *this;
-        }
-
-        ComponentSet& operator=(const ComponentSet& other)
-        {
-            idArr = other.idArr;
-            count = other.count;
 
             return *this;
         }
@@ -203,6 +192,16 @@ namespace ECS
             }
 
             return false;
+        }
+
+        EntityId& operator[](uint32_t index)
+        {
+            if(index >= count)
+            {
+                assert(0);
+            }
+
+            return idArr[index];
         }
 
         uint64_t Hash() const
@@ -291,7 +290,10 @@ namespace ECS
 
         void Free(WorldAllocator& wAllocator)
         {
-            wAllocator.Free(sizeof(EntityId) * count, idArr);
+            if(idArr)
+            {
+                wAllocator.Free(sizeof(EntityId) * count, idArr);
+            }
         }
     };
 

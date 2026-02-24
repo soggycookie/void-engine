@@ -120,4 +120,10 @@ namespace ECS
 
         return cb;
     }
+
+    struct SystemDesc
+    {
+        ComponentSet components;
+        
+    };
 }

@@ -39,16 +39,19 @@ namespace ECS
 
     void World::RegisterInternalComponents()
     {
-        Component<EcsName>().Id(EcsNameId).Register(ComponentName<EcsName>::name);
-        Component<EcsSystem>().Id(EcsSystemId).Register(ComponentName<EcsName>::name);
+        Component<EcsName>().Id(EcsNameId).Register();
+        Component<EcsSystem>().Id(EcsSystemId).Register();
+        Component<EcsInherit>().Id(EcsInheritId).Register();
 
         Tag<EcsPhase>().Id(EcsPhaseId).Register();
         Tag<EcsArchetype>().Id(EcsArchetypeId).Register();
         Tag<EcsPipeline>().Id(EcsPipelineId).Register();
+        Tag<EcsDisabled>().Id(EcsDisabledId).Register();
 
-        Pair<ChildOf>(true).Id(ChildOfId).Register();
-        Pair<DependOn>(false).Id(DependOnId).Register();
-        Pair<Toggle>(false, true).Id(ToggleId).Register();
+        Pair<EcsChildOf>(true).Id(EcsChildOfId).Register();
+        Pair<EcsDependOn>(false).Id(EcsDependOnId).Register();
+        Pair<EcsToggle>(false, true).Id(EcsToggleId).Register();
+        Pair<EcsIsA>(true).Id(EcsIsAId).Register();
     }
 
     Entity World::CreateEntity()
@@ -100,7 +103,17 @@ namespace ECS
         return Entity(id, this);
     }
 
-    EntityId World::GetNextFreeId()
+    bool World::isEntityExist(EntityId eId)
+    {
+        if(eId == 0)
+        {
+            return false;
+        }
+
+        return m_entityIndex.isValidDense(eId);
+    }
+
+    EntityId World::GetNewId()
     {
         while(m_entityIndex.isValidDense(++m_nextFreeId));
 
@@ -122,7 +135,7 @@ namespace ECS
         {
             newId = true;
 
-            id = GetNextFreeId();
+            id = GetNewId();
         }
         else
         {
@@ -220,12 +233,12 @@ namespace ECS
         Archetype* destArchetype = r.archetype;
         if(desc.parent != 0)
         {
-            if(!m_componentIndex.ContainsKey(MakePair(ComponentTypeId<ChildOf>::id, desc.parent)))
+            if(!m_componentIndex.ContainsKey(MakeRelationship(ComponentTypeId<EcsChildOf>::id, desc.parent)))
             {
                 TypeInfo* ti = new (m_wAllocator.Alloc(sizeof(TypeInfo))) TypeInfo();
-                *ti = *(m_typeInfos[ComponentTypeId<ChildOf>::id]);
+                *ti = *(m_typeInfos[ComponentTypeId<EcsChildOf>::id]);
                 ti->flags |= FULL_PAIR;
-                ti->id = MakePair(ComponentTypeId<ChildOf>::id, desc.parent);
+                ti->id = MakeRelationship(ComponentTypeId<EcsChildOf>::id, desc.parent);
 
                 TypeInfoBuilder<> builder{*ti, this};
                 char name[30];
@@ -233,7 +246,7 @@ namespace ECS
                 builder.Register(name);
             }
 
-            destArchetype = GetOrCreateArchetype_Add(destArchetype, MakePair(ComponentTypeId<ChildOf>::id, desc.parent));
+            destArchetype = GetOrCreateArchetype_Add(destArchetype, MakeRelationship(ComponentTypeId<EcsChildOf>::id, desc.parent));
         }
         if(desc.name)
         {
@@ -275,6 +288,9 @@ namespace ECS
             r.row = destArchetype->count;
             ++destArchetype->count;
         }
+
+        desc.add.Free(m_wAllocator);
+        desc.componentData.Destroy(m_wAllocator);
     }
 
     void World::AddComponent(EntityId eId, EntityId cId)
@@ -300,7 +316,7 @@ namespace ECS
 
     void World::AddPair(EntityId eId, EntityId first, EntityId second)
     {
-        EntityId pairId = MakePair(first, second);
+        EntityId pairId = MakeRelationship(first, second);
         TypeInfo* pTi = m_typeInfos.GetValue(first);
 
         if(!m_componentIndex.ContainsKey(pairId))

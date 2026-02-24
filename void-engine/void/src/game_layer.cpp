@@ -8,10 +8,14 @@ namespace VoidEngine
     void GameLayer::OnAttach()
     {
         SIMPLE_LOG("attach!");
+
+        //std::cout << "Test: " <<  std::is_trivially_constructible_v<ECS::EcsSystem> << std::endl;
     }
 
     void GameLayer::OnUpdate(double dt)
     {     
+        world->Progress(0);
+
         Renderer::NewFrame();
         Renderer::Draw(mesh, material);
         Renderer::EndFrame();
@@ -20,6 +24,18 @@ namespace VoidEngine
     void GameLayer::OnDetach()
     {
         SIMPLE_LOG("detach!");
+        
+        world->Each<ECS::EcsName>(
+            +[](ECS::QueryIterator it,const ECS::EcsName& pos)
+            {
+                std::cout << it.GetEntity().GetFullId() << ": " << pos.name << std::endl;
+                //std::cout << "Count " << it.archetype->count << " of " << it.archetype->id << std::endl;
+                //std::cout << it.GetEntity().GetFullId() << std::endl;
+                //std::cout << pos.x << ", " << pos.y << std::endl;
+            }
+        );
+
+        ECS::DestroyWorld(world);
     }
 
     void GameLayer::OnInit()
@@ -50,35 +66,49 @@ namespace VoidEngine
         //std::cout << "Entity id: " << e.GetId() << " , gen count: " << e.GetGenCount() << std::endl;
         
         world = ECS::CreateWorld();
-        world->RegisterComponent<Position>();
-        world->RegisterComponent<Velocity>();
-
-        ECS::Entity e = world->CreateEntity(1, "The first");
-        ECS::Entity e1 = world->CreateEntity(1, "The Second");
-        ECS::Entity e2 = world->CreateEntity("The third");
-
-        e.AddComponent<Position>();
-        e.Set<Position>({1,2});
- 
-        e1.AddComponent<Position>();
-        e1.Set<Position>({3,4});
+        world->Component<Position>().Register();
+        world->Component<Velocity>().Register();
+        world->Tag<NPC>().Register();
         
-        e2.AddComponent<Position>();
-        e2.Set<Position>({10,12});
+        //uint32_t x = 0, y = 0;
+        //for(uint32_t i = 0; i < 5; i++)
+        //{
+        //    world->CreateEntity(0).AddComponent<Position>().AddTag<NPC>().Set<Position>({++x, ++y}).AddComponent<Velocity>();
+        //}
 
-        std::cout << e.Get<Position>().x <<", " << e.Get<Position>().y << std::endl;
-        std::cout << e1.Get<Position>().x <<", " << e1.Get<Position>().y << std::endl;
-        std::cout << e2.Get<Position>().x <<", " << e2.Get<Position>().y << std::endl;
-        
-        e.AddComponent<Velocity>();
-        e.Set<Velocity>({0.0f, 0.5f});
-        std::cout << e.Get<Position>().x <<", " << e.Get<Position>().y << std::endl;
-        std::cout << e1.Get<Position>().x <<", " << e1.Get<Position>().y << std::endl;
-        std::cout << e2.Get<Position>().x <<", " << e2.Get<Position>().y << std::endl;
-        
-        std::cout << e.Get<Velocity>().x <<", " << e.Get<Velocity>().y << std::endl;
 
-        ECS::DestroyWorld(world);
+        ECS::Entity e = world->CreateEntity("First",0);
+        e.AddComponent<Position>().
+            //AddTag<NPC>().
+            //AddComponent<Velocity>().
+            Set<Position>({1, 1});
+
+        //ECS::Entity e2 = world->CreateEntity(0);
+        //e2.AddComponent<Position>().
+        //    AddTag<NPC>().
+        //    AddComponent<Velocity>().
+        //    Set<Position>({1, 1});
+        
+        ECS::Entity e1 = world->CreateEntity("Second ", e.GetFullId());
+        e1.AddComponent<Position>().
+            //AddTag<NPC>().
+            //AddComponent<Velocity>().
+            //AddPair<ECS::ChildOf>(e.GetFullId()).
+            Set<Position>({1, 1});
+        
+        std::cout << ECS::ComponentTypeId<ECS::EcsChildOf>::id << std::endl;
+        
+        auto a = world->m_componentIndex.GetValue(ECS::MakeRelationship(ECS::EcsChildOfId, e.GetFullId()));
+        std::cout << a.archetypeStore.count << std::endl;
+        //std::cout << world->m_componentIndex.GetValue(ECS::MakePair(ECS::ChildOfId, e.GetFullId())).name << std::endl;
+
+        world->System<Position, ECS::EcsChildOf>(
+            +[](Position& pos)
+            {
+                 ++pos.x; 
+                 ++pos.y;
+            }
+        );
     }   
 
     void GameLayer::OnEvent(const Event& e)

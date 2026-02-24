@@ -6,7 +6,7 @@ namespace ECS
     */
 
     template<typename Component>
-    EntityCommandBase& EntityCommandBase::AddComponent()
+    IEntityCommand& IEntityCommand::AddComponent()
     {
         AddComponentImpl(ComponentTypeId<Component>::id);
 
@@ -14,7 +14,7 @@ namespace ECS
     }
 
     template<typename Component>
-    EntityCommandBase& EntityCommandBase::AddTag()
+    IEntityCommand& IEntityCommand::AddTag()
     {
         AddTagImpl(ComponentTypeId<Component>::id);
 
@@ -22,7 +22,7 @@ namespace ECS
     }
 
     template<typename First>
-    EntityCommandBase& EntityCommandBase::AddPair(EntityId second)
+    IEntityCommand& IEntityCommand::AddPair(EntityId second)
     {
         AddPairImpl(ComponentTypeId<First>::id, second);
 
@@ -30,7 +30,7 @@ namespace ECS
     }
 
     template<typename Component>
-    EntityCommandBase& EntityCommandBase::RemoveComponent()
+    IEntityCommand& IEntityCommand::RemoveComponent()
     {
         RemoveComponentImpl(ComponentTypeId<Component>::id);
 
@@ -38,7 +38,7 @@ namespace ECS
     }
 
     template<typename Component>
-    EntityCommandBase& EntityCommandBase::Set(Component&& c)
+    IEntityCommand& IEntityCommand::Set(Component&& c)
     {
         SetImpl(ComponentTypeId<Component>::id, &c);
 
@@ -46,7 +46,7 @@ namespace ECS
     }
 
     template<typename Component>
-    Component& EntityCommandBase::Get()
+    Component& IEntityCommand::Get()
     {
         return *PTR_CAST(GetImpl(ComponentTypeId<Component>::id), Component);
     }

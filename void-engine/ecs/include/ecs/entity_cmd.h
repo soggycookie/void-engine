@@ -14,20 +14,20 @@ namespace ECS
 
     class World;
 
-    class EntityCommandBase
+    class IEntityCommand
     {
     public:
         template<typename Component>
-        EntityCommandBase& AddComponent();
+        IEntityCommand& AddComponent();
 
         template<typename Component>
-        EntityCommandBase& AddTag();
+        IEntityCommand& AddTag();
 
         template<typename First>
-        EntityCommandBase& AddPair(EntityId second);
+        IEntityCommand& AddPair(EntityId second);
 
         template<typename Component>
-        EntityCommandBase& RemoveComponent();
+        IEntityCommand& RemoveComponent();
 
         /*template<typename FirstComponent, typename... Components>
         EntityMutator& AddComponents(const FirstComponent& f, const Components&... c);
@@ -36,7 +36,7 @@ namespace ECS
         EntityMutator& RemoveComponents();*/
 
         template<typename Component>
-        EntityCommandBase& Set(Component&& c);
+        IEntityCommand& Set(Component&& c);
 
         template<typename Component>
         Component& Get();

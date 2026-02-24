@@ -3,6 +3,7 @@
 #include "resource.h"
 #include "ecs.h"
 
+
 namespace VoidEngine
 {
     struct Position
@@ -24,12 +25,10 @@ namespace VoidEngine
     };
     ECS_COMPONENT(Rotation)
 
-    struct Test
+    struct NPC
     {
-        size_t a;
-        size_t c;
-        int b;
     };
+    ECS_COMPONENT(NPC);
 
     class GameLayer : public Layer
     {

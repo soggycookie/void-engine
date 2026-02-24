@@ -39,8 +39,12 @@ namespace ECS
 
         Entity CreateEntity(EntityDesc& desc);
 
-        EntityId GetNextFreeId();
+        EntityId GetNewId();
         EntityId GetReusedId();
+        bool isEntityExist(EntityId eId);
+
+        //the returned bool is true if this is a new id
+        //else it is a reused one
         std::pair<bool, EntityId> GetId();
 
         EntityRecord* GetEntityRecord(EntityId eId);
@@ -94,15 +98,16 @@ namespace ECS
         void SwapBack(EntityRecord& r);
 
         Archetype* CreateArchetype(ComponentSet&& componentSet);
-
         Archetype* GetArchetype(const ComponentSet& componentSet);
 
         Archetype* GetOrCreateArchetype_Add(Archetype* src, EntityId cId);
-
         Archetype* GetOrCreateArchetype_Remove(Archetype* src, EntityId cId);
 
         void MoveArchetype_Add(EntityId eId, EntityRecord& r, Archetype* destArchetype);
         void MoveArchetype_Remove(EntityId eId, EntityRecord& r, Archetype* destArchetype);
+
+        //Query
+
 
         //NOTE: System store list of cache archetypes, but the list can be invalidated at runtime,
         //so I need to find a new way to re-validate this or rewrite this in a different way
