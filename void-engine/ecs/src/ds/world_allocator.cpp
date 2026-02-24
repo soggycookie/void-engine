@@ -8,13 +8,13 @@ namespace ECS
         m_sparse.Init(nullptr, &m_chunks, WorldAllocDefaultDense, false);
     }
 
-    void* WorldAllocator::Alloc(uint32_t size)
+    void* WorldAllocator::Init(uint32_t size)
     {
         uint32_t alignedSize = RoundMinPowerOf2(size, 16);
 
         BlockAllocator* block = GetOrCreateBalloc(alignedSize);
 
-        return block->Alloc();
+        return block->Init();
     }
 
     void* WorldAllocator::Calloc(uint32_t size)
@@ -73,10 +73,10 @@ namespace ECS
 
         BlockAllocator* block = GetOrCreateBalloc(alignedSize);
 
-        std::cout << "Alloc " << elementSize * capacity << " using block allocator with chunk size: " 
-            << block->m_chunkSize << ", chunk count: " << block->m_chunkCount << std::endl;
+        //std::cout << "Alloc " << elementSize * capacity << " using block allocator with chunk size: "
+        //    << block->m_chunkSize << ", chunk count: " << block->m_chunkCount << std::endl;
 
-        return block->Alloc();
+        return block->Init();
     }
 
     void* WorldAllocator::CallocN(uint32_t elementSize, uint32_t capacity, uint32_t& expandedCapacity)
@@ -89,8 +89,8 @@ namespace ECS
 
         BlockAllocator* block = GetOrCreateBalloc(alignedSize);
 
-        std::cout << "Calloc " << elementSize * capacity << " using block allocator with chunk size: " 
-            << block->m_chunkSize << ", chunk count: " << block->m_chunkCount << std::endl;
+        //std::cout << "Calloc " << elementSize * capacity << " using block allocator with chunk size: "
+        //    << block->m_chunkSize << ", chunk count: " << block->m_chunkCount << std::endl;
 
         return block->Calloc();
     }

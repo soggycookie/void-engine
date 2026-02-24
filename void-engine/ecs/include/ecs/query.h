@@ -9,7 +9,7 @@ namespace ECS
         Archetype* archetype;
         ArchetypeLinkedList* next;
 
-        static ArchetypeLinkedList* Alloc(WorldAllocator& wAllocator)
+        static ArchetypeLinkedList* Init(WorldAllocator& wAllocator)
         {
             ArchetypeLinkedList* all = PTR_CAST(wAllocator.Calloc(sizeof(ArchetypeLinkedList)), ArchetypeLinkedList);
         
@@ -41,7 +41,7 @@ namespace ECS
         template<typename Component>
         Component& Get()
         {
-            uint32_t colIdx = archetype->components.Search(ComponentTypeId<EntityId>::id);
+            uint32_t colIdx = archetype->componentSet.Search(ComponentTypeId<EntityId>::id);
 
             assert(colIdx != -1);
 
@@ -300,7 +300,7 @@ namespace ECS
                 eDesc.id = m_desc.id;
                 std::snprintf(eDesc.name, 16, "Query %u", m_desc.id);
                 ComponentSet cs;
-                cs.Alloc(m_world, 1);
+                cs.Init(m_world, 1);
                 cs[0] = EcsQueryId; 
                 eDesc.add = std::move(cs);
 

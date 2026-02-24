@@ -59,7 +59,7 @@ namespace ECS
         TypeInfoBuilder<T> Tag();
         
         template<typename T>
-        TypeInfoBuilder<T> Pair(bool isExclusive, bool isToggle = false);
+        TypeInfoBuilder<T> Relationship(bool isExclusive, bool isToggle = false);
 
         template<typename T>
         void AddComponent(EntityId eId);
@@ -68,14 +68,14 @@ namespace ECS
         void RemoveComponent(EntityId eId);
 
         template<typename T>
-        void AddPair(EntityId eId, EntityId second);
+        void AddRelationship(EntityId eId, EntityId targetId);
 
         template<typename T>
         void AddTag(EntityId eId);
 
         void AddComponent(EntityId eId, EntityId cId);
 
-        void AddPair(EntityId eId, EntityId first, EntityId second);
+        void AddRelationship(EntityId eId, EntityId relationId, EntityId targetId);
 
         void AddTag(EntityId eId, EntityId cId);
 

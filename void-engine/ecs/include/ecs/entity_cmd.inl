@@ -22,7 +22,7 @@ namespace ECS
     }
 
     template<typename First>
-    IEntityCommand& IEntityCommand::AddPair(EntityId second)
+    IEntityCommand& IEntityCommand::AddRelationship(EntityId second)
     {
         AddPairImpl(ComponentTypeId<First>::id, second);
 

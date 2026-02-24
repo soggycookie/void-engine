@@ -15,7 +15,7 @@ namespace ECS
 
     void EntityMutator::AddPairImpl(EntityId first, EntityId second)
     {
-        m_world->AddPair(m_id, first, second);
+        m_world->AddRelationship(m_id, first, second);
     }
 
     void EntityMutator::RemoveComponentImpl(EntityId cId)

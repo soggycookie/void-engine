@@ -91,6 +91,11 @@ namespace ECS
         uint32_t count;
         uint32_t capacity;
 
+        Store() : 
+            store(nullptr), count(0), capacity(0)
+        {
+        }
+
         void Init(WorldAllocator& wAllocator)
         {
             uint32_t storeCapacity = 8;
@@ -114,9 +119,10 @@ namespace ECS
             capacity = newStoreCapacity;
         }
 
-        void Add(T id)
+        template<typename U = T>
+        void Add(U&& element)
         {
-            store[count] = id;
+            store[count] = std::move(element);
             ++count;
         }
 
@@ -134,7 +140,10 @@ namespace ECS
         EntityId* idArr;
         uint32_t count;
 
-        ComponentSet() = default;
+        ComponentSet()
+            : idArr(nullptr), count(0)
+        {
+        }
 
         ~ComponentSet() = default;
 
@@ -283,17 +292,25 @@ namespace ECS
             return false;
         }
 
-        void Alloc(WorldAllocator& wAllocator, uint32_t capacity)
+        void Init(WorldAllocator& wAllocator, uint32_t count)
         {
-            idArr = PTR_CAST(wAllocator.Alloc(capacity * sizeof(EntityId)), EntityId);
+            idArr = PTR_CAST(wAllocator.Init(count * sizeof(EntityId)), EntityId);
+            this->count = count;
         }
 
-        void Free(WorldAllocator& wAllocator)
+        void Destroy(WorldAllocator& wAllocator)
         {
             if(idArr)
             {
                 wAllocator.Free(sizeof(EntityId) * count, idArr);
             }
+        }
+
+        void Clone(WorldAllocator& wAllocator, const ComponentSet& other)
+        {
+            count = other.count;
+            Init(wAllocator, count);
+            std::memcpy(idArr, other.idArr, count * sizeof(EntityId));
         }
     };
 
@@ -383,7 +400,7 @@ namespace ECS
         uint32_t flags;
         Column* columns;
         EntityId* entities;
-        ComponentSet components;
+        ComponentSet componentSet;
         int32_t* componentMap;
         HashMap<EntityId, Archetype*> addEdges;
         HashMap<EntityId, Archetype*> removeEdges;
@@ -391,7 +408,7 @@ namespace ECS
 
         Archetype()
             : id(0), count(0), capacity(0), flags(0),
-            columns(nullptr), entities(nullptr), components(), addEdges(), removeEdges()
+            columns(nullptr), entities(nullptr), componentSet(), addEdges(), removeEdges()
         {
         }
 
@@ -405,14 +422,14 @@ namespace ECS
             columns = other.columns;
             entities = other.entities;
             componentMap = other.componentMap;
-            components = std::move(other.components);
+            componentSet = std::move(other.componentSet);
             addEdges = std::move(other.addEdges);
             removeEdges = std::move(other.removeEdges);
 
             other.columns = nullptr;
             other.entities = nullptr;
-            other.components.idArr = nullptr;
-            other.components.count = 0;
+            other.componentSet.idArr = nullptr;
+            other.componentSet.count = 0;
         }
 
         Archetype& operator=(Archetype&& other) noexcept
@@ -425,14 +442,14 @@ namespace ECS
             columns = other.columns;
             entities = other.entities;
             componentMap = other.componentMap;
-            components = std::move(other.components);
+            componentSet = std::move(other.componentSet);
             addEdges = std::move(other.addEdges);
             removeEdges = std::move(other.removeEdges);
 
             other.columns = nullptr;
             other.entities = nullptr;
-            other.components.idArr = nullptr;
-            other.components.count = 0;
+            other.componentSet.idArr = nullptr;
+            other.componentSet.count = 0;
 
             return *this;
         }

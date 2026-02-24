@@ -137,13 +137,13 @@ namespace ECS
 
         if(m_pageAllocator)
         {
-            page->data = PTR_CAST(m_pageAllocator->Alloc(), T);
+            page->data = PTR_CAST(m_pageAllocator->Init(), T);
         }
         else
         {
             if(m_allocator)
             {
-                page->data = PTR_CAST(m_allocator->Alloc(sizeof(T) * SparsePageCount), T);
+                page->data = PTR_CAST(m_allocator->Init(sizeof(T) * SparsePageCount), T);
             }
             else
             {

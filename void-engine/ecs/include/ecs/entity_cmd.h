@@ -24,7 +24,7 @@ namespace ECS
         IEntityCommand& AddTag();
 
         template<typename First>
-        IEntityCommand& AddPair(EntityId second);
+        IEntityCommand& AddRelationship(EntityId second);
 
         template<typename Component>
         IEntityCommand& RemoveComponent();

@@ -31,7 +31,7 @@ constexpr uint32_t PageSize = KB(4);
         }
 
         void Init(uint32_t dataSize);
-        void* Alloc();
+        void* Init();
         void* Calloc();
         void Free(void* addr);
         void Destroy();

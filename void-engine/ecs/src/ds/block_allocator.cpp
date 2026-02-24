@@ -12,7 +12,7 @@ namespace ECS
         m_chunkHead = nullptr;
     }
 
-    void* BlockAllocator::Alloc()
+    void* BlockAllocator::Init()
     {
         if(m_chunkCount <= MinChunkCount)
         {

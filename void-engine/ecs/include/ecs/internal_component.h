@@ -31,13 +31,6 @@ namespace ECS
     };
     ECS_COMPONENT(EcsName);
 
-    struct EcsSystem
-    {
-        EcsSystem() = default;
-
-        SystemCallback sc;            
-    };
-    ECS_COMPONENT(EcsSystem);
 
     struct EcsInherit
     {
@@ -46,6 +39,12 @@ namespace ECS
     ECS_COMPONENT(EcsInherit)
 
     //internal tag
+    struct EcsSystem
+    {         
+    };
+
+    ECS_COMPONENT(EcsSystem);
+
     struct EcsPhase
     {
     };

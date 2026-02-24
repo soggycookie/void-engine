@@ -18,7 +18,7 @@ namespace ECS
     public:
         void Init();
 
-        void* Alloc(uint32_t size);
+        void* Init(uint32_t size);
         void* AllocN(uint32_t elementSize, uint32_t capacity, uint32_t& expandedCapacity);
         void* CallocN(uint32_t elementSize, uint32_t capacity, uint32_t& expandedCapacity);
         void* Calloc(uint32_t size);

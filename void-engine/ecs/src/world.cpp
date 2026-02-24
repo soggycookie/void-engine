@@ -40,18 +40,18 @@ namespace ECS
     void World::RegisterInternalComponents()
     {
         Component<EcsName>().Id(EcsNameId).Register();
-        Component<EcsSystem>().Id(EcsSystemId).Register();
         Component<EcsInherit>().Id(EcsInheritId).Register();
 
+        Tag<EcsSystem>().Id(EcsSystemId).Register();
         Tag<EcsPhase>().Id(EcsPhaseId).Register();
         Tag<EcsArchetype>().Id(EcsArchetypeId).Register();
         Tag<EcsPipeline>().Id(EcsPipelineId).Register();
         Tag<EcsDisabled>().Id(EcsDisabledId).Register();
 
-        Pair<EcsChildOf>(true).Id(EcsChildOfId).Register();
-        Pair<EcsDependOn>(false).Id(EcsDependOnId).Register();
-        Pair<EcsToggle>(false, true).Id(EcsToggleId).Register();
-        Pair<EcsIsA>(true).Id(EcsIsAId).Register();
+        Relationship<EcsChildOf>(true).Id(EcsChildOfId).Register();
+        Relationship<EcsDependOn>(false).Id(EcsDependOnId).Register();
+        Relationship<EcsToggle>(false, true).Id(EcsToggleId).Register();
+        Relationship<EcsIsA>(true).Id(EcsIsAId).Register();
     }
 
     Entity World::CreateEntity()
@@ -235,7 +235,7 @@ namespace ECS
         {
             if(!m_componentIndex.ContainsKey(MakeRelationship(ComponentTypeId<EcsChildOf>::id, desc.parent)))
             {
-                TypeInfo* ti = new (m_wAllocator.Alloc(sizeof(TypeInfo))) TypeInfo();
+                TypeInfo* ti = new (m_wAllocator.Init(sizeof(TypeInfo))) TypeInfo();
                 *ti = *(m_typeInfos[ComponentTypeId<EcsChildOf>::id]);
                 ti->flags |= FULL_PAIR;
                 ti->id = MakeRelationship(ComponentTypeId<EcsChildOf>::id, desc.parent);
@@ -260,7 +260,7 @@ namespace ECS
                 GrowArchetype(*destArchetype);
             }
 
-            for(uint32_t i = 0; i < destArchetype->components.count; i++)
+            for(uint32_t i = 0; i < destArchetype->componentSet.count; i++)
             {
                 //skip no data tag and pair
                 int32_t destColIdx = destArchetype->componentMap[i];
@@ -275,7 +275,7 @@ namespace ECS
 
                 void* dest = OFFSET(destCol.data, ti.size * destArchetype->count);
 
-                if(destArchetype->components.idArr[i] == EcsNameId && desc.name)
+                if(destArchetype->componentSet[i] == EcsNameId && desc.name)
                 {
                     EcsName name;
                     std::snprintf(name.name, 16, desc.name);
@@ -289,7 +289,7 @@ namespace ECS
             ++destArchetype->count;
         }
 
-        desc.add.Free(m_wAllocator);
+        desc.add.Destroy(m_wAllocator);
         desc.componentData.Destroy(m_wAllocator);
     }
 
@@ -302,7 +302,7 @@ namespace ECS
 
         if(r->archetype)
         {
-            int32_t s = r->archetype->components.Search(cId);
+            int32_t s = r->archetype->componentSet.Search(cId);
 
             assert(s == -1);
         }
@@ -314,14 +314,14 @@ namespace ECS
         cTi->hook.onAdd();
     }
 
-    void World::AddPair(EntityId eId, EntityId first, EntityId second)
+    void World::AddRelationship(EntityId eId, EntityId relationId, EntityId targetId)
     {
-        EntityId pairId = MakeRelationship(first, second);
-        TypeInfo* pTi = m_typeInfos.GetValue(first);
+        EntityId pairId = MakeRelationship(relationId, targetId);
+        TypeInfo* pTi = m_typeInfos.GetValue(relationId);
 
         if(!m_componentIndex.ContainsKey(pairId))
         {
-            TypeInfo* ti = new (m_wAllocator.Alloc(sizeof(TypeInfo))) TypeInfo();
+            TypeInfo* ti = new (m_wAllocator.Init(sizeof(TypeInfo))) TypeInfo();
             *ti = *pTi;
             ti->flags |= FULL_PAIR;
             ti->id = pairId;
@@ -336,11 +336,11 @@ namespace ECS
         EntityRecord* r = m_entityIndex.GetPageData(eId);
 
         assert(r);
-        assert(!r->archetype->components.Has(pairId));
+        assert(!r->archetype->componentSet.Has(pairId));
 
         if(pTi->IsExclusive())
         {
-            if(r->archetype->components.HasPair(first))
+            if(r->archetype->componentSet.HasPair(relationId))
             {
                 return;
             }
@@ -361,11 +361,11 @@ namespace ECS
 
         TypeInfo* pti = m_typeInfos.GetValue(cId);
 
-        assert(!r->archetype->components.Has(cId));
+        assert(!r->archetype->componentSet.Has(cId));
 
         if(pti->IsExclusive())
         {
-            assert(!r->archetype->components.HasPair(cId));
+            assert(!r->archetype->componentSet.HasPair(cId));
         }
 
         Archetype* destArchetype = GetOrCreateArchetype_Add(r->archetype, cId);
@@ -382,7 +382,7 @@ namespace ECS
         assert(r);
         assert(r->archetype);
         Archetype* srcArchetype = r->archetype;
-        int32_t s = srcArchetype->components.Search(cId);
+        int32_t s = srcArchetype->componentSet.Search(cId);
 
         assert(s != -1);
 
@@ -401,7 +401,8 @@ namespace ECS
         assert(r->archetype);
         assert(r->dense);
 
-        int32_t idx = r->archetype->components.Search(cId);
+        int32_t idx = r->archetype->componentSet.Search(cId);
+        assert(idx != -1);
         int32_t colIdx = r->archetype->componentMap[idx];
         assert(colIdx != -1);
 
@@ -431,7 +432,7 @@ namespace ECS
         assert(r->archetype);
         assert(r->dense);
 
-        int32_t idx = r->archetype->components.Search(cId);
+        int32_t idx = r->archetype->componentSet.Search(cId);
         int32_t colIdx = r->archetype->componentMap[idx];
         assert(colIdx != -1);
 
@@ -457,7 +458,7 @@ namespace ECS
         assert(r->archetype);
         assert(r->dense);
 
-        int32_t idx = r->archetype->components.Search(cId);
+        int32_t idx = r->archetype->componentSet.Search(cId);
         int32_t colIdx = r->archetype->componentMap[idx];
         assert(colIdx != -1);
 
@@ -475,7 +476,7 @@ namespace ECS
 
         //grow entities
         EntityId* newEntities =
-            PTR_CAST(m_wAllocator.Alloc(sizeof(EntityId) * newCapacity), EntityId);
+            PTR_CAST(m_wAllocator.Init(sizeof(EntityId) * newCapacity), EntityId);
 
         std::memcpy(newEntities, archetype.entities, sizeof(EntityId) * archetype.capacity);
         m_wAllocator.Free(sizeof(EntityId) * archetype.capacity, archetype.entities);
@@ -487,7 +488,7 @@ namespace ECS
         {
             Column& col = archetype.columns[idx];
             TypeInfo* ti = col.typeInfo;
-            void* newColData = m_wAllocator.Alloc(ti->size * newCapacity);
+            void* newColData = m_wAllocator.Init(ti->size * newCapacity);
 
             if(ti->hook.moveCtor || ti->hook.copyCtor)
             {
@@ -545,14 +546,14 @@ namespace ECS
         archetype.entities[r.row] = backId;
         archetype.entities[archetype.count - 1] = swapId;
 
-        for(uint32_t i = 0; i < r.archetype->components.count; i++)
+        for(uint32_t i = 0; i < r.archetype->componentSet.count; i++)
         {
             Column& col = r.archetype->columns[i];
             TypeInfo& ti = *col.typeInfo;
             void* swap = OFFSET(col.data, ti.size * r.row);
             void* back = OFFSET(col.data, ti.size * (archetype.count - 1));
 
-            void* temp = m_wAllocator.Alloc(ti.size);
+            void* temp = m_wAllocator.Init(ti.size);
 
             if(ti.hook.moveCtor)
             {
@@ -587,31 +588,34 @@ namespace ECS
 
     Archetype* World::CreateArchetype(ComponentSet&& componentSet)
     {
+        ComponentSet cloneSet;
+        cloneSet.Clone(m_wAllocator, componentSet);
+
         ArchetypeId id = GetArchetypeId();
         Archetype archetype;
         archetype.id = id;
         archetype.count = 0;
         archetype.capacity = DefaultArchetypeCapacity;
-        archetype.components = componentSet;
+        archetype.componentSet = std::move(cloneSet);
         archetype.addEdges.Init(&m_wAllocator, DefaultArchetypeCapacity);
         archetype.removeEdges.Init(&m_wAllocator, DefaultArchetypeCapacity);
 
         archetype.columns =
-            PTR_CAST(m_wAllocator.Alloc(sizeof(Column) * componentSet.count), Column);
+            PTR_CAST(m_wAllocator.Init(sizeof(Column) * componentSet.count), Column);
         archetype.entities =
-            PTR_CAST(m_wAllocator.Alloc(sizeof(EntityId) * DefaultArchetypeCapacity), EntityId);
+            PTR_CAST(m_wAllocator.Init(sizeof(EntityId) * DefaultArchetypeCapacity), EntityId);
         archetype.componentMap =
             PTR_CAST(m_wAllocator.Calloc(sizeof(int32_t) * componentSet.count * 2), int32_t);
 
         uint32_t dataColCounter = 0;
         for(uint32_t idx = 0; idx < componentSet.count; idx++)
         {
-            TypeInfo* ti = m_typeInfos[componentSet.idArr[idx]];
+            TypeInfo* ti = m_typeInfos[componentSet[idx]];
             if(ti->HasData())
             {
                 archetype.columns[dataColCounter].typeInfo = ti;
                 archetype.columns[dataColCounter].data =
-                    m_wAllocator.Alloc(ti->size * DefaultArchetypeCapacity);
+                    m_wAllocator.Init(ti->size * DefaultArchetypeCapacity);
 
                 archetype.componentMap[idx] = dataColCounter;
                 archetype.componentMap[componentSet.count + dataColCounter] = idx;
@@ -630,12 +634,12 @@ namespace ECS
         //NOTE: Test this
         for(uint32_t idx = 0; idx < componentSet.count; idx++)
         {
-            ComponentRecord& cr = m_componentIndex[componentSet.idArr[idx]];
+            ComponentRecord& cr = m_componentIndex[componentSet[idx]];
 
             //union pair
             if(cr.typeInfo->IsFullPair())
             {
-                ComponentRecord& pCr = m_componentIndex[LO_ENTITY_ID(componentSet.idArr[idx])];
+                ComponentRecord& pCr = m_componentIndex[LO_ENTITY_ID(componentSet[idx])];
 
                 if(pCr.archetypeStore.count == pCr.archetypeStore.capacity)
                 {
@@ -655,7 +659,7 @@ namespace ECS
             ++cr.archetypeStore.count;
         }
 
-        m_mappedArchetype.Insert(componentSet, rArchetype);
+        m_mappedArchetype.Insert(std::move(componentSet), rArchetype);
 
         return rArchetype;
     }
@@ -675,7 +679,7 @@ namespace ECS
         uint32_t srcCount = 0;
         if(src)
         {
-            srcCount = src->components.count;
+            srcCount = src->componentSet.count;
         }
 
         Archetype* dest = nullptr;
@@ -693,10 +697,9 @@ namespace ECS
                 uint32_t count = srcCount + 1;
 
                 ComponentSet cs;
-                cs.Alloc(m_wAllocator, count);
-                std::memcpy(cs.idArr, src->components.idArr, srcCount * sizeof(EntityId));
-                cs.idArr[count - 1] = cId;
-                cs.count = count;
+                cs.Init(m_wAllocator, count);
+                std::memcpy(cs.idArr, src->componentSet.idArr, srcCount * sizeof(EntityId));
+                cs[count - 1] = cId;
                 cs.Sort();
 
                 dest = GetArchetype(cs);
@@ -707,7 +710,7 @@ namespace ECS
                 }
                 else
                 {
-                    m_wAllocator.Free(sizeof(EntityId) * cs.count, cs.idArr);
+                    cs.Destroy(m_wAllocator);
                 }
 
                 src->addEdges.Insert(cId, dest);
@@ -716,9 +719,8 @@ namespace ECS
         else
         {
             ComponentSet cs;
-            cs.Alloc(m_wAllocator, 1);
-            cs.idArr[0] = cId;
-            cs.count = 1;
+            cs.Init(m_wAllocator, 1);
+            cs[0] = cId;
 
             dest = GetArchetype(cs);
 
@@ -728,7 +730,7 @@ namespace ECS
             }
             else
             {
-                m_wAllocator.Free(sizeof(EntityId), cs.idArr);
+                cs.Destroy(m_wAllocator);
             }
         }
 
@@ -742,7 +744,7 @@ namespace ECS
         assert(src);
 
         uint32_t srcCount = 0;
-        srcCount = src->components.count;
+        srcCount = src->componentSet.count;
 
         Archetype* dest = nullptr;
 
@@ -763,15 +765,14 @@ namespace ECS
             else
             {
                 ComponentSet cs;
-                cs.Alloc(m_wAllocator, count);
-                cs.count = count;
+                cs.Init(m_wAllocator, count);
 
                 //TODO: Review this later
-                int32_t rIdx = src->components.Search(cId);
+                int32_t rIdx = src->componentSet.Search(cId);
                 assert(rIdx != -1);
 
-                std::memcpy(cs.idArr, src->components.idArr, rIdx * sizeof(EntityId));
-                std::memcpy(cs.idArr + rIdx, src->components.idArr + rIdx + 1, (count - rIdx - 1) * sizeof(EntityId));
+                std::memcpy(cs.idArr, src->componentSet.idArr, rIdx * sizeof(EntityId));
+                std::memcpy(cs.idArr + rIdx, src->componentSet.idArr + rIdx + 1, (count - rIdx - 1) * sizeof(EntityId));
                 cs.Sort();
 
                 dest = GetArchetype(cs);
@@ -817,7 +818,7 @@ namespace ECS
             //SWAP BACK IN SRC ARCHETYPE
             SwapBack(r);
 
-            for(uint32_t i = 0; i < destArchetype->components.count; i++)
+            for(uint32_t i = 0; i < destArchetype->componentSet.count; i++)
             {
                 //skip no data tag and pair
                 int32_t destColIdx = destArchetype->componentMap[i];
@@ -832,7 +833,7 @@ namespace ECS
 
                 void* dest = OFFSET(destCol.data, ti.size * destArchetype->count);
 
-                int32_t srcIndex = r.archetype->components.Search(destArchetype->components.idArr[i]);
+                int32_t srcIndex = r.archetype->componentSet.Search(destArchetype->componentSet[i]);
 
                 if(srcIndex == -1)
                 {
@@ -886,7 +887,7 @@ namespace ECS
 
         if(!destArchetype)
         {
-            if(srcArchetype->columnCount == 1 && srcArchetype->components.count == 1)
+            if(srcArchetype->columnCount == 1 && srcArchetype->componentSet.count == 1)
             {
                 int32_t srcColIdx = srcArchetype->componentMap[0];
                 Column& srcCol = srcArchetype->columns[srcColIdx];
@@ -914,7 +915,7 @@ namespace ECS
                 GrowArchetype(*destArchetype);
             }
 
-            for(uint32_t idx = 0; idx < srcArchetype->components.count; idx++)
+            for(uint32_t idx = 0; idx < srcArchetype->componentSet.count; idx++)
             {
                 int32_t srcColIdx = srcArchetype->componentMap[idx];
 
@@ -928,7 +929,7 @@ namespace ECS
                 void* src = OFFSET(srcCol.data, ti.size * r.row);
 
 
-                int32_t destIdx = destArchetype->components.Search(srcArchetype->components.idArr[idx]);
+                int32_t destIdx = destArchetype->componentSet.Search(srcArchetype->componentSet[idx]);
                 if(destIdx != -1)
                 {
                     int32_t destColIdx = destArchetype->componentMap[destIdx];
@@ -980,7 +981,7 @@ namespace ECS
 
                 ArchetypeLinkedList* head = sc.archetypeList;
 
-                void** componentsData = PTR_CAST(m_wAllocator.Alloc(sizeof(void*) * sc.components.count), void*);
+                void** componentsData = PTR_CAST(m_wAllocator.Init(sizeof(void*) * sc.componentSet.count), void*);
 
                 while(head->archetype)
                 {
@@ -993,13 +994,13 @@ namespace ECS
                         it.world = this;
                         it.row = row;
 
-                        for(uint32_t idx = 0; idx < sc.components.count; idx++)
+                        for(uint32_t idx = 0; idx < sc.componentSet.count; idx++)
                         {
-                            int32_t cIdx = archetype->components.Search(sc.components.idArr[idx]);
+                            int32_t cIdx = archetype->componentSet.Search(sc.componentSet[idx]);
 
                             if(cIdx == -1)
                             {
-                                cIdx = archetype->components.SearchPair(sc.components.idArr[idx]);
+                                cIdx = archetype->componentSet.SearchPair(sc.componentSet[idx]);
                             }
 
                             assert(cIdx != -1);
@@ -1026,7 +1027,7 @@ namespace ECS
                     head = head->next;
                 }
 
-                m_wAllocator.Free(sizeof(void*) * sc.components.count, componentsData);
+                m_wAllocator.Free(sizeof(void*) * sc.componentSet.count, componentsData);
             }
 
             m_isDefered = false;
@@ -1060,8 +1061,8 @@ namespace ECS
             }
 
             m_wAllocator.Free(sizeof(EntityId) * archetype->capacity, archetype->entities);
-            m_wAllocator.Free(sizeof(int32_t) * archetype->components.count * 2, archetype->componentMap);
-            m_wAllocator.Free(sizeof(Column) * archetype->components.count, archetype->columns);
+            m_wAllocator.Free(sizeof(int32_t) * archetype->componentSet.count * 2, archetype->componentMap);
+            m_wAllocator.Free(sizeof(Column) * archetype->componentSet.count, archetype->columns);
             archetype->addEdges.Destroy();
             archetype->removeEdges.Destroy();
         }
@@ -1093,7 +1094,7 @@ namespace ECS
                 ArchetypeLinkedList::Free(m_wAllocator, freeNode);
             }
 
-            sc.components.Free(m_wAllocator);
+            sc.componentSet.Destroy(m_wAllocator);
         }
         m_systemStore.Destroy(m_wAllocator);
 

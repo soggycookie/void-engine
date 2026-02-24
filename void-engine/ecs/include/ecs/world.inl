@@ -4,7 +4,7 @@ namespace ECS
     template<typename T>
     TypeInfoBuilder<T> World::Component()
     {
-        TypeInfo* ti = new (m_wAllocator.Alloc(sizeof(TypeInfo))) TypeInfo();
+        TypeInfo* ti = new (m_wAllocator.Init(sizeof(TypeInfo))) TypeInfo();
         ti->size = sizeof(T);
         ti->alignment = alignof(T);
         ti->flags = (COMPONENT_TYPE | TYPE_HAS_DATA);
@@ -82,7 +82,7 @@ namespace ECS
     template<typename T>
     TypeInfoBuilder<T> World::Tag()
     {
-        TypeInfo* ti = new (m_wAllocator.Alloc(sizeof(TypeInfo))) TypeInfo();
+        TypeInfo* ti = new (m_wAllocator.Init(sizeof(TypeInfo))) TypeInfo();
         ti->size = sizeof(T);
         ti->alignment = alignof(T);
         ti->flags = (TAG_TYPE);
@@ -121,9 +121,9 @@ namespace ECS
     }
 
     template<typename T>
-    TypeInfoBuilder<T> World::Pair(bool isExclusive, bool isToggle)
+    TypeInfoBuilder<T> World::Relationship(bool isExclusive, bool isToggle)
     {
-        TypeInfo* ti = new (m_wAllocator.Alloc(sizeof(TypeInfo))) TypeInfo();
+        TypeInfo* ti = new (m_wAllocator.Init(sizeof(TypeInfo))) TypeInfo();
         ti->size = sizeof(T);
         ti->alignment = alignof(T);
 
@@ -217,14 +217,14 @@ namespace ECS
     }
 
     template<typename T>
-    void World::AddPair(EntityId id, EntityId second)
+    void World::AddRelationship(EntityId eId, EntityId targetId)
     {
-        EntityId pairId = MakeRelationship(ComponentTypeId<T>::id, second);
+        EntityId pairId = MakeRelationship(ComponentTypeId<T>::id, targetId);
         TypeInfo* pTi = m_typeInfos.GetValue(ComponentTypeId<T>::id);
         
         if(!m_componentIndex.ContainsKey(pairId))
         {
-            TypeInfo* ti = new (m_wAllocator.Alloc(sizeof(TypeInfo))) TypeInfo();
+            TypeInfo* ti = new (m_wAllocator.Init(sizeof(TypeInfo))) TypeInfo();
             *ti = *pTi;
             ti->flags |= FULL_PAIR;
             ti->id = pairId;
@@ -233,14 +233,14 @@ namespace ECS
             builder.Register();
         }
 
-        EntityRecord* r = m_entityIndex.GetPageData(id);
+        EntityRecord* r = m_entityIndex.GetPageData(eId);
 
         assert(r);
-        assert(!r->archetype->components.Has(pairId));
+        assert(!r->archetype->componentSet.Has(pairId));
 
         if(pTi->IsExclusive())
         {
-            if(r->archetype->components.HasPair(ComponentTypeId<T>::id))
+            if(r->archetype->componentSet.HasPair(ComponentTypeId<T>::id))
             {
                 return;
             }
@@ -265,7 +265,7 @@ namespace ECS
         {
             SwapBack(*r);
 
-            for(uint32_t i = 0; i < destArchetype->components.count; i++)
+            for(uint32_t i = 0; i < destArchetype->componentSet.count; i++)
             {
                 //skip no data tag and pair
                 int32_t destColIdx = destArchetype->componentMap[i];
@@ -280,7 +280,7 @@ namespace ECS
 
                 void* dest = OFFSET(destCol.data, ti.size * destArchetype->count);
 
-                int32_t srcIndex = r->archetype->components.Search(destArchetype->components.idArr[i]);
+                int32_t srcIndex = r->archetype->componentSet.Search(destArchetype->componentSet[i]);
 
                 if(srcIndex == -1)
                 {
@@ -321,7 +321,7 @@ namespace ECS
             --r->archetype->count;
         }
 
-        destArchetype->entities[destArchetype->count] = id;
+        destArchetype->entities[destArchetype->count] = eId;
         r->archetype = destArchetype;
         r->row = destArchetype->count;
         ++destArchetype->count;
@@ -330,19 +330,19 @@ namespace ECS
     }
 
     template<typename T>
-    void World::AddTag(EntityId id)
+    void World::AddTag(EntityId eId)
     {
-        EntityRecord* r = m_entityIndex.GetPageData(id);
+        EntityRecord* r = m_entityIndex.GetPageData(eId);
 
         assert(r);
 
         TypeInfo* pti = m_typeInfos.GetValue(ComponentTypeId<T>::id);
 
-        assert(!r->archetype->components.Has(ComponentTypeId<T>::id));
+        assert(!r->archetype->componentSet.Has(ComponentTypeId<T>::id));
 
         if(pti->IsExclusive())
         {
-            assert(!r->archetype->components.HasPair(ComponentTypeId<T>::id));
+            assert(!r->archetype->componentSet.HasPair(ComponentTypeId<T>::id));
         }
 
         Archetype* destArchetype = GetOrCreateArchetype_Add(r->archetype, ComponentTypeId<T>::id);
@@ -357,7 +357,7 @@ namespace ECS
             SwapBack(*r);
 
 
-            for(uint32_t i = 0; i < destArchetype->components.count; i++)
+            for(uint32_t i = 0; i < destArchetype->componentSet.count; i++)
             {
                 //skip no data tag and pair
                 int32_t destColIdx = destArchetype->componentMap[i];
@@ -372,7 +372,7 @@ namespace ECS
 
                 void* dest = OFFSET(destCol.data, ti.size * destArchetype->count);
 
-                int32_t srcIndex = r->archetype->components.Search(destArchetype->components.idArr[i]);
+                int32_t srcIndex = r->archetype->componentSet.Search(destArchetype->componentSet[i]);
 
                 if(srcIndex == -1)
                 {
@@ -413,7 +413,7 @@ namespace ECS
             --r->archetype->count;
         }
 
-        destArchetype->entities[destArchetype->count] = id;
+        destArchetype->entities[destArchetype->count] = eId;
         r->archetype = destArchetype;
         r->row = destArchetype->count;
         ++destArchetype->count;
@@ -449,11 +449,10 @@ namespace ECS
         EntityId ids[] = {ComponentTypeId<Components>::id...};
         uint32_t count = sizeof...(Components);
         ComponentSet componentSet;
-        componentSet.Alloc(m_wAllocator, count);
-        componentSet.count = count;
+        componentSet.Init(m_wAllocator, count);
         std::memcpy(componentSet.idArr, ids, count * sizeof(EntityId));
 
-        ArchetypeLinkedList* node = ArchetypeLinkedList::Alloc(m_wAllocator);
+        ArchetypeLinkedList* node = ArchetypeLinkedList::Init(m_wAllocator);
 
         ArchetypeLinkedList* head = node;
 
@@ -472,8 +471,8 @@ namespace ECS
                 for(uint32_t remainIdx = 1; remainIdx < count; remainIdx++)
                 {
                     //Archetype does not contain the same set of components
-                    if(!archetype->components.Has(ids[remainIdx]) &&
-                       !archetype->components.HasPair(ids[remainIdx]))
+                    if(!archetype->componentSet.Has(ids[remainIdx]) &&
+                       !archetype->componentSet.HasPair(ids[remainIdx]))
                     {
                         skip = true;
                     }
@@ -482,14 +481,14 @@ namespace ECS
                 if(!skip)
                 {
                     node->archetype = archetype;
-                    ArchetypeLinkedList* newNode = ArchetypeLinkedList::Alloc(m_wAllocator);
+                    ArchetypeLinkedList* newNode = ArchetypeLinkedList::Init(m_wAllocator);
                     node->next = newNode;
                     node = newNode;
                 }
             }
         }
 
-        sc.components = std::move(componentSet);
+        sc.componentSet = std::move(componentSet);
         sc.archetypeList = head;
 
         if(m_systemStore.capacity == m_systemStore.count)
@@ -497,7 +496,7 @@ namespace ECS
             m_systemStore.Grow(m_wAllocator);
         }
 
-        m_systemStore.Add(sc);
+        m_systemStore.Add(std::move(sc));
     }
 
     template<typename... Components, typename... FuncArgs>
@@ -506,7 +505,7 @@ namespace ECS
         EntityId ids[] = {ComponentTypeId<decay_t<Components>>::id...};
         uint32_t count = sizeof...(Components);
 
-        ArchetypeLinkedList* node = ArchetypeLinkedList::Alloc(m_wAllocator);
+        ArchetypeLinkedList* node = ArchetypeLinkedList::Init(m_wAllocator);
 
         ArchetypeLinkedList* head = node;
 
@@ -525,7 +524,7 @@ namespace ECS
                 for(uint32_t remainIdx = 1; remainIdx < count; remainIdx++)
                 {
                     //Archetype does not contain the same set of components
-                    if(archetype->components.Search(ids[remainIdx]) == -1)
+                    if(archetype->componentSet.Search(ids[remainIdx]) == -1)
                     {
                         skip = true;
                         break;
@@ -535,7 +534,7 @@ namespace ECS
                 if(!skip)
                 {
                     node->archetype = archetype;
-                    ArchetypeLinkedList* newNode = ArchetypeLinkedList::Alloc(m_wAllocator);
+                    ArchetypeLinkedList* newNode = ArchetypeLinkedList::Init(m_wAllocator);
                     node->next = newNode;
                     node = newNode;
                 }
@@ -559,7 +558,7 @@ namespace ECS
                 {
                     uint32_t componentId = ids[idx];
 
-                    int32_t cIdx = archetype->components.Search(componentId);
+                    int32_t cIdx = archetype->componentSet.Search(componentId);
 
                     assert(cIdx != -1);
 

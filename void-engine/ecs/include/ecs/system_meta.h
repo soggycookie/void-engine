@@ -46,15 +46,40 @@ namespace ECS
 
     struct SystemCallback
     {
-        void* funcPtr;
-        void (*invoker)(void*, QueryIterator*, void**);
-        ArchetypeLinkedList* archetypeList;
-        ComponentSet components;
+        SystemCallback() = default;
+
+        SystemCallback(SystemCallback&& other) noexcept
+        {
+            funcPtr = other.funcPtr;
+            invoker = other.invoker;
+            archetypeList = other.archetypeList;
+            componentSet = std::move(other.componentSet);            
+        }
+
+        SystemCallback(const SystemCallback& other) = delete;
+
+        SystemCallback& operator=(SystemCallback&& other) noexcept
+        {
+            funcPtr = other.funcPtr;
+            invoker = other.invoker;
+            archetypeList = other.archetypeList;
+            componentSet = std::move(other.componentSet);
+
+            return *this;
+        }
+
+        SystemCallback& operator=(const SystemCallback& other) = delete;
 
         void Execute(QueryIterator* it, void** componentsData)
         {
             invoker(funcPtr, it, componentsData);
         }
+
+        void* funcPtr;
+        void (*invoker)(void*, QueryIterator*, void**);
+        ArchetypeLinkedList* archetypeList;
+        ComponentSet componentSet;
+
     };
 
     template<typename FuncArgs, typename... Components>
