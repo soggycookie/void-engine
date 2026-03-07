@@ -8,7 +8,7 @@ namespace ECS
         EntityId id;
         EntityId parent;
         ComponentSet add;
-        Store<void*> componentData;
+        HashMap<EntityId, void*> componentData;
         const char* name;
     };
 

@@ -103,13 +103,8 @@ namespace ECS
         return Entity(id, this);
     }
 
-    bool World::isEntityExist(EntityId eId)
+    bool World::IsEntityExist(EntityId eId)
     {
-        if(eId == 0)
-        {
-            return false;
-        }
-
         return m_entityIndex.isValidDense(eId);
     }
 
@@ -160,57 +155,25 @@ namespace ECS
 
     Entity World::CreateEntity(EntityDesc& desc)
     {
-        if(!m_entityIndex.isValidDense(desc.id))
+        bool newId = false;
+        if(IsEntityExist(desc.id))
         {
-            Entity e(desc.id, this);
-
-            EntityRecord r;
-            r.archetype = nullptr;
-            r.dense = 0;
-            r.row = 0;
-            //std::snprintf(r.name, 16, desc.name);
-
-            r.dense = m_entityIndex.PushBack(e.GetFullId(), r, true);
-            EntityRecord& er = *GetEntityRecord(e.GetFullId());
-            er.dense = r.dense;
-
-            ResolveEntityDesc(er, desc);
-
-            return e;
+            auto pair = GetId();
+            desc.id = pair.second;
+            newId = pair.first;
         }
         else
         {
-            uint64_t freeId = m_entityIndex.GetReusedId();
-            bool newId = false;
-            if(freeId == 0)
-            {
-                newId = true;
-
-                while(m_entityIndex.isValidDense(++m_nextFreeId));
-
-                freeId = m_nextFreeId;
-            }
-            Entity e(freeId, this);
-
-            if(!newId)
-            {
-                e.IncreGenCount();
-            }
-
-            EntityRecord r;
-            r.archetype = nullptr;
-            r.dense = 0;
-            r.row = 0;
-            //std::snprintf(r.name, 16, desc.name);
-
-            r.dense = m_entityIndex.PushBack(e.GetFullId(), r, newId);
-            EntityRecord& er = *GetEntityRecord(e.GetFullId());
-            er.dense = r.dense;
-
-            ResolveEntityDesc(er, desc);
-
-            return e;
+            newId = true;
         }
+
+        uint32_t dense = m_entityIndex.PushBack(desc.id, EntityRecord{}, newId);
+        EntityRecord& r = *m_entityIndex.GetPageData(desc.id);
+        r.dense = dense;
+
+        ResolveEntityDesc(r, desc);
+
+        return Entity(desc.id, this);
     }
 
     EntityRecord* World::GetEntityRecord(EntityId eId)
@@ -229,7 +192,7 @@ namespace ECS
 
     void World::ResolveEntityDesc(EntityRecord& r, EntityDesc& desc)
     {
-        ComponentSet cs;
+        desc.add.Sort();
         Archetype* destArchetype = r.archetype;
         if(desc.parent != 0)
         {
@@ -251,6 +214,11 @@ namespace ECS
         if(desc.name)
         {
             destArchetype = GetOrCreateArchetype_Add(destArchetype, ComponentTypeId<EcsName>::id);
+        }
+
+        for(uint32_t idx = 0 ; idx < desc.add.count; ++idx)
+        {
+            destArchetype = GetOrCreateArchetype_Add(destArchetype, desc.add[idx]);
         }
 
         if(destArchetype)
@@ -281,6 +249,23 @@ namespace ECS
                     std::snprintf(name.name, 16, desc.name);
                     ti.hook.moveCtor(dest, &name);
                 }
+                else
+                {
+                    void* data = desc.componentData[destArchetype->componentSet[i]];
+                    
+                    if(ti.hook.moveCtor)
+                    {
+                        ti.hook.moveCtor(dest, data);
+                    }
+                    else if(ti.hook.copyCtor)
+                    {
+                        ti.hook.copyCtor(dest, data);
+                    }
+                    else
+                    {
+                        std::memcpy(dest, data, ti.size);
+                    }
+                }
             }
 
             destArchetype->entities[destArchetype->count] = desc.id;
@@ -290,7 +275,7 @@ namespace ECS
         }
 
         desc.add.Destroy(m_wAllocator);
-        desc.componentData.Destroy(m_wAllocator);
+        desc.componentData.Destroy();
     }
 
     void World::AddComponent(EntityId eId, EntityId cId)

@@ -124,7 +124,7 @@ namespace ECS
     {
     public:
         QueryBuilder(World& world)
-            : m_world(world), m_termCount(0), m_desc(), m_firstTerm(true)
+            : m_world(world), m_currTermIdx(0), m_desc(), m_firstTerm(true)
         {
         }
 
@@ -132,9 +132,9 @@ namespace ECS
         {
             if(!m_firstTerm)
             {
-                m_desc.terms[m_termCount++] = m_currTerm;
+                m_desc.terms[m_currTermIdx++] = m_currTerm;
                 m_currTerm = QueryTerm();
-                m_currTerm.fieldId = m_termCount;
+                m_currTerm.fieldId = m_currTermIdx;
             }
             else
             {
@@ -150,9 +150,9 @@ namespace ECS
         {
             if(!m_firstTerm)
             {
-                m_desc.terms[m_termCount++] = m_currTerm;
+                m_desc.terms[m_currTermIdx++] = m_currTerm;
                 m_currTerm = QueryTerm();
-                m_currTerm.fieldId = m_termCount;
+                m_currTerm.fieldId = m_currTermIdx;
             }            
             else
             {
@@ -284,14 +284,22 @@ namespace ECS
 
         Query Build()
         {
-            m_desc.terms[m_termCount] = m_currTerm;
+            m_desc.terms[m_currTermIdx] = m_currTerm;
 
-            Query query;
-            query,id = 0;
             //construct query
+            Query query;
+            query.id = 0;
+            query.termCount = m_currTermIdx + 1;
+            QueryTerm* terms = m_world.m_wAllocator.Alloc<QueryTerm>(query.termCount);
+
+            for(uint32_t idx = 0; idx < query.termCount; ++idx)
+            {
+                terms[idx] = m_desc.terms[idx];
+            }
+            
             if(m_desc.cache)
             {
-                if(m_world.isEntityExist(m_desc.id))
+                if(m_world.IsEntityExist(m_desc.id))
                 {
                     m_desc.id = m_world.GetId();
                 }
@@ -307,16 +315,18 @@ namespace ECS
                 m_world.CreateEntity(eDesc);
                 
                 query.id = m_desc.id;
+
+                //filter to cache immediately
             }
 
-            return Query();
+            return query;
         }
 
     private:
         World& m_world;
         QueryDesc m_desc;
         QueryTerm m_currTerm;
-        uint32_t m_termCount;
+        uint32_t m_currTermIdx;
         bool m_firstTerm;
     };
 }

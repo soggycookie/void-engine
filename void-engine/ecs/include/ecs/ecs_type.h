@@ -227,7 +227,10 @@ namespace ECS
         }
 
         void Sort(){
-            std::sort(idArr, (idArr + count));
+            if(idArr)
+            {
+                std::sort(idArr, (idArr + count));
+            }
         }
 
         int32_t Search(EntityId id)

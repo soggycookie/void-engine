@@ -54,6 +54,27 @@ namespace ECS
         return chunk;        
     }
 
+    void* BlockAllocator::Alloc()
+    {
+        if(m_chunkCount <= MinChunkCount)
+        {
+            return std::calloc(1, m_chunkSize);
+        }
+
+        if(!m_chunkHead)
+        {
+            m_chunkHead = CreateBlock();
+            assert(m_chunkHead && "Chunk Head is null!");
+        }
+
+        auto chunk = m_chunkHead;
+        m_chunkHead = m_chunkHead->next;
+
+        ++m_allocCount;
+
+        return chunk;        
+    }
+
 
     void BlockAllocator::Free(void* addr)
     {

@@ -41,7 +41,7 @@ namespace ECS
 
         EntityId GetNewId();
         EntityId GetReusedId();
-        bool isEntityExist(EntityId eId);
+        bool IsEntityExist(EntityId eId);
 
         //the returned bool is true if this is a new id
         //else it is a reused one

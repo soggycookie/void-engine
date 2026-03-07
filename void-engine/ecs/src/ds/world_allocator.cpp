@@ -25,6 +25,15 @@ namespace ECS
 
         return block->Calloc();
     }
+
+    void* WorldAllocator::Alloc(uint32_t size)
+    {
+        uint32_t alignedSize = RoundMinPowerOf2(size, 16);
+
+        BlockAllocator* block = GetOrCreateBalloc(alignedSize);    
+
+        return block->Alloc();
+    }
     
     void WorldAllocator::Free(uint32_t size, void* addr)
     {
