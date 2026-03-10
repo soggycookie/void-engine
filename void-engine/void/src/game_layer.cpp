@@ -62,7 +62,7 @@ namespace VoidEngine
 
         auto shader = ResourceSystem::Load<ShaderResource>(L"asset//shader//square_demo.hlsl");
         material = ResourceSystem::Create<MaterialResource>(ResourceSystem::GenerateGUID(), shader->GetGUID());
-
+        std::cout << "Test" <<std::endl;
         //std::cout << "Entity id: " << e.GetId() << " , gen count: " << e.GetGenCount() << std::endl;
         
         world = ECS::CreateWorld();
@@ -96,10 +96,10 @@ namespace VoidEngine
             //AddPair<ECS::ChildOf>(e.GetFullId()).
             Set<Position>({1, 1});
         
-        std::cout << ECS::ComponentTypeId<ECS::EcsChildOf>::id << std::endl;
+        //std::cout << ECS::ComponentTypeId<ECS::EcsChildOf>::Id() << std::endl;
         
         auto a = world->m_componentIndex.GetValue(ECS::MakeRelationship(ECS::EcsChildOfId, e.GetFullId()));
-        std::cout << a.archetypeStore.count << std::endl;
+        //std::cout << a.archetypeStore.count << std::endl;
         //std::cout << world->m_componentIndex.GetValue(ECS::MakePair(ECS::ChildOfId, e.GetFullId())).name << std::endl;
 
         world->System<Position, ECS::EcsChildOf>(
@@ -124,6 +124,10 @@ namespace VoidEngine
             case EventType::KEY_RELEASED:
             {
                 std::cout << "Key Released Game Layer" << std::endl;
+                break;
+            }
+            default:
+            {
                 break;
             }
         }

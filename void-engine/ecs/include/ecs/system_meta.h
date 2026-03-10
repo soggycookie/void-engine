@@ -75,8 +75,8 @@ namespace ECS
             invoker(funcPtr, it, componentsData);
         }
 
-        void* funcPtr;
-        void (*invoker)(void*, QueryIterator*, void**);
+        void(*funcPtr)();
+        void (*invoker)(void(*)(), QueryIterator*, void**);
         ArchetypeLinkedList* archetypeList;
         ComponentSet componentSet;
 
@@ -107,7 +107,7 @@ namespace ECS
 
                 if(data == nullptr)
                 {
-                    assert(0 && "Component has no data!");
+                    assert(-1 && "Component has no data!");
                 }
 
                 return *static_cast<const ComponentType*>(data);
@@ -136,10 +136,10 @@ namespace ECS
                       )), "Invalid system parameters!");
 
         SystemCallback cb;
-        cb.funcPtr = CAST(func, void*);
-        cb.invoker = [](void* fn, QueryIterator* it, void** componentsData)
+        cb.funcPtr = RCAST(func, void(*)());
+        cb.invoker = [](void(*fn)(), QueryIterator* it, void** componentsData)
             {
-                auto actualFunc = CAST(fn, void (*)(FuncArgs...));
+                auto actualFunc = RCAST(fn, void (*)(FuncArgs...));
                 actualFunc(GetArgs<FuncArgs, Components...>(it, componentsData)...);
             };
 

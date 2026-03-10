@@ -5,6 +5,7 @@
 
 #include "allocator/free_list_allocator.h"
 #include "allocator/pool_allocator.h"
+#include <filesystem>
 
 namespace VoidEngine
 {
@@ -85,6 +86,18 @@ namespace VoidEngine
         template<typename T>
         static T* Load(const std::wstring_view file)
         {
+            std::filesystem::path p = file; // relative path
+            std::cout << std::filesystem::current_path() << '\n';
+            
+            if (std::filesystem::exists(p))
+            {
+                std::cout << "Path exists\n";
+            }
+            else
+            {
+                std::cout << "Path does not exist\n";
+            }
+
             size_t extPos = file.find_last_of('.');
 
             if(extPos == std::string_view::npos)
@@ -97,7 +110,7 @@ namespace VoidEngine
             size_t extSize = file.length() - extPos;
 
             std::wstring_view extension = file.substr(extPos, extSize);
-
+            
             if(extension == L"hlsl")
             {
                 void* vertexCompiledSrc = Renderer::CompileShader(file.data(), "VSMain", "vs_5_0");

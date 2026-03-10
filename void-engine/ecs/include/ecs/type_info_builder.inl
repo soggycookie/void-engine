@@ -1,3 +1,14 @@
+#include "ecs_type.h"
+#include "internal_component.h"
+#include <cassert>
+#include <string_view>
+#include <type_traits>
+#ifdef __clang__
+#pragma once
+#include "world.h"
+#include "type_info_builder.h"
+#endif
+
 namespace ECS
 {
     template<typename T>
@@ -59,82 +70,153 @@ namespace ECS
     template<typename T>
     TypeInfoBuilder<T>& TypeInfoBuilder<T>::Id(EntityId id)
     {
-        ti.id = id;
+        ti.eId = id;
 
         return *this;
     }
 
+    template<typename T>
+    TypeInfoBuilder<T>& TypeInfoBuilder<T>::Exclusive()
+    {
+        if(!ti.IsRelation())
+        {
+            assert(0);
+        }
+
+        ti.flags |= EXCLUSIVE_RELATION;
+
+        return *this;
+    }
 
     template<typename T>
-    void TypeInfoBuilder<T>::Register(const char* name)
+    TypeInfoBuilder<T>& TypeInfoBuilder<T>::HasData()
     {
-        if constexpr (!std::is_void_v<T>)
+        ti.flags |= TYPE_HAS_DATA;
+
+        return *this;
+    }
+
+    template<typename T>
+    void TypeInfoBuilder<T>::Register()
+    {
+        assert(world);
+        
+        //Get Valid id here to assign type -> id
+        if(world->IsEntityExist(ti.eId))
         {
-            name = ComponentName<T>::name;
+            ti.eId = world->GetId().second;
         }
 
-        if(!ti.IsFullPair())
+        //void is for runtime relationship creation
+        //that you only know type id of relation and target
+
+        if constexpr (std::is_void_v<T>) 
         {
-            if(ti.id == 0 || world->m_entityIndex.isValidDense(ti.id))
+            assert(first != 0);
+            EcsName firstName = world->Get<EcsName>(first);
+            if(!ti.IsRelationship())
             {
-                Entity e = world->CreateEntity(name, 0);
-                ti.id = e.GetFullId();
+                assert(0);
             }
-            else
+            else 
             {
-                if constexpr(!std::is_same_v<EcsName, T>)
-                {
-                    Entity e = world->CreateEntity(ti.id, name, 0);
-                }
-                else
-                {
-                    Entity e = world->CreateEntity(ti.id, 0);
-                }
+                //NOTE:
+                assert(second != 0);
+                EcsName targetName = world->Get<EcsName>(second);
+                world->Register(ti, first, second, std::string_view(firstName.name, 16), std::string_view(targetName.name, 16));
             }
         }
-
-        if(world->m_componentStore.capacity == world->m_componentStore.count)
+        else 
         {
-            world->m_componentStore.Grow(world->m_wAllocator);
-        }
-        world->m_componentStore.Add(ti.id);
-
-        ComponentRecord cr;
-        cr.id = ti.id;
-        cr.typeInfo = &ti;
-
-#ifdef ECS_DEBUG
-
-        if(ti.IsFullPair())
-        {
-            //char pName[30];
-            //int32_t r = std::snprintf(cr.name, 30, ComponentName<T>::name);
-            int32_t r = std::snprintf(cr.name, 16, name);
-
-            std::snprintf(&cr.name[r], 16 - r, " %u", HI_ENTITY_ID(ti.id));
-        }
-        else
-        {
-            std::snprintf(cr.name, 16, name);
-            ComponentTypeId<T>::Id(ti.id);
-        }
-#endif
-
-        cr.archetypeStore.Init(world->m_wAllocator);
-
-        assert(cr.archetypeStore.store);
-
-        world->m_componentIndex.Insert(ti.id, std::move(cr));
-        world->m_typeInfos.Insert(ti.id, &ti);
-
-        if constexpr(std::is_same_v<EcsName, T>)
-        {
-            world->AddComponent(ti.id, EcsNameId);
-            char name[16];
-            std::snprintf(name, 16, ComponentName<EcsName>::name);
-            world->Set(ti.id, EcsNameId, &name);
+            if(!ti.IsRelationship())
+            {
+                ComponentTypeId<T>::Id(ti.eId);
+                world->Register(ti, first, second, GetComponentName<T>(), std::string_view(nullptr, 0)); 
+            }
+            else 
+            {
+                //NOTE:
+                EcsName targetName = world->Get<EcsName>(second);
+                world->Register(ti, first, second, GetComponentName<T>(), std::string_view(targetName.name, 16));
+            }
         }
     }
 
+    template<typename T>
+    TypeInfoBuilder<T>& TypeInfoBuilder<T>::Component()
+    {
+        ti.flags |= (COMPONENT_TYPE | TYPE_HAS_DATA);
+        return *this;
+    }
+
+    template<typename T>
+    TypeInfoBuilder<T>& TypeInfoBuilder<T>::Tag()
+    {
+        ti.flags |= TAG_TYPE;
+        return *this;
+    }
+        
+    template<typename T>
+    TypeInfoBuilder<T>& TypeInfoBuilder<T>::Relation()
+    {
+        ti.flags |= RELATION_TYPE;
+        return *this;
+    }
+       
+    template<typename T>
+    TypeInfoBuilder<T>& TypeInfoBuilder<T>::Relationship(EntityId relationId, EntityId targetId)
+    {
+        if constexpr(!std::is_void_v<T>)
+        {
+            assert(0);
+        }
+
+        this->second = targetId;
+        this->first = relationId;
+        
+        TypeInfo* relationTi = world->m_typeInfos[relationId];
+        ti.size = relationTi->size;
+        ti.alignment = relationTi->alignment;
+
+        if(world->m_typeInfos.ContainsKey(targetId))
+        {
+            TypeInfo* targetTi = world->m_typeInfos[targetId];
+            assert(!targetTi->IsRelation());        
+        }
+
+        assert(relationTi);
+        assert(relationTi->IsRelation());
+
+        ti.flags |= RELATIONSHIP_TYPE;
+
+        return *this;
+    }
+
+    template<typename T>
+    TypeInfoBuilder<T>& TypeInfoBuilder<T>::Relationship(EntityId targetId)
+    {
+        if constexpr (std::is_void_v<T>) 
+        {
+            assert(0);
+        }
+
+        first = ComponentTypeId<T>::Id();
+        TypeInfo* relationTi = world->m_typeInfos[ComponentTypeId<T>::Id()];
+        
+        if(world->m_typeInfos.ContainsKey(targetId))
+        {
+            TypeInfo* targetTi = world->m_typeInfos[targetId];
+            assert(!targetTi->IsRelation());        
+        }
+
+        assert(relationTi);
+        assert(relationTi->IsRelation());
+
+        this->second = targetId;
+
+        ti.flags |= RELATIONSHIP_TYPE;
+
+        return *this;
+    }
 
 }

@@ -1,6 +1,5 @@
 #pragma once
 #include "ecs_type.h"
-#include "system_meta.h"
 
 namespace ECS
 {
@@ -25,74 +24,57 @@ namespace ECS
     //internal components
     struct EcsName
     {
-        EcsName() = default;
-
-        char name[16];
+        char* name;
     };
-    ECS_COMPONENT(EcsName);
-
 
     struct EcsInherit
     {
         void* data;
     };
-    ECS_COMPONENT(EcsInherit)
 
     //internal tag
     struct EcsSystem
     {         
     };
 
-    ECS_COMPONENT(EcsSystem);
-
     struct EcsPhase
     {
     };
-    ECS_COMPONENT(EcsPhase);
 
     struct EcsArchetype
     {
     };
-    ECS_COMPONENT(EcsArchetype);
 
     struct EcsPipeline
     {
     };
-    ECS_COMPONENT(EcsPipeline);
 
     struct EcsComponent
     {
     };
-    ECS_COMPONENT(EcsComponent);
     
     struct EcsQuery
     {
     };
-    ECS_COMPONENT(EcsQuery);
 
     struct EcsDisabled
     {
     };
-    ECS_COMPONENT(EcsDisabled)
 
     //internal pair
     struct EcsChildOf
     {
     };
-    ECS_COMPONENT(EcsChildOf);
 
     struct EcsDependOn
     {
     };
-    ECS_COMPONENT(EcsDependOn);
 
     struct EcsToggle
     {
     };
-    ECS_COMPONENT(EcsToggle);
 
     struct EcsIsA
     {
     };
-    ECS_COMPONENT(EcsIsA)
 }

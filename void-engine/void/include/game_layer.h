@@ -10,25 +10,20 @@ namespace VoidEngine
     {
         uint32_t x, y;
     };
-    
-    ECS_COMPONENT(Position)
 
     struct Velocity
     {
         float x, y;
     };
-    ECS_COMPONENT(Velocity)
 
     struct Rotation
     {
         float x, y;
     };
-    ECS_COMPONENT(Rotation)
 
     struct NPC
     {
     };
-    ECS_COMPONENT(NPC);
 
     class GameLayer : public Layer
     {
@@ -52,3 +47,4 @@ namespace VoidEngine
         MaterialResource* material;
     };
 }
+

@@ -52,6 +52,7 @@ namespace VoidEngine
 
     public:
         D3D11_RendererAPI();
+        ~D3D11_RendererAPI() = default;
 
         void Clear() override;
         bool Init(int width, int height, void* outputWindow) override;

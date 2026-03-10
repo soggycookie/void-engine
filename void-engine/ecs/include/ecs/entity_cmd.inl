@@ -1,3 +1,7 @@
+#ifdef __clang__
+#pragma once
+#include "entity_cmd.h"
+#endif
 
 namespace ECS
 {
@@ -8,7 +12,7 @@ namespace ECS
     template<typename Component>
     IEntityCommand& IEntityCommand::AddComponent()
     {
-        AddComponentImpl(ComponentTypeId<Component>::id);
+        AddComponentImpl(ComponentTypeId<Component>::Id());
 
         return *this;
     }
@@ -16,7 +20,7 @@ namespace ECS
     template<typename Component>
     IEntityCommand& IEntityCommand::AddTag()
     {
-        AddTagImpl(ComponentTypeId<Component>::id);
+        AddTagImpl(ComponentTypeId<Component>::Id());
 
         return *this;    
     }
@@ -24,7 +28,7 @@ namespace ECS
     template<typename First>
     IEntityCommand& IEntityCommand::AddRelationship(EntityId second)
     {
-        AddPairImpl(ComponentTypeId<First>::id, second);
+        AddPairImpl(ComponentTypeId<First>::Id(), second);
 
         return *this;       
     }
@@ -32,7 +36,7 @@ namespace ECS
     template<typename Component>
     IEntityCommand& IEntityCommand::RemoveComponent()
     {
-        RemoveComponentImpl(ComponentTypeId<Component>::id);
+        RemoveComponentImpl(ComponentTypeId<Component>::Id());
 
         return *this;   
     }
@@ -40,7 +44,7 @@ namespace ECS
     template<typename Component>
     IEntityCommand& IEntityCommand::Set(Component&& c)
     {
-        SetImpl(ComponentTypeId<Component>::id, &c);
+        SetImpl(ComponentTypeId<Component>::Id(), &c);
 
         return *this;
     }
@@ -48,6 +52,6 @@ namespace ECS
     template<typename Component>
     Component& IEntityCommand::Get()
     {
-        return *PTR_CAST(GetImpl(ComponentTypeId<Component>::id), Component);
+        return *PTR_CAST(GetImpl(ComponentTypeId<Component>::Id()), Component);
     }
 }

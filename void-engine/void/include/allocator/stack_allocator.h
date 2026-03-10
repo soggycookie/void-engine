@@ -43,6 +43,8 @@ namespace VoidEngine
             allocator.m_totalSize = 0;    
             allocator.m_offset = 0;
             allocator.m_prevOffset = 0;
+        
+            return *this;
         }
 
         ~StackAllocator()

@@ -59,7 +59,5 @@ namespace ECS
     };
 }
 
-/*
-    Template function definition
-*/
-#include "sparse_set.inl"
+
+#include "ds/sparse_set.inl"

@@ -7,6 +7,8 @@ namespace VoidEngine
     class RendererAPI
     {
     public:
+        virtual ~RendererAPI() = default;
+
         virtual void Clear() = 0;
         virtual bool Init(int width, int height, void* outputWindow) = 0;
 

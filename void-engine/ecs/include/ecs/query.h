@@ -1,6 +1,6 @@
 #pragma once
-#include "ecs_type.h"
-
+#include "entity.h"
+#include "internal_component.h"
 
 namespace ECS
 {
@@ -123,11 +123,13 @@ namespace ECS
     class QueryBuilder
     {
     public:
-        QueryBuilder(World& world)
+        QueryBuilder(World* world)
             : m_world(world), m_currTermIdx(0), m_desc(), m_firstTerm(true)
         {
+            assert(m_world);
         }
 
+        template<typename T>
         QueryBuilder<Components...>& Term(EntityId id)
         {
             if(!m_firstTerm)
@@ -211,15 +213,15 @@ namespace ECS
         }
 
         template<typename T>
-        QueryBuilder<Components...>& Has()
+        QueryBuilder<Components...>& With()
         {
-            return Term<T>().Has();
+            return Term<T>().With();
         }
         
         template<typename T>
-        QueryBuilder<Components...>& Not()
+        QueryBuilder<Components...>& Without()
         {
-            return Term<T>().Not();
+            return Term<T>().Without();
         }
 
         template<typename T>
@@ -228,12 +230,12 @@ namespace ECS
             return Term<T>().Optional();
         }
 
-        QueryBuilder<Components...>& Has()
+        QueryBuilder<Components...>& With()
         {
-            return Op(Has);
+            return Op(HAS);
         }
         
-        QueryBuilder<Components...>& Not()
+        QueryBuilder<Components...>& Without()
         {
             return Op(NOT);
         }
@@ -282,48 +284,48 @@ namespace ECS
             return *this;
         }
 
-        Query Build()
-        {
-            m_desc.terms[m_currTermIdx] = m_currTerm;
-
-            //construct query
-            Query query;
-            query.id = 0;
-            query.termCount = m_currTermIdx + 1;
-            QueryTerm* terms = m_world.m_wAllocator.Alloc<QueryTerm>(query.termCount);
-
-            for(uint32_t idx = 0; idx < query.termCount; ++idx)
-            {
-                terms[idx] = m_desc.terms[idx];
-            }
-            
-            if(m_desc.cache)
-            {
-                if(m_world.IsEntityExist(m_desc.id))
-                {
-                    m_desc.id = m_world.GetId();
-                }
-
-                EntityDesc eDesc;
-                eDesc.id = m_desc.id;
-                std::snprintf(eDesc.name, 16, "Query %u", m_desc.id);
-                ComponentSet cs;
-                cs.Init(m_world, 1);
-                cs[0] = EcsQueryId; 
-                eDesc.add = std::move(cs);
-
-                m_world.CreateEntity(eDesc);
-                
-                query.id = m_desc.id;
-
-                //filter to cache immediately
-            }
-
-            return query;
-        }
+        Query Build() = 0;
+        // {
+        //     m_desc.terms[m_currTermIdx] = m_currTerm;
+        //
+        //     //construct query
+        //     Query query;
+        //     query.id = 0;
+        //     query.termCount = m_currTermIdx + 1;
+        //     QueryTerm* terms = m_world->m_wAllocator.Alloc<QueryTerm>(query.termCount);
+        //
+        //     for(uint32_t idx = 0; idx < query.termCount; ++idx)
+        //     {
+        //         terms[idx] = m_desc->terms[idx];
+        //     }
+        //
+        //     if(m_desc.cache)
+        //     {
+        //         if(m_world->IsEntityExist(m_desc.id))
+        //         {
+        //             m_desc.id = m_world->GetId();
+        //         }
+        //
+        //         EntityDesc eDesc;
+        //         eDesc.id = m_desc.id;
+        //         std::snprintf(eDesc.name, 16, "Query %u", m_desc.id);
+        //         ComponentSet cs;
+        //         cs.Init(*m_world, 1);
+        //         cs[0] = EcsQueryId; 
+        //         eDesc.add = std::move(cs);
+        //
+        //         m_world.CreateEntity(eDesc);
+        //
+        //         query.id = m_desc.id;
+        //
+        //         //filter to cache immediately
+        //     }
+        //
+        //     return query;
+        // }
 
     private:
-        World& m_world;
+        World* m_world;
         QueryDesc m_desc;
         QueryTerm m_currTerm;
         uint32_t m_currTermIdx;

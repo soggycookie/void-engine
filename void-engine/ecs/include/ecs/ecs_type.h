@@ -1,20 +1,61 @@
 #pragma once
 #include "ecs_pch.h"
 #include "ds/hash_map.h"
-
-
-template<typename T>
-struct ComponentName;
-
-#define ECS_COMPONENT(T) \
-        template<> \
-        struct ComponentName<T> \
-        { \
-            static constexpr const char* name = #T; \
-        }; 
+#include <string_view>
+#include <type_traits>
 
 namespace ECS
 {
+
+    template<typename T>
+    constexpr const std::string_view GetComponentName()
+    {
+#if defined(__clang__) || defined(__GNUC__)
+        std::string_view funcSig = __PRETTY_FUNCTION__;
+
+        size_t start = funcSig.find("T =") + 4;
+        size_t end = funcSig.find("]", start);
+        
+        std::string_view typeName = funcSig.substr(start, end - start);
+        size_t ns = typeName.find_last_of("::", end) + 1;
+
+        if(ns != std::string_view::npos)
+        {
+            typeName = typeName.substr(ns, end - ns);
+        }
+
+        return typeName;
+
+#elif defined(_MSC_VER)
+        //const class std::basic_string_view<char,struct std::char_traits<char> > __cdecl ECS::GetComponentName<struct VoidEngine::NPC>(void)
+        std::string_view funcSig = __FUNCSIG__;
+        
+        size_t start = funcSig.find("<struct");
+        
+        if(start == std::string_view::npos)
+        {
+            start = funcSig.find("<class") + 7;
+        }
+        else
+        {
+            start += 8;
+        }
+
+        size_t end = funcSig.find_last_of(">(") - 1;
+        std::string_view typeName = funcSig.substr(start, end - start);
+        size_t ns = typeName.find_last_of("::", end) + 1;
+
+        if(ns != std::string_view::npos)
+        {
+            typeName = typeName.substr(ns, end - ns);
+        }
+
+        return typeName;
+
+#endif
+
+        return std::string_view(nullptr, 0);
+    }
 
 #define ENTITY_ID_MASK      0xFFFFFFFFULL
 #define ENTITY_GEN_MASK     0xFFFFULL
@@ -50,35 +91,38 @@ namespace ECS
         LoEntityId f = first & mask;
         LoEntityId s = sec & mask;
 
-        EntityId pair = (EntityId) f | ((EntityId)s << 32);
+        EntityId relationship = (EntityId) f | ((EntityId)s << 32);
 
-        return pair;
+        return relationship;
     }
 
-    //inline EntityId GetNextComponentId()
-    //{
-    //    static EntityId id = 0;
-    //    return id++;
-    //}
-
-
-    //template<typename T>
-    //EntityId GetComponentId()
-    //{
-    //    static EntityId id = GetNextComponentId();
-    //    return id;
-    //}
-
     class World;
+
+
+    template<typename U>
+    class TypeInfoBuilder;
+
+
     template<typename T>
-    struct ComponentTypeId
+    class ComponentTypeId
     {
+    private:
+        template<typename U>
+        friend class TypeInfoBuilder;
         static EntityId id;
 
-        static void Id(EntityId cid)
+        static void Id(EntityId eId)
         {
-            id = cid;
+            id = eId;
         }
+        
+    public:
+
+        static EntityId Id()
+        {
+            return id;
+        }
+
     };
 
     template<typename T>
@@ -94,6 +138,7 @@ namespace ECS
         Store() : 
             store(nullptr), count(0), capacity(0)
         {
+            static_assert(std::is_destructible_v<T>);
         }
 
         void Init(WorldAllocator& wAllocator)
@@ -110,8 +155,28 @@ namespace ECS
             uint32_t newStoreCapacity = capacity * 2;
             T* newStore =
                 PTR_CAST(wAllocator.AllocN(sizeof(T), newStoreCapacity, newStoreCapacity), T);
+            
+            if constexpr (std::is_move_constructible_v<T>) 
+            {
+                for(size_t idx = 0; idx < count; idx++)
+                {
+                    new (&newStore[idx]) T(std::move(store[idx]));
+                    store[idx].~T();
+                }
+            }
+            else if (std::is_copy_constructible_v<T>) 
+            {
+                for(size_t idx = 0; idx < count; idx++)
+                {
+                    new (&newStore[idx]) T(store[idx]);
+                    store[idx].~T();
+                }
+            }
+            else 
+            {
+                std::memcpy(newStore, store, sizeof(T) * count);
+            }
 
-            std::memcpy(newStore, store, sizeof(T) * capacity);
 
             wAllocator.Free(sizeof(T) * capacity, store);
 
@@ -218,7 +283,7 @@ namespace ECS
             uint64_t h = 0;
             for(uint32_t i = 0; i < count; i++)
             {
-                h += HashU64(idArr[i]);
+                h += ECS::HashU64(idArr[i]);
             }
 
             h /= count;
@@ -276,7 +341,7 @@ namespace ECS
             return true;
         }
 
-        bool HasPair(EntityId id)
+        bool HasRelationship(EntityId id)
         {
             for(uint32_t idx = count ; idx > 0;)
             {
@@ -349,15 +414,16 @@ namespace ECS
 
 #define COMPONENT_TYPE      1 << 0
 #define TAG_TYPE            1 << 1
-#define PAIR_TYPE           1 << 2
+#define RELATION_TYPE       1 << 2
 #define TYPE_HAS_DATA       1 << 3
-#define EXCLUSIVE_PAIR      1 << 4
+#define EXCLUSIVE_RELATION  1 << 4
 #define BITSET_DATA         1 << 5
-#define FULL_PAIR           1 << 6
+#define RELATIONSHIP_TYPE   1 << 6
 
     struct TypeInfo
     {
-        EntityId id;
+        EntityId eId;
+        EntityId cId;
         uint32_t alignment;
         uint32_t size;
         TypeHook hook;
@@ -370,7 +436,7 @@ namespace ECS
 
         bool IsExclusive() const
         {
-            return (flags & (EXCLUSIVE_PAIR | PAIR_TYPE)) ==  (EXCLUSIVE_PAIR | PAIR_TYPE);
+            return (flags & (EXCLUSIVE_RELATION | RELATION_TYPE)) ==  (EXCLUSIVE_RELATION | RELATION_TYPE);
         }
 
         bool IsDataBitset() const
@@ -378,9 +444,24 @@ namespace ECS
             return (flags & (TYPE_HAS_DATA | BITSET_DATA)) == (TYPE_HAS_DATA | BITSET_DATA);
         }
 
-        bool IsFullPair() const
+        bool IsRelationship() const
         {
-            return (flags & (PAIR_TYPE | FULL_PAIR)) == (PAIR_TYPE | FULL_PAIR);
+            return (flags & RELATIONSHIP_TYPE) == RELATIONSHIP_TYPE;
+        }
+
+        bool IsRelation() const
+        {
+            return (flags & RELATION_TYPE) == RELATION_TYPE;
+        }
+
+        bool IsComponent() const
+        {
+            return (flags & COMPONENT_TYPE) == COMPONENT_TYPE;
+        }
+
+        bool IsTag() const
+        {
+            return (flags & TAG_TYPE) == TAG_TYPE;
         }
     };
 

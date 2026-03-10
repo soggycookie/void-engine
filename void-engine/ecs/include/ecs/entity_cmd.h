@@ -9,7 +9,7 @@ namespace ECS
         EntityId parent;
         ComponentSet add;
         HashMap<EntityId, void*> componentData;
-        const char* name;
+        char* name;
     };
 
     class World;

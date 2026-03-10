@@ -1,3 +1,7 @@
+#ifdef __clang__
+#include "sparse_set.h"
+#include "world_allocator.h"
+#endif // __clang__
 
 namespace ECS
 {

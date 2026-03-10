@@ -18,5 +18,6 @@
 #include <set>
 #include <unordered_set>
 #include <typeinfo>
+#include <string_view>
 
 #include "ecs_utils.h"

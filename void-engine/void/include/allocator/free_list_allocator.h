@@ -64,6 +64,8 @@ namespace VoidEngine
 
             allocator.m_head = nullptr;
             allocator.m_usedSize = 0;
+        
+            return *this;
         }
 
         ~FreeListAllocator()
@@ -259,7 +261,7 @@ namespace VoidEngine
             return nullptr;
         }
 
-        void Free(void* addr)
+        void Free(void* addr) override
         {
             if(addr == nullptr)
             {

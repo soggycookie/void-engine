@@ -1,5 +1,4 @@
 #pragma once
-#include "ecs_pch.h"
 #include "ecs_type.h"
 #include "ds/world_allocator.h"
 #include "type_info_builder.h"
@@ -25,17 +24,18 @@ namespace ECS
         {
         }
 
+        static constexpr const char* DefaultEntityName = "Entity %u";
+        static constexpr const size_t MaxEntityNameLength = 32;
+        
         void Init();
 
         void InitAllocators();
 
         void RegisterInternalComponents();
 
-        Entity CreateEntity();
-        Entity CreateEntity(EntityId parent);
-        Entity CreateEntity(const char* name, EntityId parent);
-        Entity CreateEntity(EntityId id, EntityId parent);
-        Entity CreateEntity(EntityId id, const char* name, EntityId parent);
+        Entity CreateEntity(const char* name = nullptr, EntityId parent = 0);
+        Entity CreateEntity(char* name = nullptr, EntityId parent = 0);
+        Entity CreateEntity(EntityId id, const char* name = nullptr, EntityId parent = 0);
 
         Entity CreateEntity(EntityDesc& desc);
 
@@ -59,7 +59,13 @@ namespace ECS
         TypeInfoBuilder<T> Tag();
         
         template<typename T>
-        TypeInfoBuilder<T> Relationship(bool isExclusive, bool isToggle = false);
+        TypeInfoBuilder<T> Relation();
+        
+        template<typename T>
+        TypeInfoBuilder<T> Relationship(EntityId targetId);
+
+        void Register(const TypeInfo& typeInfo, EntityId relationId, EntityId targetId, 
+                const std::string_view first, const std::string_view second);
 
         template<typename T>
         void AddComponent(EntityId eId);
