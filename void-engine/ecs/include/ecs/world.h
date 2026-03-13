@@ -1,149 +1,157 @@
 #pragma once
-#include "ecs_type.h"
-#include "ds/world_allocator.h"
-#include "type_info_builder.h"
 #include "ds/hash_map.h"
+#include "ds/world_allocator.h"
+#include "ecs_type.h"
 #include "entity.h"
-#include "system_meta.h"
-#include "internal_component.h"
 #include "entity_cmd.h"
+#include "internal_component.h"
+#include "query.h"
+#include "system_meta.h"
+#include "type_info_builder.h"
 
 namespace ECS
 {
-    struct Allocators
-    {
-        //BlockAllocator typeInfo;
-        BlockAllocator archetypes;
-    };
+struct Allocators
+{
+    // BlockAllocator typeInfo;
+    BlockAllocator archetypes;
+};
 
-    class World
-    {
-    public:
-        World()
-            : m_nextFreeId(200), m_isDefered(false)
-        {
-        }
+class World
+{
+public:
+    World() : m_nextFreeId(200), m_isDefered(false) {}
 
-        static constexpr const char* DefaultEntityName = "Entity %u";
-        static constexpr const size_t MaxEntityNameLength = 32;
-        
-        void Init();
+    static constexpr const char *DefaultEntityName = "Entity %u";
+    static constexpr const size_t MaxEntityNameLength = 32;
 
-        void InitAllocators();
+    void Init();
 
-        void RegisterInternalComponents();
+    void InitAllocators();
 
-        Entity CreateEntity(const char* name = nullptr, EntityId parent = 0);
-        Entity CreateEntity(char* name = nullptr, EntityId parent = 0);
-        Entity CreateEntity(EntityId id, const char* name = nullptr, EntityId parent = 0);
+    void RegisterInternalComponents();
 
-        Entity CreateEntity(EntityDesc& desc);
+    Entity CreateEntity(const char *name = nullptr, EntityId parent = 0);
+    Entity CreateEntity(char *name, EntityId parent = 0);
+    Entity CreateEntity(EntityId id, const char *name = nullptr,
+                        EntityId parent = 0);
 
-        EntityId GetNewId();
-        EntityId GetReusedId();
-        bool IsEntityExist(EntityId eId);
+    Entity CreateEntity(EntityDesc &desc);
 
-        //the returned bool is true if this is a new id
-        //else it is a reused one
-        std::pair<bool, EntityId> GetId();
+    EntityId GetNewId();
+    EntityId GetReusedId();
+    bool IsEntityExist(EntityId eId);
 
-        EntityRecord* GetEntityRecord(EntityId eId);
-        Entity GetEntity(EntityId eId);
+    // the returned bool is true if this is a new id
+    // else it is a reused one
+    std::pair<bool, EntityId> GetId();
 
-        void ResolveEntityDesc(EntityRecord& r, EntityDesc& desc);
+    EntityRecord *GetEntityRecord(EntityId eId);
+    Entity GetEntity(EntityId eId);
 
-        template<typename T>
-        TypeInfoBuilder<T> Component();
+    void ResolveEntityDesc(EntityRecord &r, EntityDesc &desc);
 
-        template<typename T>
-        TypeInfoBuilder<T> Tag();
-        
-        template<typename T>
-        TypeInfoBuilder<T> Relation();
-        
-        template<typename T>
-        TypeInfoBuilder<T> Relationship(EntityId targetId);
+    template <typename T>
+    TypeInfoBuilder<T> Component();
 
-        void Register(const TypeInfo& typeInfo, EntityId relationId, EntityId targetId, 
-                const std::string_view first, const std::string_view second);
+    template <typename T>
+    TypeInfoBuilder<T> Tag();
 
-        template<typename T>
-        void AddComponent(EntityId eId);
+    template <typename T>
+    TypeInfoBuilder<T> Relation();
 
-        template<typename Component>
-        void RemoveComponent(EntityId eId);
+    template <typename T>
+    TypeInfoBuilder<T> Relationship(EntityId targetId);
 
-        template<typename T>
-        void AddRelationship(EntityId eId, EntityId targetId);
+    void Register(const TypeInfo &typeInfo, EntityId relationId,
+                  EntityId targetId, const std::string_view first,
+                  const std::string_view second);
 
-        template<typename T>
-        void AddTag(EntityId eId);
+    template <typename T>
+    void AddComponent(EntityId eId);
 
-        void AddComponent(EntityId eId, EntityId cId);
+    template <typename Component>
+    void RemoveComponent(EntityId eId);
 
-        void AddRelationship(EntityId eId, EntityId relationId, EntityId targetId);
+    template <typename T>
+    void AddRelationship(EntityId eId, EntityId targetId);
 
-        void AddTag(EntityId eId, EntityId cId);
+    template <typename T>
+    void AddTag(EntityId eId);
 
-        void RemoveComponent(EntityId eId, EntityId cId);
+    void AddComponent(EntityId eId, EntityId cId);
 
-        template<typename T>
-        void Set(EntityId eId, T&& c);
+    void AddRelationship(EntityId eId, EntityId relationId, EntityId targetId);
 
-        template<typename T>
-        T& Get(EntityId eId);
+    void AddTag(EntityId eId, EntityId cId);
 
-        void Set(EntityId eId, EntityId cId, void* data);
+    void RemoveComponent(EntityId eId, EntityId cId);
 
-        void Set(EntityId eId, EntityId cId, const void* data);
+    template <typename T>
+    void Set(EntityId eId, T &&c);
 
-        void* Get(EntityId eId, EntityId cId);
+    template <typename T>
+    T &Get(EntityId eId);
 
-        void GrowArchetype(Archetype& archetype);
+    void Set(EntityId eId, EntityId cId, void *data);
 
-        void SwapBack(EntityRecord& r);
+    void Set(EntityId eId, EntityId cId, const void *data);
 
-        Archetype* CreateArchetype(ComponentSet&& componentSet);
-        Archetype* GetArchetype(const ComponentSet& componentSet);
+    void *Get(EntityId eId, EntityId cId);
 
-        Archetype* GetOrCreateArchetype_Add(Archetype* src, EntityId cId);
-        Archetype* GetOrCreateArchetype_Remove(Archetype* src, EntityId cId);
+    void GrowArchetype(Archetype &archetype);
 
-        void MoveArchetype_Add(EntityId eId, EntityRecord& r, Archetype* destArchetype);
-        void MoveArchetype_Remove(EntityId eId, EntityRecord& r, Archetype* destArchetype);
+    void SwapBack(EntityRecord &r);
 
-        //Query
+    Archetype *CreateArchetype(ComponentSet &&componentSet);
+    Archetype *GetArchetype(const ComponentSet &componentSet);
 
+    Archetype *GetOrCreateArchetype_Add(Archetype *src, EntityId cId);
+    Archetype *GetOrCreateArchetype_Remove(Archetype *src, EntityId cId);
 
-        //NOTE: System store list of cache archetypes, but the list can be invalidated at runtime,
-        //so I need to find a new way to re-validate this or rewrite this in a different way
-        //basically, I have to introduce sync point
+    void MoveArchetype_Add(EntityId eId, EntityRecord &r,
+                           Archetype *destArchetype);
+    void MoveArchetype_Remove(EntityId eId, EntityRecord &r,
+                              Archetype *destArchetype);
 
-        template<typename... Components, typename... FuncArgs>
-        void System(void (*func)(FuncArgs...));
+    // Query
 
-        template<typename... Components, typename... FuncArgs>
-        void Each(void (*func)(FuncArgs...));
+    template <typename... T>
+    QueryBuilder<T...> CreateQueryBuilder();
 
-        void Progress(double dt);
+    // NOTE: System store list of cache archetypes, but the list can be
+    // invalidated at runtime, so I need to find a new way to re-validate this
+    // or rewrite this in a different way basically, I have to introduce sync
+    // point
 
-        void Destroy();
+    template <typename... Components, typename... FuncArgs>
+    void System(void (*func)(FuncArgs...));
 
-    public:
-        WorldAllocator m_wAllocator;
-        Allocators m_allocators;
-        SparseSet<EntityRecord> m_entityIndex;
-        SparseSet<Archetype> m_archetypes;
-        HashMap<EntityId, ComponentRecord> m_componentIndex;
-        HashMap<EntityId, TypeInfo*> m_typeInfos;
-        HashMap<ComponentSet, Archetype*> m_mappedArchetype; //value hold a ref to key, does not change the value's key ref
-        Store<EntityId> m_componentStore;
-        Store<SystemCallback> m_systemStore;
-        uint32_t m_nextFreeId;
-        bool m_isDefered;
-    };
-}
+    template <typename... Components, typename... FuncArgs>
+    void Each(void (*func)(FuncArgs...));
 
+    void Progress(double dt);
+
+    void Destroy();
+
+public:
+    WorldAllocator m_wAllocator;
+    Allocators m_allocators;
+    SparseSet<EntityRecord> m_entityIndex;
+    SparseSet<Archetype> m_archetypes;
+    HashMap<EntityId, ComponentRecord> m_componentIndex;
+    HashMap<EntityId, TypeInfo *> m_typeInfos;
+    HashMap<ComponentSet, Archetype *>
+        m_mappedArchetype; // value hold a ref to key, does not change the
+                           // value's key ref
+    Store<EntityId> m_componentStore;
+    Store<SystemCallback> m_systemStore;
+    uint32_t m_nextFreeId;
+    bool m_isDefered;
+};
+} // namespace ECS
+
+#include "entity_cmd.inl"
+#include "query.inl"
 #include "type_info_builder.inl"
 #include "world.inl"
-#include "entity_cmd.inl"

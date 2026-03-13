@@ -1,570 +1,577 @@
 #pragma once
-#include "ecs_pch.h"
 #include "ds/hash_map.h"
+#include "ecs_pch.h"
+#include <cassert>
 #include <string_view>
 #include <type_traits>
 
 namespace ECS
 {
 
-    template<typename T>
-    constexpr const std::string_view GetComponentName()
-    {
+template <typename T>
+constexpr const std::string_view GetComponentName()
+{
 #if defined(__clang__) || defined(__GNUC__)
-        std::string_view funcSig = __PRETTY_FUNCTION__;
+    std::string_view funcSig = __PRETTY_FUNCTION__;
 
-        size_t start = funcSig.find("T =") + 4;
-        size_t end = funcSig.find("]", start);
-        
-        std::string_view typeName = funcSig.substr(start, end - start);
-        size_t ns = typeName.find_last_of("::", end) + 1;
+    size_t start = funcSig.find("T =") + 4;
+    size_t end = funcSig.find("]", start);
 
-        if(ns != std::string_view::npos)
-        {
-            typeName = typeName.substr(ns, end - ns);
-        }
+    std::string_view typeName = funcSig.substr(start, end - start);
+    size_t ns = typeName.find_last_of("::", end) + 1;
 
-        return typeName;
+    if (ns != std::string_view::npos)
+    {
+        typeName = typeName.substr(ns, end - ns);
+    }
+
+    return typeName;
 
 #elif defined(_MSC_VER)
-        //const class std::basic_string_view<char,struct std::char_traits<char> > __cdecl ECS::GetComponentName<struct VoidEngine::NPC>(void)
-        std::string_view funcSig = __FUNCSIG__;
-        
-        size_t start = funcSig.find("<struct");
-        
-        if(start == std::string_view::npos)
-        {
-            start = funcSig.find("<class") + 7;
-        }
-        else
-        {
-            start += 8;
-        }
+    // const class std::basic_string_view<char,struct std::char_traits<char> >
+    // __cdecl ECS::GetComponentName<struct VoidEngine::NPC>(void)
+    std::string_view funcSig = __FUNCSIG__;
 
-        size_t end = funcSig.find_last_of(">(") - 1;
-        std::string_view typeName = funcSig.substr(start, end - start);
-        size_t ns = typeName.find_last_of("::", end) + 1;
+    size_t start = funcSig.find("<struct");
 
-        if(ns != std::string_view::npos)
-        {
-            typeName = typeName.substr(ns, end - ns);
-        }
+    if (start == std::string_view::npos)
+    {
+        start = funcSig.find("<class") + 7;
+    }
+    else
+    {
+        start += 8;
+    }
 
-        return typeName;
+    size_t end = funcSig.find_last_of(">(") - 1;
+    std::string_view typeName = funcSig.substr(start, end - start);
+    size_t ns = typeName.find_last_of("::", end) + 1;
+
+    if (ns != std::string_view::npos)
+    {
+        typeName = typeName.substr(ns, end - ns);
+    }
+
+    return typeName;
 
 #endif
 
-        return std::string_view(nullptr, 0);
+    return std::string_view(nullptr, 0);
+}
+
+#define ENTITY_ID_MASK 0xFFFFFFFFULL
+#define ENTITY_GEN_MASK 0xFFFFULL
+
+#define LO_ENTITY_ID(x) ((uint32_t)((x) & ENTITY_ID_MASK))
+
+#define HI_ENTITY_ID(x) ((uint32_t)(((x) >> 32) & ENTITY_ID_MASK))
+
+#define ENTITY_GEN_COUNT(x) ((uint16_t)(((x) >> 32) & ENTITY_GEN_MASK))
+
+#define MAKE_ENTITY_ID(lo, hi)                                                 \
+    ((((uint64_t)(hi) & ENTITY_ID_MASK) << 32) |                               \
+     ((uint64_t)(lo) & ENTITY_ID_MASK))
+
+#define INCRE_GEN_COUNT(x)                                                     \
+    MAKE_ENTITY_ID(LO_ENTITY_ID(x), (uint16_t)(ENTITY_GEN_COUNT(x) + 1))
+
+using EntityId = uint64_t;
+using LoEntityId = uint32_t;
+using HiEntityId = uint32_t;
+using GenCount = uint16_t;
+
+inline EntityId MakeRelationship(EntityId first, EntityId sec)
+{
+    constexpr uint32_t mask = 0xFFFFFFFFULL;
+
+    LoEntityId f = first & mask;
+    LoEntityId s = sec & mask;
+
+    EntityId relationship = (EntityId)f | ((EntityId)s << 32);
+
+    return relationship;
+}
+
+class World;
+
+template <typename U>
+class TypeInfoBuilder;
+
+template <typename T>
+class ComponentTypeId
+{
+private:
+    template <typename U>
+    friend class TypeInfoBuilder;
+    static EntityId id;
+
+    static void Id(EntityId eId) { id = eId; }
+
+public:
+    static EntityId Id() { return id; }
+};
+
+template <typename T>
+EntityId ComponentTypeId<T>::id = 0;
+
+template <typename T>
+struct Store
+{
+    T *store;
+    uint32_t count;
+    uint32_t capacity;
+
+    Store() : store(nullptr), count(0), capacity(0)
+    {
+        static_assert(std::is_destructible_v<T>);
     }
 
-#define ENTITY_ID_MASK      0xFFFFFFFFULL
-#define ENTITY_GEN_MASK     0xFFFFULL
-
-#define LO_ENTITY_ID(x) \
-    ((uint32_t)((x) & ENTITY_ID_MASK))
-
-#define HI_ENTITY_ID(x) \
-    ((uint32_t)(((x) >> 32) & ENTITY_ID_MASK))
-
-#define ENTITY_GEN_COUNT(x) \
-    ((uint16_t)(((x) >> 32) & ENTITY_GEN_MASK))
-
-#define MAKE_ENTITY_ID(lo, hi) \
-    ((((uint64_t)(hi) & ENTITY_ID_MASK) << 32) | \
-     ((uint64_t)(lo)  & ENTITY_ID_MASK))
-
-#define INCRE_GEN_COUNT(x) \
-        MAKE_ENTITY_ID( \
-            LO_ENTITY_ID(x), \
-            (uint16_t)(ENTITY_GEN_COUNT(x) + 1) \
-        )
-
-    using EntityId = uint64_t;
-    using LoEntityId = uint32_t;
-    using HiEntityId = uint32_t;
-    using GenCount = uint16_t;
-
-    inline EntityId MakeRelationship(EntityId first, EntityId sec)
+    Store(Store &&other)
     {
-        constexpr uint32_t mask = 0xFFFFFFFFULL;
+        store = other.store;
+        count = other.count;
+        capacity = other.capacity;
 
-        LoEntityId f = first & mask;
-        LoEntityId s = sec & mask;
-
-        EntityId relationship = (EntityId) f | ((EntityId)s << 32);
-
-        return relationship;
+        other.store = nullptr;
     }
 
-    class World;
-
-
-    template<typename U>
-    class TypeInfoBuilder;
-
-
-    template<typename T>
-    class ComponentTypeId
+    Store &operator=(Store &&other)
     {
-    private:
-        template<typename U>
-        friend class TypeInfoBuilder;
-        static EntityId id;
+        store = other.store;
+        count = other.count;
+        capacity = other.capacity;
 
-        static void Id(EntityId eId)
-        {
-            id = eId;
-        }
-        
-    public:
+        other.store = nullptr;
 
-        static EntityId Id()
-        {
-            return id;
-        }
+        return *this;
+    }
 
-    };
-
-    template<typename T>
-    EntityId ComponentTypeId<T>::id = 0;
-
-    template<typename T>
-    struct Store
+    void Init(WorldAllocator &wAllocator, uint32_t capacity = 8)
     {
-        T* store;
-        uint32_t count;
-        uint32_t capacity;
+        uint32_t storeCapacity = capacity;
+        count = 0;
+        store = PTR_CAST(
+            wAllocator.AllocN(sizeof(T), storeCapacity, storeCapacity), T);
+        capacity = storeCapacity;
+    }
 
-        Store() : 
-            store(nullptr), count(0), capacity(0)
+    void Grow(WorldAllocator &wAllocator)
+    {
+        uint32_t newStoreCapacity = capacity * 2;
+        T *newStore = PTR_CAST(
+            wAllocator.AllocN(sizeof(T), newStoreCapacity, newStoreCapacity),
+            T);
+
+        if constexpr (std::is_move_constructible_v<T>)
         {
-            static_assert(std::is_destructible_v<T>);
+            for (size_t idx = 0; idx < count; idx++)
+            {
+                new (&newStore[idx]) T(std::move(store[idx]));
+                store[idx].~T();
+            }
+        }
+        else if (std::is_copy_constructible_v<T>)
+        {
+            for (size_t idx = 0; idx < count; idx++)
+            {
+                new (&newStore[idx]) T(store[idx]);
+                store[idx].~T();
+            }
+        }
+        else
+        {
+            std::memcpy(newStore, store, sizeof(T) * count);
         }
 
-        void Init(WorldAllocator& wAllocator)
+        wAllocator.Free(sizeof(T) * capacity, store);
+
+        store = newStore;
+        capacity = newStoreCapacity;
+    }
+
+    template <typename U = T>
+    void Add(U &&element)
+    {
+        store[count] = std::move(element);
+        ++count;
+    }
+
+    void Destroy(WorldAllocator &wAllocator)
+    {
+        if (store)
         {
-            uint32_t storeCapacity = 8;
-            count = 0;
-            store =
-                PTR_CAST(wAllocator.AllocN(sizeof(T), storeCapacity, storeCapacity), T);
-            capacity = storeCapacity;
-        }
-
-        void Grow(WorldAllocator& wAllocator)
-        {
-            uint32_t newStoreCapacity = capacity * 2;
-            T* newStore =
-                PTR_CAST(wAllocator.AllocN(sizeof(T), newStoreCapacity, newStoreCapacity), T);
-            
-            if constexpr (std::is_move_constructible_v<T>) 
-            {
-                for(size_t idx = 0; idx < count; idx++)
-                {
-                    new (&newStore[idx]) T(std::move(store[idx]));
-                    store[idx].~T();
-                }
-            }
-            else if (std::is_copy_constructible_v<T>) 
-            {
-                for(size_t idx = 0; idx < count; idx++)
-                {
-                    new (&newStore[idx]) T(store[idx]);
-                    store[idx].~T();
-                }
-            }
-            else 
-            {
-                std::memcpy(newStore, store, sizeof(T) * count);
-            }
-
-
             wAllocator.Free(sizeof(T) * capacity, store);
-
-            store = newStore;
-            capacity = newStoreCapacity;
         }
+    }
 
-        template<typename U = T>
-        void Add(U&& element)
-        {
-            store[count] = std::move(element);
-            ++count;
-        }
-
-        void Destroy(WorldAllocator& wAllocator)
-        {
-            if(store)
-            {
-                wAllocator.Free(sizeof(T) * capacity, store);
-            }
-        }
-    };
-
-    struct ComponentSet
+    T &operator[](size_t idx)
     {
-        EntityId* idArr;
-        uint32_t count;
-
-        ComponentSet()
-            : idArr(nullptr), count(0)
+        if (idx < count)
         {
+            return store[idx];
+        }
+        assert(0 && "Index out of bound!");
+    }
+
+    const T &operator[](size_t idx) const
+    {
+        if (idx < count)
+        {
+            return store[idx];
+        }
+        assert(0 && "Index out of bound!");
+    }
+};
+
+struct ComponentSet
+{
+    EntityId *idArr;
+    uint32_t count;
+
+    ComponentSet() : idArr(nullptr), count(0) {}
+
+    ~ComponentSet() = default;
+
+    ComponentSet(ComponentSet &&other) noexcept
+    {
+        idArr = other.idArr;
+        count = other.count;
+
+        other.idArr = nullptr;
+        other.count = 0;
+    }
+
+    ComponentSet &operator=(ComponentSet &&other) noexcept
+    {
+        idArr = other.idArr;
+        count = other.count;
+
+        other.idArr = nullptr;
+        other.count = 0;
+
+        return *this;
+    }
+
+    bool operator==(const ComponentSet &other)
+    {
+        if (count != other.count)
+        {
+            return false;
         }
 
-        ~ComponentSet() = default;
-
-        ComponentSet(ComponentSet&& other) noexcept
+        for (uint32_t i = 0; i < count; i++)
         {
-            idArr = other.idArr;
-            count = other.count;
-
-            other.idArr = nullptr;
-            other.count = 0;            
-        }
-
-        ComponentSet& operator=(ComponentSet&& other) noexcept
-        {
-            idArr = other.idArr;
-            count = other.count;
-
-            other.idArr = nullptr;
-            other.count = 0;
-
-            return *this;
-        }
-
-        bool operator==(const ComponentSet& other)
-        {
-            if(count != other.count)
+            if (idArr[i] != other.idArr[i])
             {
                 return false;
             }
+        }
 
-            for(uint32_t i = 0; i < count; i++)
-            {
-                if(idArr[i] != other.idArr[i])
-                {
-                    return false;
-                }
-            }
+        return true;
+    }
 
+    bool operator!=(const ComponentSet &other)
+    {
+        if (count == other.count)
+        {
             return true;
         }
 
-        bool operator!=(const ComponentSet& other)
+        for (uint32_t i = 0; i < count; i++)
         {
-            if(count == other.count)
+            if (idArr[i] != other.idArr[i])
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    EntityId &operator[](uint32_t index)
+    {
+        if (index >= count)
+        {
+            assert(0);
+        }
+
+        return idArr[index];
+    }
+
+    uint64_t Hash() const
+    {
+        uint64_t h = 0;
+        for (uint32_t i = 0; i < count; i++)
+        {
+            h += ECS::HashU64(idArr[i]);
+        }
+
+        h /= count;
+
+        return h;
+    }
+
+    void Sort()
+    {
+        if (idArr)
+        {
+            std::sort(idArr, (idArr + count));
+        }
+    }
+
+    int32_t Search(EntityId id) const
+    {
+        EntityId *v = std::lower_bound(idArr, (idArr + count), id);
+
+        if (v == (idArr + count) || *v != id)
+        {
+            return -1;
+        }
+
+        return static_cast<int32_t>(v - idArr);
+    }
+
+    int32_t SearchPair(EntityId id) const
+    {
+        for (uint32_t idx = count; idx > 0;)
+        {
+            --idx;
+            if (LO_ENTITY_ID(id) == LO_ENTITY_ID(idArr[idx]))
+            {
+                return idx;
+            }
+
+            if (HI_ENTITY_ID(idArr[idx]) == 0)
+            {
+                return -1;
+            }
+        }
+
+        return -1;
+    }
+
+    bool Has(EntityId id) const
+    {
+        EntityId *v = std::lower_bound(idArr, (idArr + count), id);
+
+        if (v == (idArr + count) || *v != id)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool HasRelationship(EntityId id) const
+    {
+        for (uint32_t idx = count; idx > 0;)
+        {
+            --idx;
+            if (LO_ENTITY_ID(id) == LO_ENTITY_ID(idArr[idx]))
             {
                 return true;
             }
 
-            for(uint32_t i = 0; i < count; i++)
-            {
-                if(idArr[i] != other.idArr[i])
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        EntityId& operator[](uint32_t index)
-        {
-            if(index >= count)
-            {
-                assert(0);
-            }
-
-            return idArr[index];
-        }
-
-        uint64_t Hash() const
-        {
-            uint64_t h = 0;
-            for(uint32_t i = 0; i < count; i++)
-            {
-                h += ECS::HashU64(idArr[i]);
-            }
-
-            h /= count;
-
-            return h;
-        }
-
-        void Sort(){
-            if(idArr)
-            {
-                std::sort(idArr, (idArr + count));
-            }
-        }
-
-        int32_t Search(EntityId id)
-        {
-            EntityId* v = std::lower_bound(idArr, (idArr + count), id);
-            
-            if(v == (idArr + count) || *v != id)
-            {
-                return -1;
-            }
-
-            return static_cast<int32_t>(v - idArr);
-        }
-
-        int32_t SearchPair(EntityId id)
-        {
-            for(uint32_t idx = count ; idx > 0;)
-            {
-                --idx;
-                if(LO_ENTITY_ID(id) == LO_ENTITY_ID(idArr[idx]))
-                {
-                    return idx;
-                }
-                
-                if(HI_ENTITY_ID(idArr[idx]) == 0)
-                {
-                    return -1;
-                }
-            }
-
-            return -1;
-        }
-
-        bool Has(EntityId id)
-        {
-            EntityId* v = std::lower_bound(idArr, (idArr + count), id);
-            
-            if(v == (idArr + count) || *v != id)
+            if (HI_ENTITY_ID(idArr[idx]) == 0)
             {
                 return false;
             }
-
-            return true;
         }
 
-        bool HasRelationship(EntityId id)
-        {
-            for(uint32_t idx = count ; idx > 0;)
-            {
-                --idx;
-                if(LO_ENTITY_ID(id) == LO_ENTITY_ID(idArr[idx]))
-                {
-                    return true;
-                }
-                
-                if(HI_ENTITY_ID(idArr[idx]) == 0)
-                {
-                    return false;
-                }
-            }
-
-            return false;
-        }
-
-        void Init(WorldAllocator& wAllocator, uint32_t count)
-        {
-            idArr = PTR_CAST(wAllocator.Init(count * sizeof(EntityId)), EntityId);
-            this->count = count;
-        }
-
-        void Destroy(WorldAllocator& wAllocator)
-        {
-            if(idArr)
-            {
-                wAllocator.Free(sizeof(EntityId) * count, idArr);
-            }
-        }
-
-        void Clone(WorldAllocator& wAllocator, const ComponentSet& other)
-        {
-            count = other.count;
-            Init(wAllocator, count);
-            std::memcpy(idArr, other.idArr, count * sizeof(EntityId));
-        }
-    };
-
-    template<>
-    struct Hash<ComponentSet>
-    {
-        static uint64_t Value(const ComponentSet& v)
-        {
-            return v.Hash();
-        }        
-    };
-
-    using CtorHook = void (*)(void* dest);
-    using CopyCtorHook = void (*)(void* dest, const void* src);
-    using MoveCtorHook = void (*)(void* dest, void* src);
-    using DtorHook     = void (*)(void* src);
-
-    using AddEventHook = void (*)();
-    using RemoveEventHook = void (*)();
-    using SetEventHook = void (*)(void* dest);
-
-    struct TypeHook
-    {
-        void (*ctor)(void* dest);
-        void (*copyCtor)(void* dest, const void* src);
-        void (*moveCtor)(void* dest, void* src);
-        void (*dtor)(void* src);
-
-        void (*onAdd)();
-        void (*onRemove)();
-        void (*onSet)(void* dest);
-    };
-
-#define COMPONENT_TYPE      1 << 0
-#define TAG_TYPE            1 << 1
-#define RELATION_TYPE       1 << 2
-#define TYPE_HAS_DATA       1 << 3
-#define EXCLUSIVE_RELATION  1 << 4
-#define BITSET_DATA         1 << 5
-#define RELATIONSHIP_TYPE   1 << 6
-
-    struct TypeInfo
-    {
-        EntityId eId;
-        EntityId cId;
-        uint32_t alignment;
-        uint32_t size;
-        TypeHook hook;
-        uint32_t flags;
-
-        bool HasData() const
-        {
-            return (flags & TYPE_HAS_DATA) == TYPE_HAS_DATA;
-        }
-
-        bool IsExclusive() const
-        {
-            return (flags & (EXCLUSIVE_RELATION | RELATION_TYPE)) ==  (EXCLUSIVE_RELATION | RELATION_TYPE);
-        }
-
-        bool IsDataBitset() const
-        {
-            return (flags & (TYPE_HAS_DATA | BITSET_DATA)) == (TYPE_HAS_DATA | BITSET_DATA);
-        }
-
-        bool IsRelationship() const
-        {
-            return (flags & RELATIONSHIP_TYPE) == RELATIONSHIP_TYPE;
-        }
-
-        bool IsRelation() const
-        {
-            return (flags & RELATION_TYPE) == RELATION_TYPE;
-        }
-
-        bool IsComponent() const
-        {
-            return (flags & COMPONENT_TYPE) == COMPONENT_TYPE;
-        }
-
-        bool IsTag() const
-        {
-            return (flags & TAG_TYPE) == TAG_TYPE;
-        }
-    };
-
-    struct Column
-    {
-        void* data;
-        TypeInfo* typeInfo;
-    };
-
-    using ComponentDiff = ComponentSet;
-    using ArchetypeId = uint32_t;
-
-    constexpr uint32_t DefaultArchetypeCapacity = 4;
-
-    struct Archetype
-    {
-        ArchetypeId id;
-        uint32_t count;
-        uint32_t capacity;
-        uint32_t flags;
-        Column* columns;
-        EntityId* entities;
-        ComponentSet componentSet;
-        int32_t* componentMap;
-        HashMap<EntityId, Archetype*> addEdges;
-        HashMap<EntityId, Archetype*> removeEdges;
-        uint32_t columnCount;
-
-        Archetype()
-            : id(0), count(0), capacity(0), flags(0),
-            columns(nullptr), entities(nullptr), componentSet(), addEdges(), removeEdges()
-        {
-        }
-
-        Archetype(Archetype&& other) noexcept
-        {
-            id = other.id;
-            count = other.count;
-            capacity = other.capacity;
-            flags = other.flags;
-            columnCount = other.columnCount;
-            columns = other.columns;
-            entities = other.entities;
-            componentMap = other.componentMap;
-            componentSet = std::move(other.componentSet);
-            addEdges = std::move(other.addEdges);
-            removeEdges = std::move(other.removeEdges);
-
-            other.columns = nullptr;
-            other.entities = nullptr;
-            other.componentSet.idArr = nullptr;
-            other.componentSet.count = 0;
-        }
-
-        Archetype& operator=(Archetype&& other) noexcept
-        {
-            id = other.id;
-            count = other.count;
-            capacity = other.capacity;
-            flags = other.flags;
-            columnCount = other.columnCount;
-            columns = other.columns;
-            entities = other.entities;
-            componentMap = other.componentMap;
-            componentSet = std::move(other.componentSet);
-            addEdges = std::move(other.addEdges);
-            removeEdges = std::move(other.removeEdges);
-
-            other.columns = nullptr;
-            other.entities = nullptr;
-            other.componentSet.idArr = nullptr;
-            other.componentSet.count = 0;
-
-            return *this;
-        }
-
-    };
-
-    inline ArchetypeId GetArchetypeId()
-    {
-        static ArchetypeId id = 0;
-
-        return ++id;
+        return false;
     }
 
-    struct ComponentRecord
+    void Init(WorldAllocator &wAllocator, uint32_t count)
     {
-        EntityId id;
-        Store<Archetype*> archetypeStore;
-        TypeInfo* typeInfo;
-#ifdef ECS_DEBUG
-        char name[16];
-#endif
+        idArr = PTR_CAST(wAllocator.Init(count * sizeof(EntityId)), EntityId);
+        this->count = count;
+    }
 
-    };
-
-    struct EntityRecord
+    void Destroy(WorldAllocator &wAllocator)
     {
-        Archetype* archetype;
-        uint32_t row;
-        uint32_t dense;
-    };
+        if (idArr)
+        {
+            wAllocator.Free(sizeof(EntityId) * count, idArr);
+        }
+    }
 
+    void Clone(WorldAllocator &wAllocator, const ComponentSet &other)
+    {
+        count = other.count;
+        Init(wAllocator, count);
+        std::memcpy(idArr, other.idArr, count * sizeof(EntityId));
+    }
+};
 
+template <>
+struct Hash<ComponentSet>
+{
+    static uint64_t Value(const ComponentSet &v) { return v.Hash(); }
+};
+
+using CtorHook = void (*)(void *dest);
+using CopyCtorHook = void (*)(void *dest, const void *src);
+using MoveCtorHook = void (*)(void *dest, void *src);
+using DtorHook = void (*)(void *src);
+
+using AddEventHook = void (*)();
+using RemoveEventHook = void (*)();
+using SetEventHook = void (*)(void *dest);
+
+struct TypeHook
+{
+    void (*ctor)(void *dest);
+    void (*copyCtor)(void *dest, const void *src);
+    void (*moveCtor)(void *dest, void *src);
+    void (*dtor)(void *src);
+
+    void (*onAdd)();
+    void (*onRemove)();
+    void (*onSet)(void *dest);
+};
+
+#define COMPONENT_TYPE 1 << 0
+#define TAG_TYPE 1 << 1
+#define RELATION_TYPE 1 << 2
+#define TYPE_HAS_DATA 1 << 3
+#define EXCLUSIVE_RELATION 1 << 4
+#define BITSET_DATA 1 << 5
+#define RELATIONSHIP_TYPE 1 << 6
+
+struct TypeInfo
+{
+    EntityId eId;
+    EntityId cId;
+    uint32_t alignment;
+    uint32_t size;
+    TypeHook hook;
+    uint32_t flags;
+
+    bool HasData() const { return (flags & TYPE_HAS_DATA) == TYPE_HAS_DATA; }
+
+    bool IsExclusive() const
+    {
+        return (flags & (EXCLUSIVE_RELATION | RELATION_TYPE)) ==
+               (EXCLUSIVE_RELATION | RELATION_TYPE);
+    }
+
+    bool IsDataBitset() const
+    {
+        return (flags & (TYPE_HAS_DATA | BITSET_DATA)) ==
+               (TYPE_HAS_DATA | BITSET_DATA);
+    }
+
+    bool IsRelationship() const
+    {
+        return (flags & RELATIONSHIP_TYPE) == RELATIONSHIP_TYPE;
+    }
+
+    bool IsRelation() const { return (flags & RELATION_TYPE) == RELATION_TYPE; }
+
+    bool IsComponent() const
+    {
+        return (flags & COMPONENT_TYPE) == COMPONENT_TYPE;
+    }
+
+    bool IsTag() const { return (flags & TAG_TYPE) == TAG_TYPE; }
+};
+
+struct Column
+{
+    void *data;
+    TypeInfo *typeInfo;
+};
+
+using ComponentDiff = ComponentSet;
+using ArchetypeId = uint32_t;
+
+constexpr uint32_t DefaultArchetypeCapacity = 4;
+
+struct Archetype
+{
+    ArchetypeId id;
+    uint32_t count;
+    uint32_t capacity;
+    uint32_t flags;
+    Column *columns;
+    EntityId *entities;
+    ComponentSet componentSet;
+    int32_t *componentMap;
+    HashMap<EntityId, Archetype *> addEdges;
+    HashMap<EntityId, Archetype *> removeEdges;
+    uint32_t columnCount;
+
+    Archetype()
+        : id(0), count(0), capacity(0), flags(0), columns(nullptr),
+          entities(nullptr), componentSet(), addEdges(), removeEdges()
+    {
+    }
+
+    Archetype(Archetype &&other) noexcept
+    {
+        id = other.id;
+        count = other.count;
+        capacity = other.capacity;
+        flags = other.flags;
+        columnCount = other.columnCount;
+        columns = other.columns;
+        entities = other.entities;
+        componentMap = other.componentMap;
+        componentSet = std::move(other.componentSet);
+        addEdges = std::move(other.addEdges);
+        removeEdges = std::move(other.removeEdges);
+
+        other.columns = nullptr;
+        other.entities = nullptr;
+        other.componentSet.idArr = nullptr;
+        other.componentSet.count = 0;
+    }
+
+    Archetype &operator=(Archetype &&other) noexcept
+    {
+        id = other.id;
+        count = other.count;
+        capacity = other.capacity;
+        flags = other.flags;
+        columnCount = other.columnCount;
+        columns = other.columns;
+        entities = other.entities;
+        componentMap = other.componentMap;
+        componentSet = std::move(other.componentSet);
+        addEdges = std::move(other.addEdges);
+        removeEdges = std::move(other.removeEdges);
+
+        other.columns = nullptr;
+        other.entities = nullptr;
+        other.componentSet.idArr = nullptr;
+        other.componentSet.count = 0;
+
+        return *this;
+    }
+};
+
+inline ArchetypeId GetArchetypeId()
+{
+    static ArchetypeId id = 0;
+
+    return ++id;
 }
 
+struct ComponentRecord
+{
+    EntityId id;
+    Store<Archetype *> archetypeStore;
+    TypeInfo *typeInfo;
+#ifdef ECS_DEBUG
+    char name[16];
+#endif
+};
+
+struct EntityRecord
+{
+    Archetype *archetype;
+    uint32_t row;
+    uint32_t dense;
+};
+
+} // namespace ECS

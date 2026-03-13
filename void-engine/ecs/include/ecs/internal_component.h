@@ -3,78 +3,83 @@
 
 namespace ECS
 {
-    //component entity id
-    constexpr EntityId EcsNameId = 1;
-    constexpr EntityId EcsSystemId = 2;
-    constexpr EntityId EcsPhaseId = 3;
-    constexpr EntityId EcsArchetypeId = 4;
-    constexpr EntityId EcsChildOfId = 5;
-    constexpr EntityId EcsDependOnId = 6;
-    constexpr EntityId EcsPipelineId = 7;
-    constexpr EntityId EcsComponentId = 8; 
-    constexpr EntityId EcsQueryId = 9; 
-    constexpr EntityId EcsToggleId = 10;
-    constexpr EntityId EcsDisabledId = 11;
-    constexpr EntityId EcsInheritId = 12;
-    constexpr EntityId EcsIsAId = 13;
+class Query;
 
-    //flags
-    constexpr EntityId EcsAnyId = 100;
+// component entity id
+constexpr EntityId EcsNameId = 1;
+constexpr EntityId EcsSystemId = 2;
+constexpr EntityId EcsPhaseId = 3;
+constexpr EntityId EcsArchetypeId = 4;
+constexpr EntityId EcsChildOfId = 5;
+constexpr EntityId EcsDependOnId = 6;
+constexpr EntityId EcsPipelineId = 7;
+constexpr EntityId EcsComponentId = 8;
+constexpr EntityId EcsQueryId = 9;
+constexpr EntityId EcsToggleId = 10;
+constexpr EntityId EcsDisabledId = 11;
+constexpr EntityId EcsInheritId = 12;
+constexpr EntityId EcsIsAId = 13;
 
-    //internal components
-    struct EcsName
-    {
-        char* name;
-    };
+// flags
+constexpr EntityId EcsAnyId = 100;
 
-    struct EcsInherit
-    {
-        void* data;
-    };
+// internal components
+struct EcsName
+{
+    char *name;
+};
 
-    //internal tag
-    struct EcsSystem
-    {         
-    };
+struct EcsInherit
+{
+    void *data;
+};
 
-    struct EcsPhase
-    {
-    };
+struct EcsQuery
+{
+    Query *query;
+};
 
-    struct EcsArchetype
-    {
-    };
+struct EcsSystem
+{
+    EntityId queryId;
+};
 
-    struct EcsPipeline
-    {
-    };
+// internal tag
 
-    struct EcsComponent
-    {
-    };
-    
-    struct EcsQuery
-    {
-    };
+struct EcsPhase
+{
+};
 
-    struct EcsDisabled
-    {
-    };
+struct EcsArchetype
+{
+};
 
-    //internal pair
-    struct EcsChildOf
-    {
-    };
+struct EcsPipeline
+{
+};
 
-    struct EcsDependOn
-    {
-    };
+struct EcsComponent
+{
+};
 
-    struct EcsToggle
-    {
-    };
+struct EcsDisabled
+{
+};
 
-    struct EcsIsA
-    {
-    };
-}
+// internal pair
+struct EcsChildOf
+{
+};
+
+struct EcsDependOn
+{
+};
+
+struct EcsToggle
+{
+};
+
+struct EcsIsA
+{
+};
+} // namespace ECS

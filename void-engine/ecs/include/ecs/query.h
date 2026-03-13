@@ -1,334 +1,287 @@
 #pragma once
+#include "ecs_type.h"
 #include "entity.h"
 #include "internal_component.h"
+#include <cstdint>
+#include <type_traits>
 
 namespace ECS
 {
-    struct ArchetypeLinkedList
+struct ArchetypeLinkedList
+{
+    Archetype *archetype;
+    ArchetypeLinkedList *next;
+
+    static ArchetypeLinkedList *Init(WorldAllocator &wAllocator)
     {
-        Archetype* archetype;
-        ArchetypeLinkedList* next;
+        ArchetypeLinkedList *all =
+            PTR_CAST(wAllocator.Calloc(sizeof(ArchetypeLinkedList)),
+                     ArchetypeLinkedList);
 
-        static ArchetypeLinkedList* Init(WorldAllocator& wAllocator)
-        {
-            ArchetypeLinkedList* all = PTR_CAST(wAllocator.Calloc(sizeof(ArchetypeLinkedList)), ArchetypeLinkedList);
-        
-            return all;
-        }
+        return all;
+    }
 
-        static void Free(WorldAllocator& wAllocator, void* addr)
-        {
-            wAllocator.Free(sizeof(ArchetypeLinkedList), addr); 
-        }
-    };
-
-    class World;
-
-    struct QueryIterator
+    static void Free(WorldAllocator &wAllocator, void *addr)
     {
-        World* world;
-        Archetype* archetype;
-        uint32_t row;
-        //double deltaTime;
+        wAllocator.Free(sizeof(ArchetypeLinkedList), addr);
+    }
+};
 
-        Entity GetEntity()
-        {
-            EntityId id = archetype->entities[row];
+class World;
 
-            return Entity(id, world);
-        }
+struct QueryIterator
+{
+    World *world;
+    Archetype *archetype;
+    uint32_t row;
+    // double deltaTime;
 
-        template<typename Component>
-        Component& Get()
-        {
-            uint32_t colIdx = archetype->componentSet.Search(ComponentTypeId<EntityId>::id);
-
-            assert(colIdx != -1);
-
-            Column& col = archetype->columns[colIdx];
-            TypeInfo& ti = *col.typeInfo;
-            void* comData = OFFSET(col.data, ti.size * row);
-            
-            return *PTR_CAST(comData, Component);
-        }
-    };
-
-    enum TraverseMethod : uint16_t
+    Entity GetEntity()
     {
-        SELF,
-        UP,
-        SELF_UP,
-        CASCADE
-    };
+        EntityId id = archetype->entities[row];
 
-    enum TermOp : uint16_t
+        return Entity(id, world);
+    }
+
+    template <typename Component>
+    Component &Get()
     {
-        HAS,
-        NOT,
-        OPTIONAL
-    };
+        uint32_t colIdx =
+            archetype->componentSet.Search(ComponentTypeId<EntityId>::Id());
 
-    enum TermBehavior : uint16_t
+        assert(colIdx != -1);
+
+        Column &col = archetype->columns[colIdx];
+        TypeInfo &ti = *col.typeInfo;
+        void *comData = OFFSET(col.data, ti.size * row);
+
+        return *PTR_CAST(comData, Component);
+    }
+};
+
+enum TraverseMethod : uint16_t
+{
+    SELF,
+    UP,
+    SELF_UP,
+    CASCADE
+};
+
+enum TermOp : uint16_t
+{
+    HAS,
+    NOT,
+    OPTIONAL
+};
+
+enum TermBehavior : uint16_t
+{
+    READ_WRITE,
+    STRUCTURE_CHANGE
+};
+
+struct QueryTerm
+{
+    QueryTerm()
+        : cId(0), first(0), second(0), travTarget(0), trav(SELF), op(HAS),
+          behavior(READ_WRITE), fieldId(0)
     {
-        READ_WRITE,
-        STRUCTURE_CHANGE
-    };
+    }
 
-    struct QueryTerm
+    EntityId cId;
+    EntityId first;
+    EntityId second;
+    EntityId travTarget;
+    TraverseMethod trav;
+    TermOp op;
+    TermBehavior behavior;
+    uint16_t fieldId;
+};
+
+struct QueryResult
+{
+    Store<Archetype *> filteredArchetypes;
+    // NOTE: if there are ecs operation like add or delete, bitmask will be
+    // invalidated Try to avoid these expensive filtering as much as possible
+    uint64_t **entityMask;
+};
+
+struct QueryIter
+{
+    World *world;
+    void *ctx;
+    EntityId eId;
+    double deltaTime;
+
+    Entity GetEntity() { return Entity(eId, world); }
+};
+
+template <typename... CallbackArgs>
+constexpr bool at_most_one_entity =
+    ((std::is_same_v<CallbackArgs, Entity> ? 1 : 0) + ...) <= 1;
+
+template <typename... CallbackArgs>
+constexpr bool at_most_one_query_iter =
+    ((std::is_same_v<CallbackArgs, QueryResult> ? 1 : 0) + ...) <= 1;
+
+class Query;
+
+// Map callback signature to query term index
+constexpr int32_t QueryIterIndex = -1;
+constexpr int32_t EntityIndex = -2;
+constexpr int32_t InvalidIndex = -3;
+
+struct QueryCallback
+{
+    void *ctx;
+    void (*fn)();
+    void (*invoker)(Query *query, void (*fn)(), void *ctx);
+    int32_t *mappedSig;
+    uint32_t sigCount;
+
+    // template <typename... CallbackArgs>
+    // static QueryCallback CreateCallback(Query query, void
+    // (*fn)(CallbackArgs...));
+};
+
+struct QueryDesc
+{
+    QueryDesc() : eId(0), cache(false) {}
+
+    QueryTerm terms[32];
+    EntityId eId;
+    bool cache;
+};
+
+template <typename... T>
+class QueryBuilder;
+
+class Query
+{
+public:
+    Query(Query &&other) noexcept
     {
-        QueryTerm(): 
-            id(0), first(0), second(0), 
-            travTarget(0), trav(SELF), op(HAS), 
-            behavior(READ_WRITE), fieldId(0)
-        {
-        }
+        m_world = other.m_world;
+        m_eId = other.m_eId;
+        m_terms = other.m_terms;
+        m_cache = std::move(other.m_cache);
+        m_callback = other.m_callback;
+        m_termCount = other.m_termCount;
+        m_isEntityFiltered = other.m_isEntityFiltered;
 
-        EntityId id;
-        EntityId first;
-        EntityId second;
-        EntityId travTarget;
-        TraverseMethod trav;
-        TermOp op;
-        TermBehavior behavior;
-        uint16_t fieldId;
-    };
+        other.m_terms = nullptr;
+    }
 
-
-    struct QueryDesc
+    Query &operator=(Query &&other) noexcept
     {
-        QueryDesc():
-            id(0), cache(false)
-        {
-        }
+        m_world = other.m_world;
+        m_eId = other.m_eId;
+        m_terms = other.m_terms;
+        m_cache = std::move(other.m_cache);
+        m_callback = other.m_callback;
+        m_termCount = other.m_termCount;
+        m_isEntityFiltered = other.m_isEntityFiltered;
 
-        QueryTerm terms[32];
-        EntityId id;
-        bool cache;
-    };
+        other.m_terms = nullptr;
 
-    struct QueryCache
+        return *this;
+    }
+
+    template <typename... CallbackArgs>
+    void Each(void (*)(CallbackArgs...), void *ctx = nullptr);
+
+    void Execute();
+
+private:
+    template <typename... T>
+    friend class QueryBuilder;
+
+    Query() = default;
+
+    void Filter();
+
+    template <typename CallbackArg>
+    CallbackArg &GetArg(QueryIter iter, Archetype *archetype, uint32_t sigIdx,
+                        uint32_t eIdx);
+
+private:
+    World *m_world;
+    EntityId m_eId; // = 0 if not cache
+    QueryTerm *m_terms;
+    QueryResult m_cache;
+    QueryCallback m_callback;
+    uint32_t m_termCount;
+    bool m_isEntityFiltered;
+};
+
+template <typename... T>
+class QueryBuilder
+{
+public:
+    QueryBuilder(World *world)
+        : m_world(world), m_currTermIdx(0), m_desc(), m_firstTerm(true)
     {
-    };
+        assert(m_world);
+    }
 
-    struct Query
-    {
-        EntityId id;
-        QueryTerm* terms;
-        QueryCache* cache;
-        uint32_t termCount;
-    };
+    template <typename U>
+    QueryBuilder<T...> &Term(EntityId id);
 
+    QueryBuilder<T...> &Term(EntityId first, EntityId second = EcsAnyId);
 
-    template<typename... Components>
-    class QueryBuilder
-    {
-    public:
-        QueryBuilder(World* world)
-            : m_world(world), m_currTermIdx(0), m_desc(), m_firstTerm(true)
-        {
-            assert(m_world);
-        }
+    template <typename U>
+    QueryBuilder<T...> &Term();
 
-        template<typename T>
-        QueryBuilder<Components...>& Term(EntityId id)
-        {
-            if(!m_firstTerm)
-            {
-                m_desc.terms[m_currTermIdx++] = m_currTerm;
-                m_currTerm = QueryTerm();
-                m_currTerm.fieldId = m_currTermIdx;
-            }
-            else
-            {
-                m_firstTerm = false;
-            }
-                        
-            m_currTerm.id = ComponentTypeId<T>::id; 
+    QueryBuilder<T...> &Traverse(TraverseMethod method);
 
-            return *this;
-        }
+    QueryBuilder<T...> &TraveseTarget(EntityId targetId);
 
-        QueryBuilder<Components...>& Term(EntityId first, EntityId second = EcsAnyId)
-        {
-            if(!m_firstTerm)
-            {
-                m_desc.terms[m_currTermIdx++] = m_currTerm;
-                m_currTerm = QueryTerm();
-                m_currTerm.fieldId = m_currTermIdx;
-            }            
-            else
-            {
-                m_firstTerm = false;
-            }
-            
-            m_currTerm.first = first;
-            m_currTerm.second = second;
-            m_currTerm.id = MakeRelationship(first, second);
+    QueryBuilder<T...> &TraveseTarget(EntityId first,
+                                      EntityId second = EcsAnyId);
 
-            return *this;
-        }
+    QueryBuilder<T...> &Op(TermOp op);
 
-        template<typename T>
-        QueryBuilder<Components...>& Term()
-        {
-            return Term(ComponentTypeId<T>::id);
-        }
+    QueryBuilder<T...> &Cache(EntityId cacheId);
 
-        QueryBuilder<Components...>& Traverse(TraverseMethod method)
-        {
-            m_currTerm.trav = method;
-            return *this;
-        }
+    QueryBuilder<T...> &Scope();
 
-        QueryBuilder<Components...>& TraveseTarget(EntityId targetId)
-        {
-            m_currTerm.travTarget = targetId;
-            return *this;
-        }
+    template <typename U>
+    QueryBuilder<T...> &With();
 
-        QueryBuilder<Components...>& TraveseTarget(EntityId first, EntityId second = EcsAnyId)
-        {
-            m_currTerm.travTarget = MakeRelationship(first, second);
-            return *this;
-        }
+    template <typename U>
+    QueryBuilder<T...> &Without();
 
-        QueryBuilder<Components...>& Op(TermOp op)
-        {
-            m_currTerm.op = op;
-            return *this;
-        }
+    template <typename U>
+    QueryBuilder<T...> &Optional();
 
-        QueryBuilder<Components...>& Cache(EntityId cacheId)
-        {
-            m_desc.cache = true;
-            m_desc.id = cacheId;
-            return *this;
-        }       
+    QueryBuilder<T...> &With();
 
-        QueryBuilder<Components...>& Scope()
-        {
-            m_desc.cache = false;
+    QueryBuilder<T...> &Without();
 
-            return *this;
-        }
+    QueryBuilder<T...> &Optional();
 
-        template<typename T>
-        QueryBuilder<Components...>& With()
-        {
-            return Term<T>().With();
-        }
-        
-        template<typename T>
-        QueryBuilder<Components...>& Without()
-        {
-            return Term<T>().Without();
-        }
+    QueryBuilder<T...> &SelfUp(EntityId target);
 
-        template<typename T>
-        QueryBuilder<Components...>& Optional()
-        {
-            return Term<T>().Optional();
-        }
+    QueryBuilder<T...> &SelfUp(EntityId first, EntityId second);
 
-        QueryBuilder<Components...>& With()
-        {
-            return Op(HAS);
-        }
-        
-        QueryBuilder<Components...>& Without()
-        {
-            return Op(NOT);
-        }
+    QueryBuilder<T...> &Up(EntityId target);
 
-        QueryBuilder<Components...>& Optional()
-        {
-            return Op(OPTIONAL);
-        }
+    QueryBuilder<T...> &Up(EntityId first, EntityId second);
 
-        QueryBuilder<Components...>& SelfUp(EntityId target)
-        {
-            return Traverse(SELF_UP).TraveseTarget(target);
-        }
+    QueryBuilder<T...> &Cascade(EntityId target);
 
-        QueryBuilder<Components...>& SelfUp(EntityId first, EntityId second)
-        {
-            return Traverse(SELF_UP).TraveseTarget(first, second);
-        }
-        
-        QueryBuilder<Components...>& Up(EntityId target)
-        {
-            return Traverse(UP).TraveseTarget(target);
-        }
+    QueryBuilder<T...> &Cascade(EntityId first, EntityId second);
 
-        QueryBuilder<Components...>& Up(EntityId first, EntityId second)
-        {
-            return Traverse(SELF_UP).TraveseTarget(first, second);
-        }
+    template <typename U>
+    QueryBuilder<T...> &Modify();
 
-        QueryBuilder<Components...>& Cascade(EntityId target)
-        {
-            return Traverse(CASCADE).TraveseTarget(target);
-        }
+    Query *Build();
 
-        QueryBuilder<Components...>& Cascade(EntityId first, EntityId second)
-        {
-            return Traverse(CASCADE).TraveseTarget(first, second);
-        }
-
-        template<typename T>
-        QueryBuilder<Components...>& Modify()
-        {
-            Term<T>();
-            m_currTerm.behavior = STRUCTURE_CHANGE;
-
-            return *this;
-        }
-
-        Query Build() = 0;
-        // {
-        //     m_desc.terms[m_currTermIdx] = m_currTerm;
-        //
-        //     //construct query
-        //     Query query;
-        //     query.id = 0;
-        //     query.termCount = m_currTermIdx + 1;
-        //     QueryTerm* terms = m_world->m_wAllocator.Alloc<QueryTerm>(query.termCount);
-        //
-        //     for(uint32_t idx = 0; idx < query.termCount; ++idx)
-        //     {
-        //         terms[idx] = m_desc->terms[idx];
-        //     }
-        //
-        //     if(m_desc.cache)
-        //     {
-        //         if(m_world->IsEntityExist(m_desc.id))
-        //         {
-        //             m_desc.id = m_world->GetId();
-        //         }
-        //
-        //         EntityDesc eDesc;
-        //         eDesc.id = m_desc.id;
-        //         std::snprintf(eDesc.name, 16, "Query %u", m_desc.id);
-        //         ComponentSet cs;
-        //         cs.Init(*m_world, 1);
-        //         cs[0] = EcsQueryId; 
-        //         eDesc.add = std::move(cs);
-        //
-        //         m_world.CreateEntity(eDesc);
-        //
-        //         query.id = m_desc.id;
-        //
-        //         //filter to cache immediately
-        //     }
-        //
-        //     return query;
-        // }
-
-    private:
-        World* m_world;
-        QueryDesc m_desc;
-        QueryTerm m_currTerm;
-        uint32_t m_currTermIdx;
-        bool m_firstTerm;
-    };
-}
+private:
+    World *m_world;
+    QueryDesc m_desc;
+    QueryTerm m_currTerm;
+    uint32_t m_currTermIdx;
+    bool m_firstTerm;
+};
+} // namespace ECS
