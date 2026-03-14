@@ -126,7 +126,7 @@ struct Store
         static_assert(std::is_destructible_v<T>);
     }
 
-    Store(Store &&other)
+    Store(Store &&other) noexcept
     {
         store = other.store;
         count = other.count;
@@ -135,7 +135,7 @@ struct Store
         other.store = nullptr;
     }
 
-    Store &operator=(Store &&other)
+    Store &operator=(Store &&other) noexcept
     {
         store = other.store;
         count = other.count;
@@ -152,7 +152,7 @@ struct Store
         count = 0;
         store = PTR_CAST(
             wAllocator.AllocN(sizeof(T), storeCapacity, storeCapacity), T);
-        capacity = storeCapacity;
+        this->capacity = storeCapacity;
     }
 
     void Grow(WorldAllocator &wAllocator)

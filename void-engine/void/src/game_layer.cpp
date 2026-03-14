@@ -92,20 +92,18 @@ void GameLayer::OnInit()
 
     ECS::Entity e1 = world->CreateEntity("Second ", e.GetFullId());
     e1.AddComponent<Position>().
-        // AddTag<NPC>().
+         AddTag<NPC>().
         // AddComponent<Velocity>().
         // AddPair<ECS::ChildOf>(e.GetFullId()).
-        Set<Position>({1, 1});
+        Set<Position>({555, 123123});
 
-    // std::cout << ECS::ComponentTypeId<ECS::EcsChildOf>::Id() << std::endl;
-
-    auto a = world->m_componentIndex.GetValue(
-        ECS::MakeRelationship(ECS::EcsChildOfId, e.GetFullId()));
-
-    // std::cout << a.archetypeStore.count << std::endl;
-    // std::cout <<
-    // world->m_componentIndex.GetValue(ECS::MakePair(ECS::ChildOfId,
-    // e.GetFullId())).name << std::endl;
+    
+    ECS::Query* q = world->CreateQueryBuilder<Position>().Build();
+    q->Each(+[](ECS::QueryIter iter, const Position& pos){
+            std::cout << "x: " << pos.x << std::endl;
+            std::cout << "y: " << pos.y << std::endl;
+           }, nullptr);
+    q->Execute();
     world->System<Position, ECS::EcsChildOf>(+[](Position &pos)
                                              {
                                                  ++pos.x;

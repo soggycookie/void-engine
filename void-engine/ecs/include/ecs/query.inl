@@ -1,7 +1,6 @@
 #include "ecs_type.h"
 #include "ecs_utils.h"
 #include "entity.h"
-#include "system_meta.h"
 #include <type_traits>
 #ifdef __clang__
 #pragma once
@@ -12,18 +11,15 @@
 namespace ECS
 {
 
-// template <typename... CallbackArgs>
-// static QueryCallback QueryCallback::CreateCallback(Query query,
-//                                                    void
-//                                                    (*fn)(CallbackArgs...))
-// {
-// }
+///////////////////////////////// Query /////////////////////////////////////
+
+
 
 template <typename CallbackArg>
-CallbackArg &Query::GetArg(QueryIter iter, Archetype *archetype,
+CallbackArg Query::GetArg(QueryIter iter, Archetype *archetype,
                            uint32_t sigIdx, uint32_t eIdx)
 {
-    if (m_callback.mappedSig[sigIdx] == QueryIterIndex)
+    if constexpr (std::is_same_v<std::remove_reference_t<CallbackArg>, QueryIter>)
     {
         return iter;
     }
@@ -64,12 +60,11 @@ void Query::Each(void (*cb)(CallbackArgs...), void *ctx)
     uint32_t termBitmask = 0;
 
     // support -1 - QueryIterIndex
-    int64_t callbackSig[sizeof...(CallbackArgs)];
-    size_t i = 0;
-    callbackSig[i++] = ((std::is_same_v<CallbackArgs, QueryIter>
-                             ? QueryIterIndex
-                             : ComponentTypeId<CallbackArgs>::Id()),
-                        ...);
+    int64_t callbackSig[] = {
+        (std::is_same_v<CallbackArgs, QueryIter>
+             ? QueryIterIndex
+             : ComponentTypeId<std::decay_t<CallbackArgs>>::Id())...
+    };
 
     // This will create the sig mapping and validate the callback sig
     for (size_t idx = 0; idx < m_callback.sigCount; ++idx)
@@ -124,14 +119,11 @@ void Query::Each(void (*cb)(CallbackArgs...), void *ctx)
             query->Filter();
         }
 
-        for (size_t idx = 0; idx < query->m_cache.filteredArchetypes.count;
-             ++idx)
+        for (size_t idx = 0; idx < query->m_result.count; ++idx)
         {
-            Archetype *archetype = query->m_cache.filteredArchetypes[idx];
+            const Archetype *archetype = query->m_result[idx].archetype;
 
-            QueryIter iter;
-            iter.ctx = ctx;
-            iter.world = query->m_world;
+            QueryIter iter(query->m_world, 0, ctx, 0);
 
             // entity level filter
             if (query->m_isEntityFiltered)
@@ -143,10 +135,15 @@ void Query::Each(void (*cb)(CallbackArgs...), void *ctx)
                 for (size_t eIdx = 0; eIdx < archetype->count; ++eIdx)
                 {
                     iter.eId = archetype->entities[eIdx];
-                    iter.deltaTime = 0;
-                    uint32_t sigIdx = 0;
-                    actualCallback(query->GetArg<CallbackArgs>(
-                        iter, archetype, sigIdx++, eIdx)...);
+                    //actuallCallback invoke here
+                    Query::InvokeCallback<CallbackArgs...>(
+                        query,
+                        actualCallback,
+                        iter,
+                        const_cast<Archetype*>(archetype),
+                        eIdx,
+                        std::index_sequence_for<CallbackArgs...>{}
+                    );
                 }
             }
         }
@@ -154,18 +151,21 @@ void Query::Each(void (*cb)(CallbackArgs...), void *ctx)
         if (query->m_eId == 0)
         {
             // NOTE: clear query result;
+            query->m_result.Delete(query->m_world->m_wAllocator,
+                                   query->m_callback.sigCount);
         }
     };
 }
 
+////////////////////////// Query Builder //////////////////////////////
+
 template <typename... T>
-template <typename U>
-QueryBuilder<T...> &QueryBuilder<T...>::Term(EntityId id)
+QueryBuilder<T...> &QueryBuilder<T...>::Term(EntityId cId)
 {
     if (!m_firstTerm)
     {
         m_desc.terms[m_currTermIdx++] = m_currTerm;
-        assert(m_currTermIdx <= 32);
+        assert(m_currTermIdx <= (32 - sizeof...(T)));
         m_currTerm = QueryTerm();
         m_currTerm.fieldId = m_currTermIdx;
     }
@@ -174,7 +174,7 @@ QueryBuilder<T...> &QueryBuilder<T...>::Term(EntityId id)
         m_firstTerm = false;
     }
 
-    m_currTerm.cId = ComponentTypeId<U>::Id();
+    m_currTerm.cId = cId;
 
     return *this;
 }
@@ -185,7 +185,7 @@ QueryBuilder<T...> &QueryBuilder<T...>::Term(EntityId first, EntityId second)
     if (!m_firstTerm)
     {
         m_desc.terms[m_currTermIdx++] = m_currTerm;
-        assert(m_currTermIdx <= 32);
+        assert(m_currTermIdx <= (32 - sizeof...(T)));
         m_currTerm = QueryTerm();
         m_currTerm.fieldId = m_currTermIdx;
     }
@@ -194,8 +194,6 @@ QueryBuilder<T...> &QueryBuilder<T...>::Term(EntityId first, EntityId second)
         m_firstTerm = false;
     }
 
-    m_currTerm.first = first;
-    m_currTerm.second = second;
     m_currTerm.cId = MakeRelationship(first, second);
 
     return *this;
@@ -267,13 +265,14 @@ QueryBuilder<T...> &QueryBuilder<T...>::Without()
     return Term<U>().Without();
 }
 
-template <typename... T>
-template <typename U>
-QueryBuilder<T...> &QueryBuilder<T...>::Optional()
-{
-    return Term<U>().Optional();
-}
-
+//
+// template <typename... T>
+// template <typename U>
+// QueryBuilder<T...> &QueryBuilder<T...>::Optional()
+// {
+//     return Term<U>().Optional();
+// }
+//
 template <typename... T>
 QueryBuilder<T...> &QueryBuilder<T...>::With()
 {
@@ -286,11 +285,11 @@ QueryBuilder<T...> &QueryBuilder<T...>::Without()
     return Op(NOT);
 }
 
-template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::Optional()
-{
-    return Op(OPTIONAL);
-}
+// template <typename... T>
+// QueryBuilder<T...> &QueryBuilder<T...>::Optional()
+// {
+//     return Op(OPTIONAL);
+// }
 
 template <typename... T>
 QueryBuilder<T...> &QueryBuilder<T...>::SelfUp(EntityId target)
@@ -339,16 +338,6 @@ QueryBuilder<T...> &QueryBuilder<T...>::Modify()
     return *this;
 }
 
-// template <typename... T>
-// template <typename... CallbackArgs>
-// QueryBuilder<T...> &QueryBuilder<T...>::RunCallback(void
-// (*)(CallbackArgs...),
-//                                                     void *ctx)
-// {
-//
-//     return *this;
-// }
-
 template <typename... T>
 Query *QueryBuilder<T...>::Build()
 {
@@ -356,10 +345,8 @@ Query *QueryBuilder<T...>::Build()
 
     // construct query
     void *addr = m_world->m_wAllocator.Alloc(sizeof(Query));
-    Query *query = new (addr) Query();
-    query->m_eId = 0;
+    Query *query = new (addr) Query(m_world, 0);
     query->m_termCount = m_currTermIdx + 1;
-    query->m_world = m_world;
     QueryTerm *terms =
         m_world->m_wAllocator.Alloc<QueryTerm>(query->m_termCount);
 
@@ -380,7 +367,7 @@ Query *QueryBuilder<T...>::Build()
     // sort descending
     // relationship will at the front because of their narrow set
     std::sort(terms, terms + query->m_termCount,
-              [](const QueryTerm &a, const QueryTerm &b)
+              [&](const QueryTerm &a, const QueryTerm &b)
               { return priority(a) > priority(b); });
 
     query->m_terms = terms;

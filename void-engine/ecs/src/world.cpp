@@ -48,8 +48,9 @@ void World::RegisterInternalComponents()
 {
     Component<EcsName>().Id(EcsNameId).Register();
     Component<EcsInherit>().Id(EcsInheritId).Register();
-
-    Tag<EcsSystem>().Id(EcsSystemId).Register();
+    Component<EcsSystem>().Id(EcsSystemId).Register();
+    Component<EcsQuery>().Id(EcsQueryId).Register();
+    
     Tag<EcsPhase>().Id(EcsPhaseId).Register();
     Tag<EcsArchetype>().Id(EcsArchetypeId).Register();
     Tag<EcsPipeline>().Id(EcsPipelineId).Register();

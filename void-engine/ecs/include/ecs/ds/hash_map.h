@@ -1,5 +1,6 @@
 #pragma once
 #include "world_allocator.h"
+#include <cassert>
 /*
     Robin hood open addressing hash map
 */
@@ -7,520 +8,496 @@
 namespace ECS
 {
 
-    //chatgpt
-    inline uint64_t HashU64(uint64_t x)
+// chatgpt
+inline uint64_t HashU64(uint64_t x)
+{
+    x ^= x >> 33;
+    x *= 0xff51afd7ed558ccdULL;
+    x ^= x >> 33;
+    x *= 0xc4ceb9fe1a85ec53ULL;
+    x ^= x >> 33;
+
+    return x;
+}
+
+template <typename T>
+struct Hash;
+
+template <>
+struct Hash<uint64_t>
+{
+    static uint64_t Value(uint64_t v) { return HashU64(v); }
+};
+
+template <>
+struct Hash<uint32_t>
+{
+    static uint64_t Value(uint32_t v) { return HashU64((uint64_t)v); }
+};
+
+template <typename Key, typename Value>
+class HashMap
+{
+
+private:
+    struct Bucket
     {
-        x ^= x >> 33;
-        x *= 0xff51afd7ed558ccdULL;
-        x ^= x >> 33;
-        x *= 0xc4ceb9fe1a85ec53ULL;
-        x ^= x >> 33;
-
-        return x;
-    }
-
-    template<typename T>
-    struct Hash;
-
-    template<>
-    struct Hash<uint64_t>
-    {
-        static uint64_t Value(uint64_t v)
-        {
-            return HashU64(v);
-        }
+        uint32_t PSL;
+        uint8_t occupied;
+        unsigned char padding[3];
+        alignas(Key) char key[sizeof(Key)];
+        alignas(Value) char value[sizeof(Value)];
     };
 
-    template<>
-    struct Hash<uint32_t>
+public:
+    struct Iterator
     {
-        static uint64_t Value(uint32_t v)
-        {
-            return HashU64((uint64_t) v);
-        }
-    };
+    private:
+        friend class HashMap;
 
-    template<typename Key, typename Value>
-    class HashMap
-    {
+        Bucket *m_ptr;
 
     private:
-        struct Bucket
-        {
-            uint32_t PSL;
-            uint8_t occupied;
-            unsigned char padding[3];
-            alignas(Key) char key[sizeof(Key)];
-            alignas(Value) char value[sizeof(Value)];
-        };
+        Iterator(Bucket *ptr) : m_ptr(ptr) {}
 
     public:
-        struct Iterator
+        bool IsValid() const { return m_ptr->occupied; }
+
+        Value &GetValue() { return *PTR_RCAST(m_ptr->value, Value); }
+
+        Key &GetKey() { return *PTR_RCAST(m_ptr->key, Key); }
+
+        const Value &GetValue() const
         {
-        private:
-            friend class HashMap;
-
-            Bucket* m_ptr;
-        private:
-            Iterator(Bucket* ptr)
-                : m_ptr(ptr)
-            {
-            }
-
-        public:
-
-            bool IsValid() const
-            {
-                return m_ptr->occupied;
-            }
-
-            Value& GetValue()
-            {
-                return *PTR_RCAST(m_ptr->value, Value);
-            }
-
-            Key& GetKey()
-            {
-                return *PTR_RCAST(m_ptr->key, Key);
-            }
-
-            const Value& GetValue() const
-            {
-                return *PTR_RCAST(m_ptr->value, Value);
-            }
-
-            const Key& GetKey() const
-            {
-                return *PTR_RCAST(m_ptr->key, Key);
-            }
-
-            Iterator& operator++()
-            {
-                ++m_ptr;
-                return *this;
-            }
-
-            Iterator operator++(int)
-            {
-                Iterator tmp = *this;
-                ++(*this);
-                return tmp;
-            }
-
-            Iterator& operator--()
-            {
-                --m_ptr;
-                return *this;
-            }
-
-            Iterator operator--(int)
-            {
-                Iterator tmp = *this;
-                --(*this);
-                return tmp;
-            }
-
-            Iterator operator-(int64_t index) const
-            {
-                return Iterator(m_ptr - index);
-            }
-
-            Iterator operator+(int64_t index) const
-            {
-                return Iterator(m_ptr + index);
-            }
-
-            bool operator==(const Iterator& other) const
-            {
-                return m_ptr == other.m_ptr;
-            }
-
-            bool operator!=(const Iterator& other) const
-            {
-                return m_ptr != other.m_ptr;
-            }
-        };
-
-    public:
-        HashMap() :
-            m_array(nullptr), m_allocator(nullptr),
-            m_bucketCount(0), m_count(0)
-        {
-            static_assert(std::is_move_constructible_v<Key> || std::is_copy_constructible_v<Key>);
-            static_assert(std::is_move_constructible_v<Value> || std::is_copy_constructible_v<Value>);
-            static_assert(std::is_move_assignable_v<Value> || std::is_copy_assignable_v<Value>);
-            static_assert(std::is_move_assignable_v<Key> || std::is_copy_assignable_v<Key>);
-            static_assert(std::is_destructible_v<Key> && std::is_destructible_v<Value>);
+            return *PTR_RCAST(m_ptr->value, Value);
         }
 
-        HashMap(HashMap&& other)
+        const Key &GetKey() const { return *PTR_RCAST(m_ptr->key, Key); }
+
+        Iterator &operator++()
         {
-            m_allocator = other.m_allocator;
-            m_array = other.m_array;
-            m_bucketCount = other.m_bucketCount;
-            m_count = other.m_count;
-
-            other.m_array = nullptr;
-            other.m_count = 0;
-        }
-
-        HashMap& operator=(HashMap&& other) noexcept
-        {
-            m_allocator = other.m_allocator;
-            m_array = other.m_array;
-            m_bucketCount = other.m_bucketCount;
-            m_count = other.m_count;
-
-            other.m_array = nullptr;
-            other.m_count = 0;        
-
+            ++m_ptr;
             return *this;
         }
 
-        void Init(WorldAllocator* allocator, uint32_t bucketCount)
+        Iterator operator++(int)
         {
-            m_allocator = allocator;
-            m_bucketCount = bucketCount;
-            m_count = 0;
-            m_array = CallocN(m_bucketCount);
+            Iterator tmp = *this;
+            ++(*this);
+            return tmp;
         }
 
-        void Destroy()
+        Iterator &operator--()
         {
-            for(uint32_t i = 0; i < m_bucketCount; i++)
+            --m_ptr;
+            return *this;
+        }
+
+        Iterator operator--(int)
+        {
+            Iterator tmp = *this;
+            --(*this);
+            return tmp;
+        }
+
+        Iterator operator-(int64_t index) const
+        {
+            return Iterator(m_ptr - index);
+        }
+
+        Iterator operator+(int64_t index) const
+        {
+            return Iterator(m_ptr + index);
+        }
+
+        bool operator==(const Iterator &other) const
+        {
+            return m_ptr == other.m_ptr;
+        }
+
+        bool operator!=(const Iterator &other) const
+        {
+            return m_ptr != other.m_ptr;
+        }
+    };
+
+public:
+    HashMap()
+        : m_array(nullptr), m_allocator(nullptr), m_bucketCount(0), m_count(0)
+    {
+        static_assert(std::is_move_constructible_v<Key> ||
+                      std::is_copy_constructible_v<Key>);
+        static_assert(std::is_move_constructible_v<Value> ||
+                      std::is_copy_constructible_v<Value>);
+        static_assert(std::is_move_assignable_v<Value> ||
+                      std::is_copy_assignable_v<Value>);
+        static_assert(std::is_move_assignable_v<Key> ||
+                      std::is_copy_assignable_v<Key>);
+        static_assert(std::is_destructible_v<Key> &&
+                      std::is_destructible_v<Value>);
+    }
+
+    HashMap(HashMap &&other)
+    {
+        m_allocator = other.m_allocator;
+        m_array = other.m_array;
+        m_bucketCount = other.m_bucketCount;
+        m_count = other.m_count;
+
+        other.m_array = nullptr;
+        other.m_count = 0;
+    }
+
+    HashMap &operator=(HashMap &&other) noexcept
+    {
+        m_allocator = other.m_allocator;
+        m_array = other.m_array;
+        m_bucketCount = other.m_bucketCount;
+        m_count = other.m_count;
+
+        other.m_array = nullptr;
+        other.m_count = 0;
+
+        return *this;
+    }
+
+    void Init(WorldAllocator *allocator, uint32_t bucketCount)
+    {
+        m_allocator = allocator;
+        m_bucketCount = bucketCount;
+        m_count = 0;
+        m_array = CallocN(m_bucketCount);
+    }
+
+    void Destroy()
+    {
+        for (uint32_t i = 0; i < m_bucketCount; i++)
+        {
+            Bucket *bucket =
+                CAST_OFFSET_ELEMENT(m_array, Bucket, sizeof(Bucket), i);
+
+            assert(bucket && "Bucket is null!");
+
+            if (bucket->occupied)
             {
-                Bucket* bucket = CAST_OFFSET_ELEMENT(m_array, Bucket, sizeof(Bucket), i);
+                Key &key = KeyCast(bucket);
+                Value &value = ValueCast(bucket);
 
-                assert(bucket && "Bucket is null!");
-
-                if(bucket->occupied)
-                {
-                    Key& key = KeyCast(bucket);
-                    Value& value = ValueCast(bucket);
-
-                    DestroyBucket(bucket);
-                }
+                DestroyBucket(bucket);
             }
+        }
 
-            if(m_allocator)
+        if (m_allocator)
+        {
+            m_allocator->Free(sizeof(Bucket) * m_bucketCount, m_array);
+        }
+        else
+        {
+            std::free(m_array);
+        }
+    }
+
+    template <typename K, typename V>
+    void Insert(K &&key, V &&value)
+    {
+        if (static_cast<float>(m_count) / static_cast<float>(m_bucketCount) >=
+            0.8)
+        {
+            Grow();
+        }
+
+        if (InsertInternal(std::forward<K>(key), std::forward<V>(value),
+                           m_array, m_bucketCount))
+        {
+            ++m_count;
+        }
+    }
+
+    void Remove(const Key &key)
+    {
+        size_t index = Hash<Key>::Value(key) % m_bucketCount;
+        Bucket *bucket = nullptr;
+        uint32_t PSL = 0;
+        bool isKeyFound = false;
+
+        // linear probing
+        while (true)
+        {
+            bucket = CAST_OFFSET_ELEMENT(m_array, Bucket, sizeof(Bucket),
+                                         (index % m_bucketCount));
+            if (bucket->occupied)
             {
-                m_allocator->Free(sizeof(Bucket) * m_bucketCount, m_array);
+                Key &occupiedKey = KeyCast(bucket);
+
+                if (PSL > bucket->PSL)
+                {
+                    return;
+                }
+
+                if (occupiedKey == key)
+                {
+                    isKeyFound = true;
+                    break;
+                }
             }
             else
             {
-                std::free(m_array);
+                break;
             }
+
+            ++PSL;
+            ++index;
         }
 
-        template<typename K, typename V>
-        void Insert(K&& key, V&& value)
+        // should never go inside this
+        if (!isKeyFound)
         {
-            if(static_cast<float>(m_count) / static_cast<float>(m_bucketCount) >= 0.8)
-            {
-                Grow();
-            }
-
-            if(InsertInternal(std::forward<K>(key), std::forward<V>(value), m_array, m_bucketCount))
-            {
-                ++m_count;
-            }
+            assert(0);
         }
 
-        void Remove(const Key& key)
+        while (true)
         {
-            size_t index = Hash<Key>::Value(key) % m_bucketCount;
-            Bucket* bucket = nullptr;
-            uint32_t PSL = 0;
-            bool isKeyFound = false;
+            Bucket *nextBucket = CAST_OFFSET_ELEMENT(
+                m_array, Bucket, sizeof(Bucket), ((index + 1) % m_bucketCount));
 
-            //linear probing
-            while(true)
+            if (!nextBucket->occupied || nextBucket->PSL == 0)
             {
-                bucket = CAST_OFFSET_ELEMENT(m_array, Bucket, sizeof(Bucket), (index % m_bucketCount));
-                if(bucket->occupied)
-                {
-                    Key& occupiedKey = KeyCast(bucket);
-
-                    if(PSL > bucket->PSL)
-                    {
-                        return;
-                    }
-
-                    if(occupiedKey == key)
-                    {
-                        isKeyFound = true;
-                        break;
-                    }
-                }
-                else
-                {
-                    break;
-                }
-
-                ++PSL;
-                ++index;
+                break;
             }
 
-            //should never go inside this
-            if(!isKeyFound)
-            {
-                return;
-            }
+            --(nextBucket->PSL);
+            std::swap(bucket->PSL, nextBucket->PSL);
+            std::swap(KeyCast(bucket), KeyCast(nextBucket));
+            std::swap(ValueCast(bucket), ValueCast(nextBucket));
 
-            while(true)
-            {
-                Bucket* nextBucket = CAST_OFFSET_ELEMENT(m_array, Bucket, sizeof(Bucket), ((index + 1) % m_bucketCount));
+            ++index;
+            bucket = nextBucket;
+        }
 
-                if(!nextBucket->occupied || nextBucket->PSL == 0)
+        DestroyBucket(bucket);
+        --m_count;
+    }
+
+    bool ContainsKey(const Key &key) const
+    {
+        size_t index = Hash<Key>::Value(key) % m_bucketCount;
+        Bucket *bucket = nullptr;
+        uint32_t PSL = 0;
+
+        // linear probing
+        while (true)
+        {
+            bucket = CAST_OFFSET_ELEMENT(m_array, Bucket, sizeof(Bucket),
+                                         (index % m_bucketCount));
+            if (bucket->occupied)
+            {
+                if (PSL > bucket->PSL)
                 {
                     break;
                 }
 
-                --(nextBucket->PSL);
-                std::swap(bucket->PSL, nextBucket->PSL);
-                std::swap(KeyCast(bucket), KeyCast(nextBucket));
-                std::swap(ValueCast(bucket), ValueCast(nextBucket));
-
-                ++index;
-                bucket = nextBucket;
-            }
-
-            DestroyBucket(bucket);
-            --m_count;
-        }
-
-        bool ContainsKey(const Key& key) const
-        {
-            size_t index = Hash<Key>::Value(key) % m_bucketCount;
-            Bucket* bucket = nullptr;
-            uint32_t PSL = 0;
-
-            //linear probing
-            while(true)
-            {
-                bucket = CAST_OFFSET_ELEMENT(m_array, Bucket, sizeof(Bucket), (index % m_bucketCount));
-                if(bucket->occupied)
+                if (KeyCast(bucket) == key)
                 {
-                    if(PSL > bucket->PSL)
-                    {
-                        break;
-                    }
-
-                    if(KeyCast(bucket) == key)
-                    {
-                        return true;
-                    }
-                }
-                else
-                {
-                    break;
-                }
-
-                ++PSL;
-                ++index;
-            }
-
-            return false;
-        }
-
-        Value& GetValue(const Key& key)
-        {
-            size_t index = Hash<Key>::Value(key) % m_bucketCount;
-            Bucket* bucket = nullptr;
-            uint32_t PSL = 0;
-
-            //linear probing
-            while(true)
-            {
-                bucket = CAST_OFFSET_ELEMENT(m_array, Bucket, sizeof(Bucket), (index % m_bucketCount));
-                if(bucket->occupied)
-                {
-                    if(PSL > bucket->PSL)
-                    {
-                        break;
-                    }
-
-                    if(KeyCast(bucket) == key)
-                    {
-                        return ValueCast(bucket);
-                    }
-                }
-                else
-                {
-                    break;
-                }
-
-                PSL++;
-                index++;
-            }
-
-            assert(0 && "No key exist!");
-        }
-
-        bool Empty() const
-        {
-            return m_count == 0;
-        }
-
-        size_t GetCount() const
-        {
-            return m_count;
-        }
-
-        size_t GetBucketCount() const
-        {
-            return m_bucketCount;
-        }
-
-        Value& operator[](const Key& key)
-        {
-            return GetValue(key);
-        }
-
-        Iterator Begin()
-        {
-            return Iterator(PTR_RCAST(m_array, Bucket));
-        }
-
-        Iterator End()
-        {
-            return Iterator(CAST_OFFSET_ELEMENT(m_array, Bucket, sizeof(Bucket), m_bucketCount));
-        }
-
-    private:
-        void* CallocN(uint32_t capacity)
-        {
-            void* data = nullptr;
-            if(m_allocator)
-            {
-                uint32_t newCapacity = 0;
-                data = m_allocator->CallocN(sizeof(Bucket), capacity, newCapacity);
-            }
-            else
-            {
-                data = std::calloc(m_bucketCount, sizeof(Bucket));
-            }
-
-            assert(data && "Fail to calloc!");
-
-            return data;
-        }
-
-        void Grow()
-        {
-            uint32_t newBucketCount = m_bucketCount * 2;
-
-            void* newArray = CallocN(newBucketCount);
-
-            for(uint32_t i = 0; i < m_bucketCount; i++)
-            {
-                Bucket* bucket = CAST_OFFSET_ELEMENT(m_array, Bucket, sizeof(Bucket), i);
-
-                assert(bucket && "Bucket is null!");
-
-                if(bucket->occupied)
-                {
-                    Key& key = KeyCast(bucket);
-                    Value& value = ValueCast(bucket);
-
-                    InsertInternal(std::move(key), std::move(value), newArray, newBucketCount);
-
-                    DestroyBucket(bucket);
-                }
-            }
-
-            if(m_allocator)
-            {
-                m_allocator->Free(sizeof(Bucket) * m_bucketCount, m_array);
-            }
-            else
-            {
-                std::free(m_array);
-            }
-
-            m_bucketCount = newBucketCount;
-            m_array = newArray;
-        }
-
-        template<typename K, typename V>
-        bool InsertInternal(K&& key, V&& value, void* array, size_t bucketCount)
-        {
-            size_t index = Hash<Key>::Value(key) % bucketCount;
-            Bucket* bucket = nullptr;
-            uint32_t PSL = 0;
-
-            Key bucketKey(std::forward<K>(key));
-            Value bucketValue(std::forward<V>(value));
-
-            //linear probing
-            while(true)
-            {
-                bucket = CAST_OFFSET_ELEMENT(array, Bucket, sizeof(Bucket), (index % bucketCount));
-                if(!bucket->occupied)
-                {
-                    bucket->occupied = true;
-                    std::swap(PSL, bucket->PSL);
-
-                    new (bucket->key) Key(std::move(bucketKey));
-                    new (bucket->value) Value(std::move(bucketValue));
-
                     return true;
                 }
-
-                Key& key = KeyCast(bucket);
-
-                if(key == bucketKey)
-                {
-                    std::swap(ValueCast(bucket), bucketValue);
-                    return false;
-                }
-
-                if(PSL > bucket->PSL)
-                {
-                    std::swap(PSL, bucket->PSL);
-                    std::swap(bucketKey, KeyCast(bucket));
-                    std::swap(bucketValue, ValueCast(bucket));
-                }
-
-                ++PSL;
-                ++index;
+            }
+            else
+            {
+                break;
             }
 
-            return false;
+            ++PSL;
+            ++index;
         }
 
-        void DestroyBucket(Bucket* bucket)
+        return false;
+    }
+
+    Value &GetValue(const Key &key)
+    {
+        size_t index = Hash<Key>::Value(key) % m_bucketCount;
+        Bucket *bucket = nullptr;
+        uint32_t PSL = 0;
+
+        // linear probing
+        while (true)
         {
-            if constexpr(!std::is_trivially_destructible_v<Key>)
+            bucket = CAST_OFFSET_ELEMENT(m_array, Bucket, sizeof(Bucket),
+                                         (index % m_bucketCount));
+            if (bucket->occupied)
             {
-                Key& key = KeyCast(bucket);
-                key.~Key();
+                if (PSL > bucket->PSL)
+                {
+                    break;
+                }
+
+                if (KeyCast(bucket) == key)
+                {
+                    return ValueCast(bucket);
+                }
+            }
+            else
+            {
+                break;
             }
 
-            if constexpr(!std::is_trivially_destructible_v<Value>)
+            PSL++;
+            index++;
+        }
+
+        assert(0 && "No key exist!");
+    }
+
+    bool Empty() const { return m_count == 0; }
+
+    size_t GetCount() const { return m_count; }
+
+    size_t GetBucketCount() const { return m_bucketCount; }
+
+    Value &operator[](const Key &key) { return GetValue(key); }
+
+    Iterator Begin() { return Iterator(PTR_RCAST(m_array, Bucket)); }
+
+    Iterator End()
+    {
+        return Iterator(CAST_OFFSET_ELEMENT(m_array, Bucket, sizeof(Bucket),
+                                            m_bucketCount));
+    }
+
+private:
+    void *CallocN(uint32_t capacity)
+    {
+        void *data = nullptr;
+        if (m_allocator)
+        {
+            uint32_t newCapacity = 0;
+            data = m_allocator->CallocN(sizeof(Bucket), capacity, newCapacity);
+        }
+        else
+        {
+            data = std::calloc(m_bucketCount, sizeof(Bucket));
+        }
+
+        assert(data && "Fail to calloc!");
+
+        return data;
+    }
+
+    void Grow()
+    {
+        uint32_t newBucketCount = m_bucketCount * 2;
+
+        void *newArray = CallocN(newBucketCount);
+
+        for (uint32_t i = 0; i < m_bucketCount; i++)
+        {
+            Bucket *bucket =
+                CAST_OFFSET_ELEMENT(m_array, Bucket, sizeof(Bucket), i);
+
+            assert(bucket && "Bucket is null!");
+
+            if (bucket->occupied)
             {
-                Value& value = ValueCast(bucket);
-                value.~Value();
-            }            
+                Key &key = KeyCast(bucket);
+                Value &value = ValueCast(bucket);
 
-            bucket->occupied = false;
-            bucket->PSL = 0;
+                InsertInternal(std::move(key), std::move(value), newArray,
+                               newBucketCount);
+
+                DestroyBucket(bucket);
+            }
         }
 
-        Key& KeyCast(Bucket* bucket) const
+        if (m_allocator)
         {
-            return *PTR_RCAST(bucket->key, Key);
+            m_allocator->Free(sizeof(Bucket) * m_bucketCount, m_array);
         }
-
-        Value& ValueCast(Bucket* bucket) const
+        else
         {
-            return *PTR_RCAST(bucket->value, Value);
+            std::free(m_array);
         }
 
-    private:
-        void* m_array;
-        WorldAllocator* m_allocator;
-        uint32_t m_bucketCount;
-        uint32_t m_count;
-    };
-}
+        m_bucketCount = newBucketCount;
+        m_array = newArray;
+    }
+
+    template <typename K, typename V>
+    bool InsertInternal(K &&key, V &&value, void *array, size_t bucketCount)
+    {
+        size_t index = Hash<Key>::Value(key) % bucketCount;
+        Bucket *bucket = nullptr;
+        uint32_t PSL = 0;
+
+        Key bucketKey(std::forward<K>(key));
+        Value bucketValue(std::forward<V>(value));
+
+        // linear probing
+        while (true)
+        {
+            bucket = CAST_OFFSET_ELEMENT(array, Bucket, sizeof(Bucket),
+                                         (index % bucketCount));
+            if (!bucket->occupied)
+            {
+                bucket->occupied = true;
+                std::swap(PSL, bucket->PSL);
+
+                new (bucket->key) Key(std::move(bucketKey));
+                new (bucket->value) Value(std::move(bucketValue));
+
+                return true;
+            }
+
+            Key &key = KeyCast(bucket);
+
+            if (key == bucketKey)
+            {
+                std::swap(ValueCast(bucket), bucketValue);
+                return false;
+            }
+
+            if (PSL > bucket->PSL)
+            {
+                std::swap(PSL, bucket->PSL);
+                std::swap(bucketKey, KeyCast(bucket));
+                std::swap(bucketValue, ValueCast(bucket));
+            }
+
+            ++PSL;
+            ++index;
+        }
+
+        return false;
+    }
+
+    void DestroyBucket(Bucket *bucket)
+    {
+        if constexpr (!std::is_trivially_destructible_v<Key>)
+        {
+            Key &key = KeyCast(bucket);
+            key.~Key();
+        }
+
+        if constexpr (!std::is_trivially_destructible_v<Value>)
+        {
+            Value &value = ValueCast(bucket);
+            value.~Value();
+        }
+
+        bucket->occupied = false;
+        bucket->PSL = 0;
+    }
+
+    Key &KeyCast(Bucket *bucket) const { return *PTR_RCAST(bucket->key, Key); }
+
+    Value &ValueCast(Bucket *bucket) const
+    {
+        return *PTR_RCAST(bucket->value, Value);
+    }
+
+private:
+    void *m_array;
+    WorldAllocator *m_allocator;
+    uint32_t m_bucketCount;
+    uint32_t m_count;
+};
+} // namespace ECS

@@ -1,7 +1,9 @@
 #pragma once
+#include "ds/world_allocator.h"
 #include "ecs_type.h"
 #include "entity.h"
 #include "internal_component.h"
+#include <cassert>
 #include <cstdint>
 #include <type_traits>
 
@@ -26,8 +28,6 @@ struct ArchetypeLinkedList
         wAllocator.Free(sizeof(ArchetypeLinkedList), addr);
     }
 };
-
-class World;
 
 struct QueryIterator
 {
@@ -83,14 +83,13 @@ enum TermBehavior : uint16_t
 struct QueryTerm
 {
     QueryTerm()
-        : cId(0), first(0), second(0), travTarget(0), trav(SELF), op(HAS),
+        : cId(0), travRelation(0), travTarget(0), trav(SELF), op(HAS),
           behavior(READ_WRITE), fieldId(0)
     {
     }
 
     EntityId cId;
-    EntityId first;
-    EntityId second;
+    EntityId travRelation;
     EntityId travTarget;
     TraverseMethod trav;
     TermOp op;
@@ -98,16 +97,144 @@ struct QueryTerm
     uint16_t fieldId;
 };
 
+constexpr uint16_t InlineArrayOptimizationCount = 8;
+
+struct MatchedArchetype
+{
+    MatchedArchetype() = default;
+
+    MatchedArchetype(const Archetype *archetype)
+        : archetype(archetype), largeEntityMask(nullptr),
+          largeMatchedColumns(nullptr)
+    {
+    }
+
+    MatchedArchetype(MatchedArchetype &&other) noexcept
+    {
+        archetype = other.archetype;
+        largeMatchedColumns = other.largeMatchedColumns;
+        std::memcpy(smallMatchedColumns, other.smallMatchedColumns,
+                    sizeof(int32_t) * InlineArrayOptimizationCount);
+        largeEntityMask = other.largeEntityMask;
+
+        other.archetype = nullptr;
+        other.largeEntityMask = nullptr;
+    }
+
+    MatchedArchetype &operator=(MatchedArchetype &&other) noexcept
+    {
+        archetype = other.archetype;
+        largeMatchedColumns = other.largeMatchedColumns;
+        std::memcpy(smallMatchedColumns, other.smallMatchedColumns,
+                    sizeof(int32_t) * InlineArrayOptimizationCount);
+        largeEntityMask = other.largeEntityMask;
+
+        other.archetype = nullptr;
+        other.largeEntityMask = nullptr;
+
+        return *this;
+    }
+
+    void SetMatchedColumns(WorldAllocator &wAllocator, int32_t *mappedCols,
+                           uint32_t count);
+
+    const Archetype *archetype;
+    int32_t *largeMatchedColumns;
+    int32_t smallMatchedColumns[InlineArrayOptimizationCount];
+
+    // NOTE: if there are ecs operation like add or delete, bitmask will be
+    // invalidated. Try to avoid these expensive filtering as much as possible
+    uint32_t smallEntityMask[InlineArrayOptimizationCount];
+    uint32_t *largeEntityMask;
+
+    void Delete(WorldAllocator &wAllocator, uint32_t callbackSigCount);
+};
+
 struct QueryResult
 {
-    Store<Archetype *> filteredArchetypes;
-    // NOTE: if there are ecs operation like add or delete, bitmask will be
-    // invalidated Try to avoid these expensive filtering as much as possible
-    uint64_t **entityMask;
+    QueryResult() : largeMatchedArchetypes(nullptr), count(0), capacity(0) {}
+
+    QueryResult(QueryResult &&other) noexcept
+    {
+        count = other.count;
+        capacity = other.capacity;
+        largeMatchedArchetypes = other.largeMatchedArchetypes;
+
+        uint32_t smallCount = (count <= InlineArrayOptimizationCount)
+                                  ? count
+                                  : InlineArrayOptimizationCount;
+        for (size_t idx = 0; idx < smallCount; ++idx)
+        {
+            smallMatchedArchetypes[idx] =
+                std::move(other.smallMatchedArchetypes[idx]);
+        }
+
+        other.largeMatchedArchetypes = nullptr;
+    }
+
+    QueryResult &operator=(QueryResult &&other) noexcept
+    {
+        count = other.count;
+        capacity = other.capacity;
+        largeMatchedArchetypes = other.largeMatchedArchetypes;
+
+        uint32_t smallCount = (count <= InlineArrayOptimizationCount)
+                                  ? count
+                                  : InlineArrayOptimizationCount;
+        for (size_t idx = 0; idx < smallCount; ++idx)
+        {
+            smallMatchedArchetypes[idx] =
+                std::move(other.smallMatchedArchetypes[idx]);
+        }
+
+        other.largeMatchedArchetypes = nullptr;
+
+        return *this;
+    }
+
+    MatchedArchetype &operator[](size_t idx)
+    {
+        if (idx < count)
+        {
+            if (idx < InlineArrayOptimizationCount)
+            {
+                return smallMatchedArchetypes[idx];
+            }
+            else
+            {
+                assert(largeMatchedArchetypes);
+                return largeMatchedArchetypes[idx -
+                                              InlineArrayOptimizationCount];
+            }
+        }
+        assert(0);
+
+#ifdef __clang__
+        __builtin_unreachable();
+#elif defined(_MSC_VER)
+        __assume(false);
+#endif
+    }
+
+    void Add(WorldAllocator &wAllocator, MatchedArchetype &&matched);
+
+    void Delete(WorldAllocator &wAllocator, uint32_t callbackSigCount);
+
+    MatchedArchetype smallMatchedArchetypes[InlineArrayOptimizationCount];
+    MatchedArchetype *largeMatchedArchetypes;
+
+    uint32_t count;
+    uint32_t capacity;
 };
 
 struct QueryIter
 {
+    QueryIter(World *world, EntityId eId = 0, void *ctx = nullptr,
+              double deltaTime = 0)
+        : world(world), ctx(ctx), eId(eId), deltaTime(deltaTime)
+    {
+    }
+
     World *world;
     void *ctx;
     EntityId eId;
@@ -123,6 +250,7 @@ constexpr bool at_most_one_entity =
 template <typename... CallbackArgs>
 constexpr bool at_most_one_query_iter =
     ((std::is_same_v<CallbackArgs, QueryResult> ? 1 : 0) + ...) <= 1;
+
 
 class Query;
 
@@ -164,7 +292,7 @@ public:
         m_world = other.m_world;
         m_eId = other.m_eId;
         m_terms = other.m_terms;
-        m_cache = std::move(other.m_cache);
+        m_result = std::move(other.m_result);
         m_callback = other.m_callback;
         m_termCount = other.m_termCount;
         m_isEntityFiltered = other.m_isEntityFiltered;
@@ -177,7 +305,7 @@ public:
         m_world = other.m_world;
         m_eId = other.m_eId;
         m_terms = other.m_terms;
-        m_cache = std::move(other.m_cache);
+        m_result = std::move(other.m_result);
         m_callback = other.m_callback;
         m_termCount = other.m_termCount;
         m_isEntityFiltered = other.m_isEntityFiltered;
@@ -187,28 +315,43 @@ public:
         return *this;
     }
 
+
     template <typename... CallbackArgs>
     void Each(void (*)(CallbackArgs...), void *ctx = nullptr);
 
     void Execute();
 
+    void Destroy();
+
+    template<typename... CallbackArgs, size_t... I>
+    static void InvokeCallback(
+        Query* query,
+        void (*cb)(CallbackArgs...),
+        QueryIter& iter,
+        Archetype* archetype,
+        uint32_t eIdx,
+        std::index_sequence<I...>)
+    {
+        cb(query->GetArg<CallbackArgs>(iter, archetype, I, eIdx)...);
+    }
+
 private:
     template <typename... T>
     friend class QueryBuilder;
 
-    Query() = default;
+    Query(World *world, EntityId eId = 0) : m_world(world), m_eId(eId) {}
 
     void Filter();
 
     template <typename CallbackArg>
-    CallbackArg &GetArg(QueryIter iter, Archetype *archetype, uint32_t sigIdx,
+    CallbackArg GetArg(QueryIter iter, Archetype *archetype, uint32_t sigIdx,
                         uint32_t eIdx);
 
 private:
     World *m_world;
     EntityId m_eId; // = 0 if not cache
     QueryTerm *m_terms;
-    QueryResult m_cache;
+    QueryResult m_result;
     QueryCallback m_callback;
     uint32_t m_termCount;
     bool m_isEntityFiltered;
@@ -222,12 +365,12 @@ public:
         : m_world(world), m_currTermIdx(0), m_desc(), m_firstTerm(true)
     {
         assert(m_world);
+        (Term<T>(), ...);
     }
 
-    template <typename U>
     QueryBuilder<T...> &Term(EntityId id);
 
-    QueryBuilder<T...> &Term(EntityId first, EntityId second = EcsAnyId);
+    QueryBuilder<T...> &Term(EntityId first, EntityId second);
 
     template <typename U>
     QueryBuilder<T...> &Term();
@@ -236,8 +379,7 @@ public:
 
     QueryBuilder<T...> &TraveseTarget(EntityId targetId);
 
-    QueryBuilder<T...> &TraveseTarget(EntityId first,
-                                      EntityId second = EcsAnyId);
+    QueryBuilder<T...> &TraveseTarget(EntityId first, EntityId second);
 
     QueryBuilder<T...> &Op(TermOp op);
 
@@ -251,14 +393,9 @@ public:
     template <typename U>
     QueryBuilder<T...> &Without();
 
-    template <typename U>
-    QueryBuilder<T...> &Optional();
-
     QueryBuilder<T...> &With();
 
     QueryBuilder<T...> &Without();
-
-    QueryBuilder<T...> &Optional();
 
     QueryBuilder<T...> &SelfUp(EntityId target);
 
