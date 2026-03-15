@@ -38,6 +38,8 @@ public:
 
     Entity CreateEntity(EntityDesc &desc);
 
+    void RemoveEntity(EntityId eId);
+
     EntityId GetNewId();
     EntityId GetReusedId();
     bool IsEntityExist(EntityId eId);
@@ -117,7 +119,7 @@ public:
     // Query
 
     template <typename... T>
-    QueryBuilder<T...> CreateQueryBuilder();
+    QueryBuilder<T...> Query();
 
     // NOTE: System store list of cache archetypes, but the list can be
     // invalidated at runtime, so I need to find a new way to re-validate this

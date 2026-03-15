@@ -2,6 +2,7 @@
 #include "ecs_type.h"
 #include "ecs_utils.h"
 #include "internal_component.h"
+#include <cassert>
 #include <cstdio>
 #include <cstring>
 #include <ostream>
@@ -50,7 +51,7 @@ void World::RegisterInternalComponents()
     Component<EcsInherit>().Id(EcsInheritId).Register();
     Component<EcsSystem>().Id(EcsSystemId).Register();
     Component<EcsQuery>().Id(EcsQueryId).Register();
-    
+
     Tag<EcsPhase>().Id(EcsPhaseId).Register();
     Tag<EcsArchetype>().Id(EcsArchetypeId).Register();
     Tag<EcsPipeline>().Id(EcsPipelineId).Register();
@@ -379,6 +380,33 @@ void World::ResolveEntityDesc(EntityRecord &r, EntityDesc &desc)
 
     desc.add.Destroy(m_wAllocator);
     desc.componentData.Destroy();
+}
+
+void World::RemoveEntity(EntityId eId)
+{
+    EntityRecord *r = m_entityIndex.GetPageData(eId);
+    assert(r);
+
+    SwapBack(*r);
+
+    for (uint32_t idx = 0; idx < r->archetype->columnCount; idx++)
+    {
+        Column &col = r->archetype->columns[idx];
+        TypeInfo *ti = col.typeInfo;
+
+        assert(ti);
+
+        if (ti->hook.dtor)
+        {
+            void *src =
+                OFFSET_ELEMENT(col.data, ti->size, r->archetype->count - 1);
+
+            ti->hook.dtor(src);
+        }
+    }
+
+    --r->archetype->count;
+    m_entityIndex.Remove(eId);
 }
 
 void World::AddComponent(EntityId eId, EntityId cId)

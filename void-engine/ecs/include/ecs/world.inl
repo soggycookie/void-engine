@@ -259,7 +259,7 @@ T &World::Get(EntityId eId)
 }
 
 template <typename... T>
-QueryBuilder<T...> World::CreateQueryBuilder()
+QueryBuilder<T...> World::Query()
 {
     return QueryBuilder<T...>(this);
 }

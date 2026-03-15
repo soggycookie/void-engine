@@ -6,6 +6,7 @@ namespace ECS
 class Query;
 
 // component entity id
+constexpr EntityId EcsInvalidId = 0;
 constexpr EntityId EcsNameId = 1;
 constexpr EntityId EcsSystemId = 2;
 constexpr EntityId EcsPhaseId = 3;

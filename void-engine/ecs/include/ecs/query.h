@@ -101,7 +101,9 @@ constexpr uint16_t InlineArrayOptimizationCount = 8;
 
 struct MatchedArchetype
 {
-    MatchedArchetype() = default;
+    MatchedArchetype() : largeMatchedColumns(nullptr), largeEntityMask(nullptr)
+    {
+    }
 
     MatchedArchetype(const Archetype *archetype)
         : archetype(archetype), largeEntityMask(nullptr),
@@ -244,13 +246,12 @@ struct QueryIter
 };
 
 template <typename... CallbackArgs>
-constexpr bool at_most_one_entity =
-    ((std::is_same_v<CallbackArgs, Entity> ? 1 : 0) + ...) <= 1;
-
-template <typename... CallbackArgs>
 constexpr bool at_most_one_query_iter =
-    ((std::is_same_v<CallbackArgs, QueryResult> ? 1 : 0) + ...) <= 1;
+    ((std::is_same_v<CallbackArgs, const QueryResult &> ? 1 : 0) + ...) <= 1;
 
+template <typename First, typename... Rest>
+constexpr bool is_first_arg_query_iter =
+    std::is_same_v<First, const QueryIter &>;
 
 class Query;
 
@@ -272,11 +273,13 @@ struct QueryCallback
     // (*fn)(CallbackArgs...));
 };
 
+constexpr const uint32_t MaxTermCount = 32;
+
 struct QueryDesc
 {
     QueryDesc() : eId(0), cache(false) {}
 
-    QueryTerm terms[32];
+    QueryTerm terms[MaxTermCount];
     EntityId eId;
     bool cache;
 };
@@ -284,37 +287,37 @@ struct QueryDesc
 template <typename... T>
 class QueryBuilder;
 
-class Query
+struct Query
 {
-public:
+    Query(World *world, EntityId eId = 0) : world(world), eId(eId) {}
+
     Query(Query &&other) noexcept
     {
-        m_world = other.m_world;
-        m_eId = other.m_eId;
-        m_terms = other.m_terms;
-        m_result = std::move(other.m_result);
-        m_callback = other.m_callback;
-        m_termCount = other.m_termCount;
-        m_isEntityFiltered = other.m_isEntityFiltered;
+        world = other.world;
+        eId = other.eId;
+        terms = other.terms;
+        result = std::move(other.result);
+        callback = other.callback;
+        termCount = other.termCount;
+        isEntityFiltered = other.isEntityFiltered;
 
-        other.m_terms = nullptr;
+        other.terms = nullptr;
     }
 
     Query &operator=(Query &&other) noexcept
     {
-        m_world = other.m_world;
-        m_eId = other.m_eId;
-        m_terms = other.m_terms;
-        m_result = std::move(other.m_result);
-        m_callback = other.m_callback;
-        m_termCount = other.m_termCount;
-        m_isEntityFiltered = other.m_isEntityFiltered;
+        world = other.world;
+        eId = other.eId;
+        terms = other.terms;
+        result = std::move(other.result);
+        callback = other.callback;
+        termCount = other.termCount;
+        isEntityFiltered = other.isEntityFiltered;
 
-        other.m_terms = nullptr;
+        other.terms = nullptr;
 
         return *this;
     }
-
 
     template <typename... CallbackArgs>
     void Each(void (*)(CallbackArgs...), void *ctx = nullptr);
@@ -323,38 +326,78 @@ public:
 
     void Destroy();
 
-    template<typename... CallbackArgs, size_t... I>
-    static void InvokeCallback(
-        Query* query,
-        void (*cb)(CallbackArgs...),
-        QueryIter& iter,
-        Archetype* archetype,
-        uint32_t eIdx,
-        std::index_sequence<I...>)
+    void Filter();
+
+    template <typename... CallbackArgs, size_t... I>
+    static void InvokeCallback(Query *query, void (*cb)(CallbackArgs...),
+                               QueryIter &iter, const MatchedArchetype &matched,
+                               uint32_t eIdx, std::index_sequence<I...>);
+
+    template <typename CallbackArg>
+    CallbackArg GetArg(const QueryIter &iter, const MatchedArchetype &matched,
+                       uint32_t sigIdx, uint32_t eIdx);
+
+    World *world;
+    EntityId eId; // = 0 if not cache
+    QueryTerm *terms;
+    QueryResult result;
+    QueryCallback callback;
+    uint32_t termCount;
+    bool isEntityFiltered;
+};
+
+class QueryHandle
+{
+public:
+    ~QueryHandle()
     {
-        cb(query->GetArg<CallbackArgs>(iter, archetype, I, eIdx)...);
+        if (m_eId == EcsInvalidId)
+        {
+            Destroy();
+        }
     }
+
+    QueryHandle(QueryHandle &&other) noexcept
+    {
+        m_eId = other.m_eId;
+        m_query = other.m_query;
+
+        other.m_query = nullptr;
+        other.m_eId = 0;
+    }
+
+    QueryHandle &operator=(QueryHandle &&other) noexcept
+    {
+        m_eId = other.m_eId;
+        m_query = other.m_query;
+
+        other.m_query = nullptr;
+        other.m_eId = 0;
+
+        return *this;
+    }
+
+    EntityId GetId() const { return m_eId; }
+
+    void Execute();
+
+    // No need to call this manually unless you use cache query
+    // Ad-hoc query handle will call this when go out of scope (RAII)
+    void Destroy();
 
 private:
     template <typename... T>
     friend class QueryBuilder;
 
-    Query(World *world, EntityId eId = 0) : m_world(world), m_eId(eId) {}
-
-    void Filter();
-
-    template <typename CallbackArg>
-    CallbackArg GetArg(QueryIter iter, Archetype *archetype, uint32_t sigIdx,
-                        uint32_t eIdx);
+    // ad-hoc
+    QueryHandle(EntityId eId, Query *query) : m_eId(eId), m_query(query)
+    {
+        assert(m_query);
+    }
 
 private:
-    World *m_world;
-    EntityId m_eId; // = 0 if not cache
-    QueryTerm *m_terms;
-    QueryResult m_result;
-    QueryCallback m_callback;
-    uint32_t m_termCount;
-    bool m_isEntityFiltered;
+    EntityId m_eId;
+    Query *m_query;
 };
 
 template <typename... T>
@@ -383,7 +426,7 @@ public:
 
     QueryBuilder<T...> &Op(TermOp op);
 
-    QueryBuilder<T...> &Cache(EntityId cacheId);
+    QueryBuilder<T...> &Cache(EntityId cacheId = 0);
 
     QueryBuilder<T...> &Scope();
 
@@ -412,7 +455,8 @@ public:
     template <typename U>
     QueryBuilder<T...> &Modify();
 
-    Query *Build();
+    template <typename... CallbackArgs>
+    QueryHandle Each(void (*)(CallbackArgs...), void *ctx = nullptr);
 
 private:
     World *m_world;

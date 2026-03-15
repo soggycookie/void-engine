@@ -2,6 +2,7 @@
 #include "ds/world_allocator.h"
 #include "ecs_type.h"
 #include "ecs_utils.h"
+#include "internal_component.h"
 #include "world.h"
 #include <cassert>
 #include <cmath>
@@ -126,23 +127,20 @@ void QueryResult::Delete(WorldAllocator &wAllocator, uint32_t callbackSigCount)
 
 /////////////////////////////// Query /////////////////////////////////
 
-void Query::Execute()
-{
-    m_callback.invoker(this, m_callback.fn, m_callback.ctx);
-}
+void Query::Execute() { callback.invoker(this, callback.fn, callback.ctx); }
 
 void Query::Filter()
 {
     QueryResult result;
 
-    const QueryTerm &anchorTerm = m_terms[0];
+    const QueryTerm &anchorTerm = terms[0];
 
     if (anchorTerm.op == NOT)
     {
         assert(0 && "Query should not rely on only NOT operations!");
     }
 
-    const ComponentRecord &cr = m_world->m_componentIndex[anchorTerm.cId];
+    const ComponentRecord &cr = world->m_componentIndex[anchorTerm.cId];
 
     for (size_t aIdx = 0; aIdx < cr.archetypeStore.count; ++aIdx)
     {
@@ -150,9 +148,9 @@ void Query::Filter()
         const ComponentSet &cs = archetype->componentSet;
         bool isValid = true;
 
-        for (size_t termIdx = 1; termIdx < m_termCount; ++termIdx)
+        for (size_t termIdx = 1; termIdx < termCount; ++termIdx)
         {
-            const QueryTerm& term = m_terms[termIdx];
+            const QueryTerm &term = terms[termIdx];
 
             if (term.op == HAS)
             {
@@ -179,21 +177,59 @@ void Query::Filter()
         if (isValid)
         {
             MatchedArchetype ma(archetype);
-            result.Add(m_world->m_wAllocator, std::move(ma));
+
+            result.Add(world->m_wAllocator, std::move(ma));
         }
     }
 
-    m_result = std::move(result);
+    this->result = std::move(result);
 }
 
 void Query::Destroy()
 {
-    assert(m_world);
-    assert(m_terms);
+    assert(world);
+    assert(terms);
 
-    m_world->m_wAllocator.Free(m_termCount * sizeof(QueryTerm), m_terms);
+    world->m_wAllocator.Free(termCount * sizeof(QueryTerm), terms);
 
-    m_result.Delete(m_world->m_wAllocator, m_callback.sigCount);
+    result.Delete(world->m_wAllocator, callback.sigCount);
+}
+
+///////////////////////////////// Query Handle ////////////////////////////////
+
+void QueryHandle::Execute()
+{
+    if (m_query)
+    {
+        if (m_eId == EcsInvalidId)
+        {
+            // ad-hoc filter
+            m_query->Filter();
+        }
+
+        m_query->Execute();
+    }
+}
+
+void QueryHandle::Destroy()
+{
+    if (m_query)
+    {
+        m_query->Destroy();
+
+        if (m_eId != EcsInvalidId)
+        {
+            m_query->world->RemoveEntity(m_eId);
+        }
+
+        m_query->world->m_wAllocator.Free(sizeof(Query), m_query);
+        m_query = nullptr;
+        m_eId = EcsInvalidId;
+    }
+    else
+    {
+        assert(0);
+    }
 }
 
 } // namespace ECS

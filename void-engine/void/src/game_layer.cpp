@@ -98,12 +98,16 @@ void GameLayer::OnInit()
         Set<Position>({555, 123123});
 
     
-    ECS::Query* q = world->CreateQueryBuilder<Position>().Build();
-    q->Each(+[](ECS::QueryIter iter, const Position& pos){
-            std::cout << "x: " << pos.x << std::endl;
-            std::cout << "y: " << pos.y << std::endl;
-           }, nullptr);
-    q->Execute();
+    auto q = world->Query<Position>().Cache().
+        //Without<NPC>().
+        Each(+[](const ECS::QueryIter& iter, const Position& pos)
+             {
+                 std::cout << "x: " << pos.x << std::endl;
+                 std::cout << "y: " << pos.y << std::endl;
+             }, nullptr);
+    q.Execute();
+    q.Destroy();
+
     world->System<Position, ECS::EcsChildOf>(+[](Position &pos)
                                              {
                                                  ++pos.x;
