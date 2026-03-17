@@ -1,9 +1,7 @@
 #pragma once
-#include "ds/hash_map.h"
 #include "ds/world_allocator.h"
 #include "ecs_type.h"
 #include "entity.h"
-#include "entity_cmd.h"
 #include "internal_component.h"
 #include "query.h"
 #include "system_meta.h"
@@ -43,10 +41,11 @@ public:
     EntityId GetNewId();
     EntityId GetReusedId();
     bool IsEntityExist(EntityId eId);
+    bool IsEntityVersionOutdated(EntityId eId);
 
     // the returned bool is true if this is a new id
     // else it is a reused one
-    std::pair<bool, EntityId> GetId();
+    std::pair<bool, EntityId> GetResuedOrNewId();
 
     EntityRecord *GetEntityRecord(EntityId eId);
     Entity GetEntity(EntityId eId);
@@ -81,6 +80,9 @@ public:
     template <typename T>
     void AddTag(EntityId eId);
 
+    template <typename T>
+    bool HasComponent(EntityId eId);
+
     void AddComponent(EntityId eId, EntityId cId);
 
     void AddRelationship(EntityId eId, EntityId relationId, EntityId targetId);
@@ -88,6 +90,12 @@ public:
     void AddTag(EntityId eId, EntityId cId);
 
     void RemoveComponent(EntityId eId, EntityId cId);
+
+    bool HasComponent(EntityId eId, EntityId cId);
+
+    bool HasRelationship(EntityId eId, EntityId first, EntityId second);
+
+    bool HasRelationship(EntityId eId, EntityId cId);
 
     template <typename T>
     void Set(EntityId eId, T &&c);

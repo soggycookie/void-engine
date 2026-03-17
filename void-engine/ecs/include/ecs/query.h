@@ -63,7 +63,6 @@ enum TraverseMethod : uint16_t
 {
     SELF,
     UP,
-    SELF_UP,
     CASCADE
 };
 
@@ -83,7 +82,7 @@ enum TermBehavior : uint16_t
 struct QueryTerm
 {
     QueryTerm()
-        : cId(0), travRelation(0), travTarget(0), trav(SELF), op(HAS),
+        : cId(0), travRelation(0), travTarget(0), travMethod(SELF), op(HAS),
           behavior(READ_WRITE), fieldId(0)
     {
     }
@@ -91,7 +90,7 @@ struct QueryTerm
     EntityId cId;
     EntityId travRelation;
     EntityId travTarget;
-    TraverseMethod trav;
+    TraverseMethod travMethod;
     TermOp op;
     TermBehavior behavior;
     uint16_t fieldId;
@@ -262,15 +261,17 @@ constexpr int32_t InvalidIndex = -3;
 
 struct QueryCallback
 {
+    QueryCallback()
+        : ctx(nullptr), fn(nullptr), invoker(nullptr), mappedSig(nullptr),
+          sigCount(0)
+    {
+    }
+
     void *ctx;
     void (*fn)();
     void (*invoker)(Query *query, void (*fn)(), void *ctx);
     int32_t *mappedSig;
     uint32_t sigCount;
-
-    // template <typename... CallbackArgs>
-    // static QueryCallback CreateCallback(Query query, void
-    // (*fn)(CallbackArgs...));
 };
 
 constexpr const uint32_t MaxTermCount = 32;
@@ -338,7 +339,7 @@ struct Query
                        uint32_t sigIdx, uint32_t eIdx);
 
     World *world;
-    EntityId eId; // = 0 if not cache
+    EntityId eId; // = EcsInvalidId if not cache
     QueryTerm *terms;
     QueryResult result;
     QueryCallback callback;
@@ -407,6 +408,8 @@ public:
     QueryBuilder(World *world)
         : m_world(world), m_currTermIdx(0), m_desc(), m_firstTerm(true)
     {
+        static_assert(((!std::is_reference_v<T> && !std::is_const_v<T>) && ...),
+                      "Query terms must not be ref or const!");
         assert(m_world);
         (Term<T>(), ...);
     }
@@ -440,9 +443,9 @@ public:
 
     QueryBuilder<T...> &Without();
 
-    QueryBuilder<T...> &SelfUp(EntityId target);
-
-    QueryBuilder<T...> &SelfUp(EntityId first, EntityId second);
+    // QueryBuilder<T...> &SelfUp(EntityId target);
+    //
+    // QueryBuilder<T...> &SelfUp(EntityId first, EntityId second);
 
     QueryBuilder<T...> &Up(EntityId target);
 

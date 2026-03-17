@@ -25,9 +25,11 @@ constexpr EntityId EcsIsAId = 13;
 constexpr EntityId EcsAnyId = 100;
 
 // internal components
+
+constexpr const uint32_t EcsNameLength = 32;
 struct EcsName
 {
-    char *name;
+    char name[EcsNameLength];
 };
 
 struct EcsInherit

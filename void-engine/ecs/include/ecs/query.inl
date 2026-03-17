@@ -1,6 +1,7 @@
 #include "ecs_type.h"
 #include "ecs_utils.h"
 #include "entity.h"
+#include "internal_component.h"
 #include <type_traits>
 #ifdef __clang__
 #pragma once
@@ -71,14 +72,13 @@ void Query::Each(void (*cb)(CallbackArgs...), void *ctx)
     uint32_t termBitmask = 0;
 
     int64_t callbackSig[] = {
-        (std::is_same_v<CallbackArgs, const QueryIter&>
+        (std::is_same_v<CallbackArgs, const QueryIter &>
              ? QueryIterIndex
              : ComponentTypeId<std::decay_t<CallbackArgs>>::Id())...};
 
     // This will create the sig mapping and validate the callback sig
     for (size_t idx = 0; idx < callback.sigCount; ++idx)
     {
-        std::cout << callbackSig[idx] << std::endl;
         int64_t callbackSigId = callbackSig[idx];
 
         if (callbackSigId == QueryIterIndex)
@@ -199,7 +199,7 @@ QueryBuilder<T...> &QueryBuilder<T...>::Term()
 template <typename... T>
 QueryBuilder<T...> &QueryBuilder<T...>::Traverse(TraverseMethod method)
 {
-    m_currTerm.trav = method;
+    m_currTerm.travMethod = method;
     return *this;
 }
 
@@ -281,17 +281,18 @@ QueryBuilder<T...> &QueryBuilder<T...>::Without()
 //     return Op(OPTIONAL);
 // }
 
-template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::SelfUp(EntityId target)
-{
-    return Traverse(SELF_UP).TraveseTarget(target);
-}
-
-template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::SelfUp(EntityId first, EntityId second)
-{
-    return Traverse(SELF_UP).TraveseTarget(first, second);
-}
+// template <typename... T>
+// QueryBuilder<T...> &QueryBuilder<T...>::SelfUp(EntityId target)
+// {
+//     return Traverse(SELF_UP).TraveseTarget(target);
+// }
+//
+// template <typename... T>
+// QueryBuilder<T...> &QueryBuilder<T...>::SelfUp(EntityId first, EntityId
+// second)
+// {
+//     return Traverse(SELF_UP).TraveseTarget(first, second);
+// }
 
 template <typename... T>
 QueryBuilder<T...> &QueryBuilder<T...>::Up(EntityId target)
@@ -302,7 +303,7 @@ QueryBuilder<T...> &QueryBuilder<T...>::Up(EntityId target)
 template <typename... T>
 QueryBuilder<T...> &QueryBuilder<T...>::Up(EntityId first, EntityId second)
 {
-    return Traverse(SELF_UP).TraveseTarget(first, second);
+    return Traverse(UP).TraveseTarget(first, second);
 }
 
 template <typename... T>
@@ -348,11 +349,27 @@ QueryHandle QueryBuilder<T...>::Each(void (*callback)(CallbackArgs...),
 
     auto priority = [](const QueryTerm &t) -> EntityId
     {
-        if (t.op == NOT)
+        if (t.travMethod == SELF)
         {
-            return 0;
+            if (t.op == NOT)
+            {
+                return EcsInvalidId;
+            }
+
+            return t.cId;
         }
-        return t.cId;
+        else
+        {
+            // relationship is used to filter
+            // cId component now is just a pass-into-callback reference
+
+            if (t.op == NOT)
+            {
+                return EcsInvalidId;
+            }
+
+            return MAKE_ENTITY_ID(t.travRelation, t.travTarget);
+        }
     };
 
     // sort descending

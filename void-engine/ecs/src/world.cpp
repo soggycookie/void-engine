@@ -5,8 +5,6 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
-#include <ostream>
-#include <string_view>
 
 namespace ECS
 {
@@ -119,7 +117,7 @@ void World::Register(const TypeInfo &typeInfo, EntityId relationId,
     else
     {
         ti->cId = ti->eId;
-        m_componentStore.Add(ti->cId);
+        m_componentStore.Add(m_wAllocator, ti->cId);
     }
 
     ComponentRecord cr;
@@ -160,13 +158,13 @@ Entity World::CreateEntity(char *name, EntityId parent)
 Entity World::CreateEntity(EntityId id, const char *name, EntityId parent)
 {
     bool newId = false;
-    if (!m_entityIndex.isValidDense(id))
+    if (!m_entityIndex.IsExisting(id))
     {
         newId = true;
     }
     else
     {
-        auto pair = GetId();
+        auto pair = GetResuedOrNewId();
         id = pair.second;
         newId = pair.first;
     }
@@ -175,9 +173,7 @@ Entity World::CreateEntity(EntityId id, const char *name, EntityId parent)
     EntityRecord &r = *m_entityIndex.GetPageData(id);
     r.dense = dense;
 
-    char *entityName = nullptr;
-
-    entityName = PTR_CAST(m_wAllocator.Alloc(MaxEntityNameLength), char);
+    char entityName[EcsNameLength];
     if (!name)
     {
         std::snprintf(entityName, MaxEntityNameLength, DefaultEntityName,
@@ -210,34 +206,56 @@ Entity World::CreateEntity(EntityId id, const char *name, EntityId parent)
 
 bool World::IsEntityExist(EntityId eId)
 {
-    return m_entityIndex.isValidDense(eId);
+    return m_entityIndex.IsExisting(eId);
+}
+
+bool World::IsEntityVersionOutdated(EntityId eId)
+{
+    if (eId == EcsInvalidId)
+    {
+        return false;
+    }
+
+    if (!IsEntityExist(eId))
+    {
+        assert(0);
+    }
+
+    EntityId matchedId = m_entityIndex.GetId(m_entityIndex.GetDenseIndex(eId));
+
+    return ENTITY_GEN_COUNT(matchedId) != ENTITY_GEN_COUNT(eId);
 }
 
 EntityId World::GetNewId()
 {
-    while (m_entityIndex.isValidDense(++m_nextFreeId))
+    while (m_entityIndex.IsExisting(++m_nextFreeId))
         ;
 
     return m_nextFreeId;
 }
 
-EntityId World::GetReusedId() { return m_entityIndex.GetReusedId(); }
+EntityId World::GetReusedId()
+{
+    EntityId reusedId = m_entityIndex.GetReusedId();
+    if (reusedId == EcsInvalidId)
+    {
+        return 0;
+    }
 
-std::pair<bool, EntityId> World::GetId()
+    return INCRE_GEN_COUNT(reusedId);
+}
+
+std::pair<bool, EntityId> World::GetResuedOrNewId()
 {
     bool newId = false;
 
     EntityId id = GetReusedId();
 
-    if (id == 0)
+    if (id == EcsInvalidId)
     {
         newId = true;
 
         id = GetNewId();
-    }
-    else
-    {
-        INCRE_GEN_COUNT(id);
     }
 
     return {newId, id};
@@ -261,7 +279,7 @@ Entity World::CreateEntity(EntityDesc &desc)
     bool newId = false;
     if (IsEntityExist(desc.id))
     {
-        auto pair = GetId();
+        auto pair = GetResuedOrNewId();
         desc.id = pair.second;
         newId = pair.first;
     }
@@ -283,14 +301,7 @@ EntityRecord *World::GetEntityRecord(EntityId eId)
 {
     EntityRecord *e = m_entityIndex.GetPageData(eId);
 
-    if (!e)
-    {
-        return nullptr;
-    }
-    else
-    {
-        return e;
-    }
+    return e;
 }
 
 void World::ResolveEntityDesc(EntityRecord &r, EntityDesc &desc)
@@ -350,7 +361,7 @@ void World::ResolveEntityDesc(EntityRecord &r, EntityDesc &desc)
                 ComponentTypeId<EcsName>::Id())
             {
                 EcsName ecsName;
-                ecsName.name = desc.name;
+                std::memcpy(ecsName.name, desc.name, EcsNameLength);
                 ti.hook.moveCtor(dest, &ecsName);
             }
             else
@@ -384,6 +395,11 @@ void World::ResolveEntityDesc(EntityRecord &r, EntityDesc &desc)
 
 void World::RemoveEntity(EntityId eId)
 {
+    if (IsEntityVersionOutdated(eId))
+    {
+        assert(0);
+    }
+
     EntityRecord *r = m_entityIndex.GetPageData(eId);
     assert(r);
 
@@ -411,6 +427,11 @@ void World::RemoveEntity(EntityId eId)
 
 void World::AddComponent(EntityId eId, EntityId cId)
 {
+    if (IsEntityVersionOutdated(eId))
+    {
+        assert(0);
+    }
+
     EntityRecord *r = m_entityIndex.GetPageData(eId);
     TypeInfo *cTi = m_typeInfos[cId];
 
@@ -428,6 +449,11 @@ void World::AddComponent(EntityId eId, EntityId cId)
 void World::AddRelationship(EntityId eId, EntityId relationId,
                             EntityId targetId)
 {
+    if (IsEntityVersionOutdated(eId) || IsEntityVersionOutdated(targetId))
+    {
+        assert(0);
+    }
+
     EntityId relationshipId = MakeRelationship(relationId, targetId);
     TypeInfo *ti = m_typeInfos.GetValue(relationId);
 
@@ -464,6 +490,11 @@ void World::AddRelationship(EntityId eId, EntityId relationId,
 
 void World::AddTag(EntityId eId, EntityId cId)
 {
+    if (IsEntityVersionOutdated(eId))
+    {
+        assert(0);
+    }
+
     EntityRecord *r = m_entityIndex.GetPageData(eId);
     TypeInfo *ti = m_typeInfos[cId];
 
@@ -480,6 +511,11 @@ void World::AddTag(EntityId eId, EntityId cId)
 
 void World::RemoveComponent(EntityId eId, EntityId cId)
 {
+    if (IsEntityVersionOutdated(eId))
+    {
+        assert(0);
+    }
+
     EntityRecord *r = m_entityIndex.GetPageData(eId);
 
     assert(r);
@@ -496,8 +532,34 @@ void World::RemoveComponent(EntityId eId, EntityId cId)
     ti->hook.onRemove();
 }
 
+bool World::HasComponent(EntityId eId, EntityId cId)
+{
+    EntityRecord *r = m_entityIndex.GetPageData(eId);
+    assert(r);
+
+    return r->archetype->componentSet.Has(cId);
+}
+
+bool World::HasRelationship(EntityId eId, EntityId first, EntityId second)
+{
+    return HasRelationship(eId, MakeRelationship(first, second));
+}
+
+bool World::HasRelationship(EntityId eId, EntityId cId)
+{
+
+    EntityRecord *r = m_entityIndex.GetPageData(eId);
+    assert(r);
+
+    return r->archetype->componentSet.HasRelationship(cId);
+}
 void World::Set(EntityId eId, EntityId cId, void *data)
 {
+    if (IsEntityVersionOutdated(eId))
+    {
+        assert(0);
+    }
+
     EntityRecord *r = m_entityIndex.GetPageData(eId);
     assert(r);
     assert(r->archetype);
@@ -534,6 +596,11 @@ void World::Set(EntityId eId, EntityId cId, void *data)
 
 void World::Set(EntityId eId, EntityId cId, const void *data)
 {
+    if (IsEntityVersionOutdated(eId))
+    {
+        assert(0);
+    }
+
     EntityRecord *r = m_entityIndex.GetPageData(eId);
     assert(r);
     assert(r->archetype);
@@ -566,6 +633,11 @@ void World::Set(EntityId eId, EntityId cId, const void *data)
 
 void *World::Get(EntityId eId, EntityId cId)
 {
+    if (IsEntityVersionOutdated(eId))
+    {
+        assert(0);
+    }
+
     EntityRecord *r = m_entityIndex.GetPageData(eId);
     assert(r);
     assert(r->archetype);
@@ -723,6 +795,7 @@ Archetype *World::CreateArchetype(ComponentSet &&componentSet)
                  EntityId);
     archetype.componentMap = PTR_CAST(
         m_wAllocator.Calloc(sizeof(int32_t) * componentSet.count * 2), int32_t);
+    archetype.trackedQuery.Init(m_wAllocator, 4);
 
     // Set up component map to determine what column has data
     uint32_t dataColCounter = 0;
@@ -1135,7 +1208,7 @@ void World::Progress(double dt)
 
                         if (cIdx == -1)
                         {
-                            cIdx = archetype->componentSet.SearchPair(
+                            cIdx = archetype->componentSet.SearchRelationship(
                                 sc.componentSet[idx]);
                         }
 

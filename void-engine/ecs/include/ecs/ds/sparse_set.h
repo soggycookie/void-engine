@@ -3,104 +3,102 @@
 
 namespace ECS
 {
-    class WorldAllocator;
-    class BlockAllocator;
+class WorldAllocator;
+class BlockAllocator;
 
-    constexpr uint32_t SparsePageBit = 6;
-    constexpr uint32_t SparsePageCount = 1 << SparsePageBit;
+constexpr uint32_t SparsePageBit = 6;
+constexpr uint32_t SparsePageCount = 1 << SparsePageBit;
 
-    template<typename T>
-    struct SparsePage
+template <typename T>
+struct SparsePage
+{
+    uint32_t *denseIndex;
+    T *data;
+};
+
+// TODO: Remove MemoryArray and change to typesafe container
+// The support for wide variety of usage is not necessary here
+// Maybe rewrite part of it
+
+// NOTE: Sparse array only support maximum 2^32 id value
+template <typename T>
+class SparseSet
+{
+public:
+    SparseSet()
+        : m_dense(), m_sparse(), m_aliveCount(0), m_reuseId(false),
+          m_allocator(nullptr), m_pageAllocator(nullptr)
     {
-        uint32_t* denseIndex;
-        T* data;
-    };
+        static_assert(std::is_copy_constructible_v<T> ||
+                          std::is_move_constructible_v<T>,
+                      "T must be copy-constructible or move-constructible");
 
-    template<typename T>
-    class SparseSet
+        static_assert(std::is_copy_assignable_v<T> ||
+                          std::is_move_assignable_v<T>,
+                      "T must be copy-assignable or move-assignable");
+
+        static_assert(std::is_destructible_v<T>);
+    }
+
+    void Init(WorldAllocator *allocator, BlockAllocator *pageAllocator,
+              uint32_t defaultDense, bool reservedFreeId);
+
+    uint32_t GetCount() const { return m_aliveCount; }
+
+    bool IsExisting(uint64_t id);
+    bool IsPageExisting(uint64_t id);
+
+    // bool IsVersionOutdated(uint64_t id);
+
+    uint64_t GetId(uint32_t denseIndex)
     {
-    public:
-        SparseSet()
-            : m_dense(), m_sparse(), m_count(0), m_reuseId(false),
-            m_allocator(nullptr), m_pageAllocator(nullptr)
+        if (denseIndex >= m_dense.GetCount())
         {
-            static_assert(
-                std::is_copy_constructible_v<T> || std::is_move_constructible_v<T>,
-                "T must be copy-constructible or move-constructible"
-                );
-
-            static_assert(
-                std::is_copy_assignable_v<T> || std::is_move_assignable_v<T>,
-                "T must be copy-assignable or move-assignable"
-                );
-
-            static_assert(std::is_destructible_v<T>);
+            assert(0);
         }
 
-        void Init(WorldAllocator* allocator, BlockAllocator* pageAllocator, 
-                  uint32_t defaultDense, bool reservedFreeId);
-        
-        uint32_t GetCount() const
-        {
-            return m_count;
-        }
+        return *PTR_CAST(m_dense.GetElement(denseIndex), uint64_t);
+    }
 
-        bool isValidDense(uint64_t id);
-        bool isValidPage(uint64_t id);
+    uint64_t *GetDenseArr() { return PTR_CAST(m_dense.GetArray(), uint64_t); }
 
-        uint64_t GetId(uint32_t denseIndex)
-        {
-            if(denseIndex >= m_dense.GetCount())
-            {
-                return 0;
-            }
+    T *GetPageData(uint64_t id);
+    uint32_t GetDenseIndex(uint64_t id);
 
-            return *PTR_CAST(m_dense.GetElement(denseIndex), uint64_t);
-        }
+    void SwapDense(uint32_t srcIndex, uint32_t destIndex, bool swapPageDense);
 
-        uint64_t* GetDenseArr()
-        {
-            return PTR_CAST(m_dense.GetArray(), uint64_t);
-        }
+    uint32_t GetPageIndex(uint32_t id);
+    uint32_t GetPageOffset(uint32_t id);
 
-        T* GetPageData(uint64_t id);
-        uint32_t GetDenseIndex(uint64_t id);
+    // this will grow dense and sparse if needed
+    template <typename U>
+    uint32_t PushBack(uint64_t id, U &&element, bool newId = true);
 
-        void SwapDense(uint32_t srcIndex, uint32_t destIndex, bool swapPageDense);
+    void AllocPage(SparsePage<T> *page);
+    void CallocPageDenseIndex(SparsePage<T> *page);
+    void AllocPageData(SparsePage<T> *page);
 
-        uint32_t GetPageIndex(uint32_t id);
-        uint32_t GetPageOffset(uint32_t id);
-        
-        //this will grow dense and sparse if needed
-        template<typename U>
-        uint32_t PushBack(uint64_t id, U&& element, bool newId = true);
+    void Remove(uint64_t id);
 
-        void AllocPage(SparsePage<T>* page);
-        void CallocPageDenseIndex(SparsePage<T>* page);
-        void AllocPageData(SparsePage<T>* page);
+    SparsePage<T> *GetSparsePage(uint64_t id);
+    SparsePage<T> *CreateSparsePage(uint64_t id);
+    SparsePage<T> *CreateOrGetSparsePage(uint64_t id);
 
-        void Remove(uint64_t id);
+    void Destroy();
 
-        SparsePage<T>* GetSparsePage(uint64_t id);
-        SparsePage<T>* CreateSparsePage(uint64_t id);
-        SparsePage<T>* CreateOrGetSparsePage(uint64_t id);
+    void PrintAllDense();
+    void PrintAliveDense();
+    void PrintDeadDense();
 
-        void Destroy();
+    uint64_t GetReusedId();
 
-        void PrintAllDense();
-        void PrintAliveDense();
-        void PrintDeadDense();
+private:
+    MemoryArray m_dense;
+    MemoryArray m_sparse;
+    WorldAllocator *m_allocator;
+    BlockAllocator *m_pageAllocator;
+    uint32_t m_aliveCount; // Alive id
+    bool m_reuseId;
+};
 
-        uint64_t GetReusedId();
-
-    private:
-        MemoryArray m_dense;
-        MemoryArray m_sparse;
-        WorldAllocator* m_allocator;
-        BlockAllocator* m_pageAllocator;
-        uint32_t m_count; //Alive id
-        bool m_reuseId;
-    };
-
-}
-
+} // namespace ECS

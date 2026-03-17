@@ -131,6 +131,7 @@ void Query::Execute() { callback.invoker(this, callback.fn, callback.ctx); }
 
 void Query::Filter()
 {
+    assert(termCount > 0);
     QueryResult result;
 
     const QueryTerm &anchorTerm = terms[0];
@@ -140,11 +141,23 @@ void Query::Filter()
         assert(0 && "Query should not rely on only NOT operations!");
     }
 
-    const ComponentRecord &cr = world->m_componentIndex[anchorTerm.cId];
+    EntityId anchorTermId = EcsInvalidId;
+
+    if (anchorTerm.travMethod == SELF)
+    {
+        anchorTermId = anchorTerm.cId;
+    }
+    else
+    {
+        anchorTermId =
+            MakeRelationship(anchorTerm.travRelation, anchorTerm.travTarget);
+    }
+
+    const ComponentRecord &cr = world->m_componentIndex[anchorTermId];
 
     for (size_t aIdx = 0; aIdx < cr.archetypeStore.count; ++aIdx)
     {
-        const Archetype *archetype = cr.archetypeStore[aIdx];
+        Archetype *archetype = cr.archetypeStore[aIdx];
         const ComponentSet &cs = archetype->componentSet;
         bool isValid = true;
 
@@ -152,32 +165,185 @@ void Query::Filter()
         {
             const QueryTerm &term = terms[termIdx];
 
-            if (term.op == HAS)
+            switch (term.travMethod)
             {
-                if (!cs.Has(term.cId))
+            case ECS::SELF:
+            {
+                if (term.op == HAS)
+                {
+                    if (!cs.Has(term.cId))
+                    {
+                        isValid = false;
+                    }
+                }
+                else if (term.op == NOT)
+                {
+                    if (cs.Has(term.cId))
+                    {
+                        isValid = false;
+                    }
+                }
+                else
+                {
+                    assert(0);
+                }
+                break;
+            }
+            case ECS::UP:
+            {
+                EntityId relationship =
+                    MakeRelationship(term.travRelation, term.travTarget);
+
+                if (!cs.HasRelationship(relationship))
                 {
                     isValid = false;
                     break;
                 }
+
+                EntityId target = term.travTarget;
+
+                if (target == EcsAnyId)
+                {
+                    target =
+                        HI_ENTITY_ID(cs[cs.SearchRelationship(relationship)]);
+                }
+
+                if (term.op == HAS)
+                {
+                    if (!world->HasComponent(target, term.cId) &&
+                        !world->HasRelationship(target, term.cId))
+                    {
+                        isValid = false;
+                    }
+                }
+                else if (term.op == NOT)
+                {
+                    if (world->HasComponent(target, term.cId) ||
+                        world->HasRelationship(target, term.cId))
+                    {
+                        isValid = false;
+                    }
+                }
+                else
+                {
+                    assert(0);
+                }
+
+                break;
             }
-            else if (term.op == NOT)
+            case ECS::CASCADE:
             {
-                if (cs.Has(term.cId))
+                EntityId relationship =
+                    MakeRelationship(term.travRelation, term.travTarget);
+
+                if (!cs.HasRelationship(relationship))
                 {
                     isValid = false;
                     break;
                 }
+
+                EntityId target = term.travTarget;
+
+                if (target == EcsAnyId)
+                {
+                    target =
+                        HI_ENTITY_ID(cs[cs.SearchRelationship(relationship)]);
+                }
+                else
+                {
+                    assert(0);
+                }
+
+                if (term.op == HAS)
+                {
+                    while (true)
+                    {
+                        if (!world->HasComponent(target, term.cId) &&
+                            !world->HasRelationship(target, term.cId))
+                        {
+                            if (!world->HasRelationship(
+                                    target, term.travRelation, EcsAnyId))
+                            {
+                                isValid = false;
+                                break;
+                            }
+                            else
+                            {
+                                EntityRecord *r =
+                                    world->GetEntityRecord(target);
+                                assert(r);
+
+                                const ComponentSet &tempCs =
+                                    r->archetype->componentSet;
+
+                                target = HI_ENTITY_ID(
+                                    tempCs[tempCs.SearchRelationship(
+                                        relationship)]);
+                            }
+                        }
+                        else
+                        {
+                            // valid
+                            break;
+                        }
+                    }
+                }
+                else if (term.op == NOT)
+                {
+                    while (true)
+                    {
+                        if (world->HasComponent(target, term.cId) ||
+                            world->HasRelationship(target, term.cId))
+                        {
+                            if (!world->HasRelationship(
+                                    target, term.travRelation, EcsAnyId))
+                            {
+                                isValid = false;
+                                break;
+                            }
+                            else
+                            {
+                                EntityRecord *r =
+                                    world->GetEntityRecord(target);
+                                assert(r);
+
+                                const ComponentSet &tempCs =
+                                    r->archetype->componentSet;
+
+                                target = HI_ENTITY_ID(
+                                    tempCs[tempCs.SearchRelationship(
+                                        relationship)]);
+                            }
+                        }
+                        else
+                        {
+                            // valid
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    assert(0);
+                }
+
+                break;
             }
-            else
+            default:
             {
                 assert(0);
+            }
             }
         }
 
         if (isValid)
         {
-            MatchedArchetype ma(archetype);
+            if (eId != EcsInvalidId)
+            {
+                archetype->trackedQuery.Add(world->m_wAllocator, eId);
+            }
 
+            MatchedArchetype ma(archetype);
             result.Add(world->m_wAllocator, std::move(ma));
         }
     }
@@ -224,7 +390,6 @@ void QueryHandle::Destroy()
 
         m_query->world->m_wAllocator.Free(sizeof(Query), m_query);
         m_query = nullptr;
-        m_eId = EcsInvalidId;
     }
     else
     {

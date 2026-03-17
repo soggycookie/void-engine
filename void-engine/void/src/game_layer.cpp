@@ -62,7 +62,6 @@ void GameLayer::OnInit()
         L"asset//shader//square_demo.hlsl");
     material = ResourceSystem::Create<MaterialResource>(
         ResourceSystem::GenerateGUID(), shader->GetGUID());
-    std::cout << "Test" << std::endl;
     // std::cout << "Entity id: " << e.GetId() << " , gen count: " <<
     // e.GetGenCount() << std::endl;
 
@@ -77,34 +76,39 @@ void GameLayer::OnInit()
     //     world->CreateEntity(0).AddComponent<Position>().AddTag<NPC>().Set<Position>({++x,
     //     ++y}).AddComponent<Velocity>();
     // }
+    ECS::Entity e0 = world->CreateEntity("Test subject", 0);
+    // std::cout << e0.GetLowId() << std::endl;
+
+    // world->RemoveEntity(e0.GetFullId());
 
     ECS::Entity e = world->CreateEntity("First", 0);
     e.AddComponent<Position>().
         // AddTag<NPC>().
         // AddComponent<Velocity>().
         Set<Position>({1, 1});
-
-    // ECS::Entity e2 = world->CreateEntity(0);
-    // e2.AddComponent<Position>().
-    //     AddTag<NPC>().
-    //     AddComponent<Velocity>().
-    //     Set<Position>({1, 1});
+    e0.AddComponent<Position>();
+    // std::cout << e.GetLowId() << std::endl;
+    //  ECS::Entity e2 = world->CreateEntity(0);
+    //  e2.AddComponent<Position>().
+    //      AddTag<NPC>().
+    //      AddComponent<Velocity>().
+    //      Set<Position>({1, 1});
 
     ECS::Entity e1 = world->CreateEntity("Second ", e.GetFullId());
-    e1.AddComponent<Position>().
-         AddTag<NPC>().
+    e1.AddComponent<Position>().AddTag<NPC>().
         // AddComponent<Velocity>().
         // AddPair<ECS::ChildOf>(e.GetFullId()).
         Set<Position>({555, 123123});
 
-    
     auto q = world->Query<Position>().Cache().
-        //Without<NPC>().
-        Each(+[](const ECS::QueryIter& iter, const Position& pos)
-             {
-                 std::cout << "x: " << pos.x << std::endl;
-                 std::cout << "y: " << pos.y << std::endl;
-             }, nullptr);
+             // Without<NPC>().
+             Each(
+                 +[](const ECS::QueryIter &iter, const Position &pos)
+                 {
+                     std::cout << "x: " << pos.x << std::endl;
+                     std::cout << "y: " << pos.y << std::endl;
+                 },
+                 nullptr);
     q.Execute();
     q.Destroy();
 

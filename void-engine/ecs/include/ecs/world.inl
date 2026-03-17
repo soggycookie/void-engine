@@ -1,3 +1,5 @@
+#include "ecs_type.h"
+#include <type_traits>
 #ifdef __clang__
 #pragma once
 #include "world.h"
@@ -9,6 +11,7 @@ template <typename T>
 TypeInfoBuilder<T> World::Component()
 {
     // TypeInfo* ti = new (m_wAllocator.Init(sizeof(TypeInfo))) TypeInfo();
+    static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
     static_assert(std::is_destructible_v<T>);
     static_assert(std::is_trivially_constructible_v<T>);
     static_assert(sizeof(T) != 1);
@@ -68,6 +71,7 @@ TypeInfoBuilder<T> World::Tag()
 {
     // TypeInfo* ti = new (m_wAllocator.Init(sizeof(TypeInfo))) TypeInfo();
 
+    static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
     static_assert(std::is_destructible_v<T>);
     static_assert(std::is_trivially_constructible_v<T>);
 
@@ -91,6 +95,7 @@ TypeInfoBuilder<T> World::Tag()
 template <typename T>
 TypeInfoBuilder<T> World::Relation()
 {
+    static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
     static_assert(std::is_destructible_v<T>);
     static_assert(std::is_trivially_constructible_v<T>);
 
@@ -150,8 +155,10 @@ TypeInfoBuilder<T> World::Relation()
 template <typename T>
 TypeInfoBuilder<T> World::Relationship(EntityId targetId)
 {
-    if (targetId == 0 || !m_entityIndex.isValidDense(targetId) ||
-        !m_entityIndex.isValidDense(ComponentTypeId<T>::Id()))
+    static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
+
+    if (targetId == 0 || !m_entityIndex.IsExisting(targetId) ||
+        !m_entityIndex.IsExisting(ComponentTypeId<T>::Id()))
     {
         assert(0);
     }
@@ -221,39 +228,52 @@ TypeInfoBuilder<T> World::Relationship(EntityId targetId)
 template <typename T>
 void World::AddComponent(EntityId eId)
 {
+    static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
     AddComponent(eId, ComponentTypeId<T>::Id());
 }
 
 template <typename T>
 void World::AddRelationship(EntityId eId, EntityId targetId)
 {
+    static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
     AddRelationship(eId, ComponentTypeId<T>::Id(), targetId);
 }
 
 template <typename T>
 void World::AddTag(EntityId eId)
 {
+    static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
     AddTag(eId, ComponentTypeId<T>::Id());
 }
 
 template <typename T>
 void World::RemoveComponent(EntityId eId)
 {
+    static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
     RemoveComponent(eId, ComponentTypeId<T>::Id());
+}
+
+template <typename T>
+bool World::HasComponent(EntityId eId)
+{
+    static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
+    return HasComponent(eId, ComponentTypeId<T>::Id());
 }
 
 template <typename T>
 void World::Set(EntityId eId, T &&c)
 {
+    static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
     Set(eId, ComponentTypeId<decay_t<T>>::Id(), &c);
 }
 
 template <typename T>
 T &World::Get(EntityId eId)
 {
-    void *data = Get(eId, ComponentTypeId<T>::Id());
+    static_assert(!std::is_reference_v<T>);
+    void *data = Get(eId, ComponentTypeId<std::decay_t<T>>::Id());
 
-    T &component = *PTR_CAST(data, T);
+    T &component = *PTR_CAST(data, std::decay_t<T>);
 
     return component;
 }
@@ -318,7 +338,7 @@ void World::System(void (*func)(FuncArgs...))
         m_systemStore.Grow(m_wAllocator);
     }
 
-    m_systemStore.Add(std::move(sc));
+    m_systemStore.Add(m_wAllocator, std::move(sc));
 }
 
 template <typename... Components, typename... FuncArgs>

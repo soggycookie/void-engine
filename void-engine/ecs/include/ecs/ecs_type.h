@@ -1,9 +1,7 @@
 #pragma once
 #include "ds/hash_map.h"
+#include "ds/world_allocator.h"
 #include "ecs_pch.h"
-#include <cassert>
-#include <string_view>
-#include <type_traits>
 
 namespace ECS
 {
@@ -190,8 +188,13 @@ struct Store
     }
 
     template <typename U = T>
-    void Add(U &&element)
+    void Add(WorldAllocator &wAllocator, U &&element)
     {
+        if (count == capacity)
+        {
+            Grow(wAllocator);
+        }
+
         store[count] = std::move(element);
         ++count;
     }
@@ -298,6 +301,16 @@ struct ComponentSet
         return idArr[index];
     }
 
+    const EntityId &operator[](uint32_t index) const
+    {
+        if (index >= count)
+        {
+            assert(0);
+        }
+
+        return idArr[index];
+    }
+
     uint64_t Hash() const
     {
         uint64_t h = 0;
@@ -331,14 +344,24 @@ struct ComponentSet
         return static_cast<int32_t>(v - idArr);
     }
 
-    int32_t SearchPair(EntityId id) const
+    int32_t SearchRelationship(EntityId id) const
     {
         for (uint32_t idx = count; idx > 0;)
         {
             --idx;
-            if (LO_ENTITY_ID(id) == LO_ENTITY_ID(idArr[idx]))
+            if (HI_ENTITY_ID(id) == 0)
             {
-                return idx;
+                if (LO_ENTITY_ID(id) == LO_ENTITY_ID(idArr[idx]))
+                {
+                    return idx;
+                }
+            }
+            else
+            {
+                if (id == idArr[idx])
+                {
+                    return idx;
+                }
             }
 
             if (HI_ENTITY_ID(idArr[idx]) == 0)
@@ -367,11 +390,22 @@ struct ComponentSet
         for (uint32_t idx = count; idx > 0;)
         {
             --idx;
-            if (LO_ENTITY_ID(id) == LO_ENTITY_ID(idArr[idx]))
+            if (HI_ENTITY_ID(id) == 0)
             {
-                return true;
+                if (LO_ENTITY_ID(id) == LO_ENTITY_ID(idArr[idx]))
+                {
+                    return true;
+                }
+            }
+            else
+            {
+                if (id == idArr[idx])
+                {
+                    return true;
+                }
             }
 
+            // normal component type
             if (HI_ENTITY_ID(idArr[idx]) == 0)
             {
                 return false;
@@ -499,11 +533,13 @@ struct Archetype
     int32_t *componentMap;
     HashMap<EntityId, Archetype *> addEdges;
     HashMap<EntityId, Archetype *> removeEdges;
+    Store<EntityId> trackedQuery;
     uint32_t columnCount;
 
     Archetype()
         : id(0), count(0), capacity(0), flags(0), columns(nullptr),
-          entities(nullptr), componentSet(), addEdges(), removeEdges()
+          entities(nullptr), componentSet(), addEdges(), removeEdges(),
+          trackedQuery(), columnCount(0)
     {
     }
 
@@ -520,11 +556,10 @@ struct Archetype
         componentSet = std::move(other.componentSet);
         addEdges = std::move(other.addEdges);
         removeEdges = std::move(other.removeEdges);
+        trackedQuery = std::move(other.trackedQuery);
 
         other.columns = nullptr;
         other.entities = nullptr;
-        other.componentSet.idArr = nullptr;
-        other.componentSet.count = 0;
     }
 
     Archetype &operator=(Archetype &&other) noexcept
@@ -540,11 +575,10 @@ struct Archetype
         componentSet = std::move(other.componentSet);
         addEdges = std::move(other.addEdges);
         removeEdges = std::move(other.removeEdges);
+        trackedQuery = std::move(other.trackedQuery);
 
         other.columns = nullptr;
         other.entities = nullptr;
-        other.componentSet.idArr = nullptr;
-        other.componentSet.count = 0;
 
         return *this;
     }
