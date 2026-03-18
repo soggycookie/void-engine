@@ -2,7 +2,6 @@
 #include "ecs_utils.h"
 #include "entity.h"
 #include "internal_component.h"
-#include <type_traits>
 #ifdef __clang__
 #pragma once
 #include "query.h"
@@ -33,18 +32,44 @@ CallbackArg Query::GetArg(const QueryIter &iter,
     }
     else
     {
-
         const QueryTerm &term = terms[callback.mappedSig[sigIdx]];
-        int32_t cIdx = matched.archetype->componentSet.Search(term.cId);
-        assert(cIdx != -1);
-        int32_t colIdx = matched.archetype->componentMap[cIdx];
-        assert(colIdx != -1);
 
-        Column &col = matched.archetype->columns[colIdx];
-        TypeInfo &ti = *col.typeInfo;
+        void *src = nullptr;
+        if (term.travMethod == SELF)
+        {
+            if (term.op == HAS)
+            {
+                int32_t cIdx = matched.archetype->componentSet.Search(term.cId);
+                assert(cIdx != -1);
+                int32_t colIdx = matched.archetype->componentMap[cIdx];
+                assert(colIdx != -1);
 
-        void *src = OFFSET_ELEMENT(col.data, ti.size, eIdx);
+                Column &col = matched.archetype->columns[colIdx];
+                TypeInfo &ti = *col.typeInfo;
+                src = OFFSET_ELEMENT(col.data, ti.size, eIdx);
+            }
+            else
+            {
+                assert(0);
+            }
+        }
+        else
+        {
+            if (term.op == HAS)
+            {
+                if(term.validTravTarget == EcsInvalidId)
+                {
+                    assert(0);
+                }
+                src = world->Get(term.validTravTarget, term.cId);
+            }
+            else
+            {
+                assert(0);
+            }
+        }
 
+        assert(src);
         return *static_cast<std::remove_reference_t<CallbackArg> *>(src);
     }
 }
@@ -197,25 +222,50 @@ QueryBuilder<T...> &QueryBuilder<T...>::Term()
 }
 
 template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::Traverse(TraverseMethod method)
+QueryBuilder<T...> &QueryBuilder<T...>::Through(TraverseMethod method)
 {
     m_currTerm.travMethod = method;
     return *this;
 }
 
+// template <typename... T>
+// QueryBuilder<T...> &QueryBuilder<T...>::TraveseTarget(EntityId targetId)
+// {
+//     m_currTerm.travTarget = targetId;
+//     return *this;
+// }
+
 template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::TraveseTarget(EntityId targetId)
+QueryBuilder<T...> &QueryBuilder<T...>::Traverse(EntityId relation,
+                                                 EntityId target)
 {
-    m_currTerm.travTarget = targetId;
+    m_currTerm.travRelation = relation;
+    m_currTerm.travTarget = target;
     return *this;
 }
 
 template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::TraveseTarget(EntityId first,
-                                                      EntityId second)
+QueryBuilder<T...> &QueryBuilder<T...>::TraverseAny(EntityId relation)
 {
-    m_currTerm.travTarget = MakeRelationship(first, second);
-    return *this;
+    return Traverse(relation, EcsAnyId);
+}
+
+template <typename... T>
+template <typename U>
+QueryBuilder<T...> &QueryBuilder<T...>::Traverse(EntityId target)
+{
+    static_assert(!std::is_reference_v<U> && !std::is_const_v<U>);
+
+    return Traverse(ComponentTypeId<U>::Id(), target);
+}
+
+template <typename... T>
+template <typename U>
+QueryBuilder<T...> &QueryBuilder<T...>::TraverseAny()
+{
+    static_assert(!std::is_reference_v<U> && !std::is_const_v<U>);
+
+    return TraverseAny(ComponentTypeId<U>::Id());
 }
 
 template <typename... T>
@@ -245,14 +295,14 @@ template <typename... T>
 template <typename U>
 QueryBuilder<T...> &QueryBuilder<T...>::With()
 {
-    return Term<U>().With();
+    return Term<U>().Op(HAS);
 }
 
 template <typename... T>
 template <typename U>
 QueryBuilder<T...> &QueryBuilder<T...>::Without()
 {
-    return Term<U>().Without();
+    return Term<U>().Op(NOT);
 }
 
 //
@@ -263,17 +313,17 @@ QueryBuilder<T...> &QueryBuilder<T...>::Without()
 //     return Term<U>().Optional();
 // }
 //
-template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::With()
-{
-    return Op(HAS);
-}
-
-template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::Without()
-{
-    return Op(NOT);
-}
+// template <typename... T>
+// QueryBuilder<T...> &QueryBuilder<T...>::With()
+// {
+//     return Op(HAS);
+// }
+//
+// template <typename... T>
+// QueryBuilder<T...> &QueryBuilder<T...>::Without()
+// {
+//     return Op(NOT);
+// }
 
 // template <typename... T>
 // QueryBuilder<T...> &QueryBuilder<T...>::Optional()
@@ -294,30 +344,49 @@ QueryBuilder<T...> &QueryBuilder<T...>::Without()
 //     return Traverse(SELF_UP).TraveseTarget(first, second);
 // }
 
+// template <typename... T>
+// QueryBuilder<T...> &QueryBuilder<T...>::Up(EntityId target)
+// {
+//     return Traverse(UP).TraveseTarget(target);
+// }
+
 template <typename... T>
+template <typename U>
 QueryBuilder<T...> &QueryBuilder<T...>::Up(EntityId target)
 {
-    return Traverse(UP).TraveseTarget(target);
+    static_assert(!std::is_reference_v<U> && !std::is_const_v<U>);
+
+    return Up(ComponentTypeId<U>::Id(), target);
 }
 
 template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::Up(EntityId first, EntityId second)
+template <typename U>
+QueryBuilder<T...> &QueryBuilder<T...>::Cascade()
 {
-    return Traverse(UP).TraveseTarget(first, second);
+    static_assert(!std::is_reference_v<U> && !std::is_const_v<U>);
+
+    return Cascade(ComponentTypeId<U>::Id());
 }
 
 template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::Cascade(EntityId target)
+QueryBuilder<T...> &QueryBuilder<T...>::Up(EntityId relation, EntityId target)
 {
-    return Traverse(CASCADE).TraveseTarget(target);
+    m_currTerm.validTravTarget = target;
+    return Through(UP).Traverse(relation, target);
 }
 
-template <typename... Components>
-QueryBuilder<Components...> &
-QueryBuilder<Components...>::Cascade(EntityId first, EntityId second)
+template <typename... T>
+QueryBuilder<T...> &QueryBuilder<T...>::Cascade(EntityId relation)
 {
-    return Traverse(CASCADE).TraveseTarget(first, second);
+    return Through(CASCADE).TraverseAny(relation);
 }
+
+// template <typename... Components>
+// QueryBuilder<Components...> &
+// QueryBuilder<Components...>::Cascade(EntityId first, EntityId second)
+// {
+//     return Traverse(CASCADE).TraveseTarget(first, second);
+// }
 
 template <typename... T>
 template <typename U>
@@ -341,10 +410,12 @@ QueryHandle QueryBuilder<T...>::Each(void (*callback)(CallbackArgs...),
     Query *query = new (addr) Query(m_world, 0);
     query->termCount = m_currTermIdx + 1;
     QueryTerm *terms = m_world->m_wAllocator.Alloc<QueryTerm>(query->termCount);
+    uint8_t* sortedTermIdx = m_world->m_wAllocator.Alloc<uint8_t>(query->termCount);
 
     for (uint32_t idx = 0; idx < query->termCount; ++idx)
     {
         terms[idx] = m_desc.terms[idx];
+        sortedTermIdx[idx] = idx;
     }
 
     auto priority = [](const QueryTerm &t) -> EntityId
@@ -368,18 +439,20 @@ QueryHandle QueryBuilder<T...>::Each(void (*callback)(CallbackArgs...),
                 return EcsInvalidId;
             }
 
-            return MAKE_ENTITY_ID(t.travRelation, t.travTarget);
+            return MakeRelationship(t.travRelation, t.travTarget);
         }
     };
 
     // sort descending
     // relationship will at the front because of their narrow set
-    std::sort(terms, terms + query->termCount,
-              [&](const QueryTerm &a, const QueryTerm &b)
-              { return priority(a) > priority(b); });
+    
+    std::sort(sortedTermIdx, sortedTermIdx + query->termCount, 
+              [&](uint8_t a, uint8_t b)
+              { return priority(terms[a]) > priority(terms[b]);});
 
     query->terms = terms;
     query->isEntityFiltered = false;
+    query->sortedTermIdx = sortedTermIdx;
 
     if (m_desc.cache)
     {

@@ -2,9 +2,7 @@
 #include "ecs_type.h"
 #include "ecs_utils.h"
 #include "internal_component.h"
-#include <cassert>
-#include <cstdio>
-#include <cstring>
+
 
 namespace ECS
 {
@@ -457,6 +455,7 @@ void World::AddRelationship(EntityId eId, EntityId relationId,
     EntityId relationshipId = MakeRelationship(relationId, targetId);
     TypeInfo *ti = m_typeInfos.GetValue(relationId);
 
+    assert(ti);
     assert(ti->IsRelation());
 
     if (!m_typeInfos.ContainsKey(relationshipId))

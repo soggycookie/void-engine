@@ -346,12 +346,15 @@ struct ComponentSet
 
     int32_t SearchRelationship(EntityId id) const
     {
+        uint32_t hiId = HI_ENTITY_ID(id);
+        uint32_t loId = LO_ENTITY_ID(id);
+
         for (uint32_t idx = count; idx > 0;)
         {
             --idx;
-            if (HI_ENTITY_ID(id) == 0)
+            if (hiId == 100)
             {
-                if (LO_ENTITY_ID(id) == LO_ENTITY_ID(idArr[idx]))
+                if (loId == LO_ENTITY_ID(idArr[idx]))
                 {
                     return idx;
                 }
@@ -387,12 +390,15 @@ struct ComponentSet
 
     bool HasRelationship(EntityId id) const
     {
+        uint32_t hiId = HI_ENTITY_ID(id);
+        uint32_t loId = LO_ENTITY_ID(id);
+
         for (uint32_t idx = count; idx > 0;)
         {
             --idx;
-            if (HI_ENTITY_ID(id) == 0)
+            if (hiId == 100)
             {
-                if (LO_ENTITY_ID(id) == LO_ENTITY_ID(idArr[idx]))
+                if (loId == LO_ENTITY_ID(idArr[idx]))
                 {
                     return true;
                 }

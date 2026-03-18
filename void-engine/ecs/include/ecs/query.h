@@ -3,9 +3,7 @@
 #include "ecs_type.h"
 #include "entity.h"
 #include "internal_component.h"
-#include <cassert>
-#include <cstdint>
-#include <type_traits>
+
 
 namespace ECS
 {
@@ -82,14 +80,16 @@ enum TermBehavior : uint16_t
 struct QueryTerm
 {
     QueryTerm()
-        : cId(0), travRelation(0), travTarget(0), travMethod(SELF), op(HAS),
-          behavior(READ_WRITE), fieldId(0)
+        : cId(EcsInvalidId), travRelation(EcsInvalidId),
+          travTarget(EcsInvalidId), validTravTarget(EcsInvalidId),
+          travMethod(SELF), op(HAS), behavior(READ_WRITE), fieldId(0)
     {
     }
 
     EntityId cId;
     EntityId travRelation;
     EntityId travTarget;
+    EntityId validTravTarget;
     TraverseMethod travMethod;
     TermOp op;
     TermBehavior behavior;
@@ -290,7 +290,12 @@ class QueryBuilder;
 
 struct Query
 {
-    Query(World *world, EntityId eId = 0) : world(world), eId(eId) {}
+    Query(World *world, EntityId eId = 0) : 
+        world(world), eId(eId), terms(nullptr), 
+        sortedTermIdx(nullptr), termCount(0), isEntityFiltered(false),
+        result(), callback()
+    {
+    }
 
     Query(Query &&other) noexcept
     {
@@ -301,8 +306,10 @@ struct Query
         callback = other.callback;
         termCount = other.termCount;
         isEntityFiltered = other.isEntityFiltered;
+        sortedTermIdx = other.sortedTermIdx;
 
         other.terms = nullptr;
+        other.sortedTermIdx = nullptr;
     }
 
     Query &operator=(Query &&other) noexcept
@@ -314,8 +321,10 @@ struct Query
         callback = other.callback;
         termCount = other.termCount;
         isEntityFiltered = other.isEntityFiltered;
+        sortedTermIdx = other.sortedTermIdx;
 
         other.terms = nullptr;
+        other.sortedTermIdx = nullptr;
 
         return *this;
     }
@@ -341,6 +350,7 @@ struct Query
     World *world;
     EntityId eId; // = EcsInvalidId if not cache
     QueryTerm *terms;
+    uint8_t* sortedTermIdx;
     QueryResult result;
     QueryCallback callback;
     uint32_t termCount;
@@ -421,11 +431,19 @@ public:
     template <typename U>
     QueryBuilder<T...> &Term();
 
-    QueryBuilder<T...> &Traverse(TraverseMethod method);
+    QueryBuilder<T...> &Through(TraverseMethod method);
 
-    QueryBuilder<T...> &TraveseTarget(EntityId targetId);
+    // QueryBuilder<T...> &TraveseTarget(EntityId targetId);
 
-    QueryBuilder<T...> &TraveseTarget(EntityId first, EntityId second);
+    QueryBuilder<T...> &Traverse(EntityId relation, EntityId target);
+
+    QueryBuilder<T...> &TraverseAny(EntityId relation);
+
+    template <typename U>
+    QueryBuilder<T...> &Traverse(EntityId target);
+
+    template <typename U>
+    QueryBuilder<T...> &TraverseAny();
 
     QueryBuilder<T...> &Op(TermOp op);
 
@@ -439,21 +457,25 @@ public:
     template <typename U>
     QueryBuilder<T...> &Without();
 
-    QueryBuilder<T...> &With();
-
-    QueryBuilder<T...> &Without();
+    // QueryBuilder<T...> &With();
+    //
+    // QueryBuilder<T...> &Without();
 
     // QueryBuilder<T...> &SelfUp(EntityId target);
     //
     // QueryBuilder<T...> &SelfUp(EntityId first, EntityId second);
 
+    // QueryBuilder<T...> &Up(EntityId target);
+
+    template <typename U>
     QueryBuilder<T...> &Up(EntityId target);
 
-    QueryBuilder<T...> &Up(EntityId first, EntityId second);
+    template <typename U>
+    QueryBuilder<T...> &Cascade();
 
-    QueryBuilder<T...> &Cascade(EntityId target);
+    QueryBuilder<T...> &Up(EntityId relation, EntityId target);
 
-    QueryBuilder<T...> &Cascade(EntityId first, EntityId second);
+    QueryBuilder<T...> &Cascade(EntityId relation);
 
     template <typename U>
     QueryBuilder<T...> &Modify();

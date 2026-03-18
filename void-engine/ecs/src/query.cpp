@@ -4,10 +4,7 @@
 #include "ecs_utils.h"
 #include "internal_component.h"
 #include "world.h"
-#include <cassert>
-#include <cmath>
-#include <cstdint>
-#include <cstring>
+
 
 namespace ECS
 {
@@ -134,7 +131,7 @@ void Query::Filter()
     assert(termCount > 0);
     QueryResult result;
 
-    const QueryTerm &anchorTerm = terms[0];
+    const QueryTerm &anchorTerm = terms[sortedTermIdx[0]];
 
     if (anchorTerm.op == NOT)
     {
@@ -150,20 +147,24 @@ void Query::Filter()
     else
     {
         anchorTermId =
-            MakeRelationship(anchorTerm.travRelation, anchorTerm.travTarget);
+            MakeRelationship(anchorTerm.travRelation, anchorTerm.travTarget == EcsAnyId ? 0 : anchorTerm.travTarget);
     }
 
     const ComponentRecord &cr = world->m_componentIndex[anchorTermId];
 
+    //anchor term work as a point to narrow down archetype list
     for (size_t aIdx = 0; aIdx < cr.archetypeStore.count; ++aIdx)
     {
         Archetype *archetype = cr.archetypeStore[aIdx];
         const ComponentSet &cs = archetype->componentSet;
         bool isValid = true;
 
-        for (size_t termIdx = 1; termIdx < termCount; ++termIdx)
+        // termIdx start at 0 not 1 because the first term maybe a traversal term
+        // and it need to be validated carefully
+        // 1 only work with SELF-matched term
+        for (size_t termIdx = 0; termIdx < termCount; ++termIdx)
         {
-            const QueryTerm &term = terms[termIdx];
+            QueryTerm &term = terms[sortedTermIdx[termIdx]];
 
             switch (term.travMethod)
             {
@@ -214,6 +215,10 @@ void Query::Filter()
                         !world->HasRelationship(target, term.cId))
                     {
                         isValid = false;
+                    }
+                    else
+                    {
+                        term.validTravTarget = target;
                     }
                 }
                 else if (term.op == NOT)
@@ -283,6 +288,7 @@ void Query::Filter()
                         }
                         else
                         {
+                            term.validTravTarget = target;
                             // valid
                             break;
                         }
@@ -357,6 +363,7 @@ void Query::Destroy()
     assert(terms);
 
     world->m_wAllocator.Free(termCount * sizeof(QueryTerm), terms);
+    world->m_wAllocator.Free(termCount * sizeof(uint8_t), sortedTermIdx);
 
     result.Delete(world->m_wAllocator, callback.sigCount);
 }
