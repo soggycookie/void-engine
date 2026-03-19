@@ -2,7 +2,7 @@
 #include "ecs_type.h"
 #include "ecs_utils.h"
 #include "internal_component.h"
-
+#include <cassert>
 
 namespace ECS
 {
@@ -389,6 +389,14 @@ void World::ResolveEntityDesc(EntityRecord &r, EntityDesc &desc)
 
     desc.add.Destroy(m_wAllocator);
     desc.componentData.Destroy();
+}
+
+Archetype *World::GetEntityArchetype(EntityId eId)
+{
+    EntityRecord *r = m_entityIndex.GetPageData(eId);
+    assert(r);
+
+    return r->archetype;
 }
 
 void World::RemoveEntity(EntityId eId)

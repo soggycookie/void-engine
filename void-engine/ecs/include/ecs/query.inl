@@ -32,16 +32,15 @@ CallbackArg Query::GetArg(const QueryIter &iter,
     }
     else
     {
-        const QueryTerm &term = terms[callback.mappedSig[sigIdx]];
+        const QueryTerm &term = terms[callback.sigIdxToTermIdx[sigIdx]];
 
         void *src = nullptr;
         if (term.travMethod == SELF)
         {
             if (term.op == HAS)
             {
-                int32_t cIdx = matched.archetype->componentSet.Search(term.cId);
-                assert(cIdx != -1);
-                int32_t colIdx = matched.archetype->componentMap[cIdx];
+                int32_t colIdx =
+                    matched.GetColumnIdx(callback.sigIdxToTermIdx[sigIdx]);
                 assert(colIdx != -1);
 
                 Column &col = matched.archetype->columns[colIdx];
@@ -57,10 +56,17 @@ CallbackArg Query::GetArg(const QueryIter &iter,
         {
             if (term.op == HAS)
             {
-                if(term.validTravTarget == EcsInvalidId)
+                if (term.validTravTarget == EcsInvalidId)
                 {
                     assert(0);
                 }
+
+                // do absolute nothing but just to check if this component has
+                // data or not
+                int32_t colIdx =
+                    matched.GetColumnIdx(callback.sigIdxToTermIdx[sigIdx]);
+                assert(colIdx != -1);
+
                 src = world->Get(term.validTravTarget, term.cId);
             }
             else
@@ -91,7 +97,7 @@ void Query::Each(void (*cb)(CallbackArgs...), void *ctx)
     callback.sigCount = sizeof...(CallbackArgs);
     callback.ctx = ctx;
     callback.fn = RCAST(cb, void (*)());
-    callback.mappedSig =
+    callback.sigIdxToTermIdx =
         PTR_CAST(world->m_wAllocator.Alloc(callback.sigCount), int32_t);
 
     uint32_t termBitmask = 0;
@@ -108,7 +114,7 @@ void Query::Each(void (*cb)(CallbackArgs...), void *ctx)
 
         if (callbackSigId == QueryIterIndex)
         {
-            callback.mappedSig[idx] = QueryIterIndex;
+            callback.sigIdxToTermIdx[idx] = QueryIterIndex;
             continue;
         }
 
@@ -129,7 +135,7 @@ void Query::Each(void (*cb)(CallbackArgs...), void *ctx)
 
             if (LO_ENTITY_ID(term.cId) == callbackSigId)
             {
-                callback.mappedSig[idx] = queryTermIdx;
+                callback.sigIdxToTermIdx[idx] = queryTermIdx;
                 termBitmask |= (1 << queryTermIdx);
                 break;
             }
@@ -410,7 +416,8 @@ QueryHandle QueryBuilder<T...>::Each(void (*callback)(CallbackArgs...),
     Query *query = new (addr) Query(m_world, 0);
     query->termCount = m_currTermIdx + 1;
     QueryTerm *terms = m_world->m_wAllocator.Alloc<QueryTerm>(query->termCount);
-    uint8_t* sortedTermIdx = m_world->m_wAllocator.Alloc<uint8_t>(query->termCount);
+    uint8_t *sortedTermIdx =
+        m_world->m_wAllocator.Alloc<uint8_t>(query->termCount);
 
     for (uint32_t idx = 0; idx < query->termCount; ++idx)
     {
@@ -445,10 +452,10 @@ QueryHandle QueryBuilder<T...>::Each(void (*callback)(CallbackArgs...),
 
     // sort descending
     // relationship will at the front because of their narrow set
-    
-    std::sort(sortedTermIdx, sortedTermIdx + query->termCount, 
+
+    std::sort(sortedTermIdx, sortedTermIdx + query->termCount,
               [&](uint8_t a, uint8_t b)
-              { return priority(terms[a]) > priority(terms[b]);});
+              { return priority(terms[a]) > priority(terms[b]); });
 
     query->terms = terms;
     query->isEntityFiltered = false;

@@ -5,7 +5,7 @@
 #include "internal_component.h"
 #include "query.h"
 #include "system_meta.h"
-#include "type_info_builder.h"
+#include "type_info.h"
 
 namespace ECS
 {
@@ -51,6 +51,8 @@ public:
     Entity GetEntity(EntityId eId);
 
     void ResolveEntityDesc(EntityRecord &r, EntityDesc &desc);
+
+    Archetype *GetEntityArchetype(EntityId eId);
 
     template <typename T>
     TypeInfoBuilder<T> Component();
@@ -163,5 +165,5 @@ public:
 
 #include "entity_cmd.inl"
 #include "query.inl"
-#include "type_info_builder.inl"
+#include "type_info.inl"
 #include "world.inl"

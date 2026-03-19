@@ -76,6 +76,19 @@ TypeInfoBuilder<T> &TypeInfoBuilder<T>::Id(EntityId id)
 }
 
 template <typename T>
+TypeInfoBuilder<T>& TypeInfoBuilder<T>::Singleton()
+{
+    if(!ti.IsComponent())
+    {
+        assert(0 && "Type must be a component to be a singleton!");
+    }
+
+    ti.flags |= SINGLETON_TYPE;
+
+    return *this;
+}
+
+template <typename T>
 TypeInfoBuilder<T> &TypeInfoBuilder<T>::Exclusive()
 {
     if (!ti.IsRelation())

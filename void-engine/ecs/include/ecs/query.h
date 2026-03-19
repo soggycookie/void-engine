@@ -4,7 +4,6 @@
 #include "entity.h"
 #include "internal_component.h"
 
-
 namespace ECS
 {
 struct ArchetypeLinkedList
@@ -100,95 +99,105 @@ constexpr uint16_t InlineArrayOptimizationCount = 8;
 
 struct MatchedArchetype
 {
-    MatchedArchetype() : largeMatchedColumns(nullptr), largeEntityMask(nullptr)
+    MatchedArchetype() : hi_matchedColumnIdx(nullptr), hi_entityMask(nullptr)
     {
     }
 
     MatchedArchetype(const Archetype *archetype)
-        : archetype(archetype), largeEntityMask(nullptr),
-          largeMatchedColumns(nullptr)
+        : archetype(archetype), hi_entityMask(nullptr),
+          hi_matchedColumnIdx(nullptr)
     {
     }
 
     MatchedArchetype(MatchedArchetype &&other) noexcept
     {
         archetype = other.archetype;
-        largeMatchedColumns = other.largeMatchedColumns;
-        std::memcpy(smallMatchedColumns, other.smallMatchedColumns,
+        hi_matchedColumnIdx = other.hi_matchedColumnIdx;
+        std::memcpy(lo_matchedColumnIdx, other.lo_matchedColumnIdx,
                     sizeof(int32_t) * InlineArrayOptimizationCount);
-        largeEntityMask = other.largeEntityMask;
+        hi_entityMask = other.hi_entityMask;
+        std::memcpy(lo_entityMask, other.lo_entityMask, sizeof(int32_t) * InlineArrayOptimizationCount);
 
         other.archetype = nullptr;
-        other.largeEntityMask = nullptr;
+        other.hi_entityMask = nullptr;
     }
 
     MatchedArchetype &operator=(MatchedArchetype &&other) noexcept
     {
         archetype = other.archetype;
-        largeMatchedColumns = other.largeMatchedColumns;
-        std::memcpy(smallMatchedColumns, other.smallMatchedColumns,
+        hi_matchedColumnIdx = other.hi_matchedColumnIdx;
+        std::memcpy(lo_matchedColumnIdx, other.lo_matchedColumnIdx,
                     sizeof(int32_t) * InlineArrayOptimizationCount);
-        largeEntityMask = other.largeEntityMask;
+        hi_entityMask = other.hi_entityMask;
+        std::memcpy(lo_entityMask, other.lo_entityMask, sizeof(int32_t) * InlineArrayOptimizationCount);
 
         other.archetype = nullptr;
-        other.largeEntityMask = nullptr;
+        other.hi_entityMask = nullptr;
 
         return *this;
     }
 
-    void SetMatchedColumns(WorldAllocator &wAllocator, int32_t *mappedCols,
+    void SetMatchedColumnIdx(WorldAllocator &wAllocator, int32_t *mappedCols,
                            uint32_t count);
 
+    int32_t GetColumnIdx(uint32_t termIdx) const;
+
+    void Delete(WorldAllocator &wAllocator, uint32_t callbackSigCount);
+
     const Archetype *archetype;
-    int32_t *largeMatchedColumns;
-    int32_t smallMatchedColumns[InlineArrayOptimizationCount];
+    int32_t *hi_matchedColumnIdx; //map term index to column index
+    int32_t lo_matchedColumnIdx[InlineArrayOptimizationCount];
 
     // NOTE: if there are ecs operation like add or delete, bitmask will be
     // invalidated. Try to avoid these expensive filtering as much as possible
-    uint32_t smallEntityMask[InlineArrayOptimizationCount];
-    uint32_t *largeEntityMask;
-
-    void Delete(WorldAllocator &wAllocator, uint32_t callbackSigCount);
+    uint32_t lo_entityMask[InlineArrayOptimizationCount];
+    uint32_t *hi_entityMask;
 };
 
 struct QueryResult
 {
-    QueryResult() : largeMatchedArchetypes(nullptr), count(0), capacity(0) {}
+    QueryResult() : hi_matchedArchetypes(nullptr), count(0), capacity(0) {}
 
     QueryResult(QueryResult &&other) noexcept
     {
         count = other.count;
         capacity = other.capacity;
-        largeMatchedArchetypes = other.largeMatchedArchetypes;
 
-        uint32_t smallCount = (count <= InlineArrayOptimizationCount)
-                                  ? count
-                                  : InlineArrayOptimizationCount;
-        for (size_t idx = 0; idx < smallCount; ++idx)
-        {
-            smallMatchedArchetypes[idx] =
-                std::move(other.smallMatchedArchetypes[idx]);
+        int32_t countDiff = count - InlineArrayOptimizationCount;
+        if(countDiff <= 0){
+            for(size_t idx = 0; idx < count; ++idx)
+            {
+                lo_matchedArchetypes[idx] =
+                    std::move(other.lo_matchedArchetypes[idx]);
+            }
         }
-
-        other.largeMatchedArchetypes = nullptr;
+        else
+        {
+            assert(other.hi_matchedArchetypes);
+            hi_matchedArchetypes = other.hi_matchedArchetypes;
+        }
+        other.hi_matchedArchetypes = nullptr;
     }
 
     QueryResult &operator=(QueryResult &&other) noexcept
     {
         count = other.count;
         capacity = other.capacity;
-        largeMatchedArchetypes = other.largeMatchedArchetypes;
 
-        uint32_t smallCount = (count <= InlineArrayOptimizationCount)
-                                  ? count
-                                  : InlineArrayOptimizationCount;
-        for (size_t idx = 0; idx < smallCount; ++idx)
-        {
-            smallMatchedArchetypes[idx] =
-                std::move(other.smallMatchedArchetypes[idx]);
+        int32_t countDiff = count - InlineArrayOptimizationCount;
+        if(countDiff <= 0){
+            for(size_t idx = 0; idx < count; ++idx)
+            {
+                lo_matchedArchetypes[idx] =
+                    std::move(other.lo_matchedArchetypes[idx]);
+            }
         }
-
-        other.largeMatchedArchetypes = nullptr;
+        else
+        {
+            assert(other.hi_matchedArchetypes);
+            hi_matchedArchetypes = other.hi_matchedArchetypes;
+        }
+        other.hi_matchedArchetypes = nullptr;
 
         return *this;
     }
@@ -199,12 +208,12 @@ struct QueryResult
         {
             if (idx < InlineArrayOptimizationCount)
             {
-                return smallMatchedArchetypes[idx];
+                return lo_matchedArchetypes[idx];
             }
             else
             {
-                assert(largeMatchedArchetypes);
-                return largeMatchedArchetypes[idx -
+                assert(hi_matchedArchetypes);
+                return hi_matchedArchetypes[idx -
                                               InlineArrayOptimizationCount];
             }
         }
@@ -221,8 +230,8 @@ struct QueryResult
 
     void Delete(WorldAllocator &wAllocator, uint32_t callbackSigCount);
 
-    MatchedArchetype smallMatchedArchetypes[InlineArrayOptimizationCount];
-    MatchedArchetype *largeMatchedArchetypes;
+    MatchedArchetype lo_matchedArchetypes[InlineArrayOptimizationCount];
+    MatchedArchetype *hi_matchedArchetypes;
 
     uint32_t count;
     uint32_t capacity;
@@ -262,7 +271,7 @@ constexpr int32_t InvalidIndex = -3;
 struct QueryCallback
 {
     QueryCallback()
-        : ctx(nullptr), fn(nullptr), invoker(nullptr), mappedSig(nullptr),
+        : ctx(nullptr), fn(nullptr), invoker(nullptr), sigIdxToTermIdx(nullptr),
           sigCount(0)
     {
     }
@@ -270,7 +279,7 @@ struct QueryCallback
     void *ctx;
     void (*fn)();
     void (*invoker)(Query *query, void (*fn)(), void *ctx);
-    int32_t *mappedSig;
+    int32_t *sigIdxToTermIdx; //map sig idx to term idx to support callback signature shuffle
     uint32_t sigCount;
 };
 
@@ -290,10 +299,9 @@ class QueryBuilder;
 
 struct Query
 {
-    Query(World *world, EntityId eId = 0) : 
-        world(world), eId(eId), terms(nullptr), 
-        sortedTermIdx(nullptr), termCount(0), isEntityFiltered(false),
-        result(), callback()
+    Query(World *world, EntityId eId = 0)
+        : world(world), eId(eId), terms(nullptr), sortedTermIdx(nullptr),
+          termCount(0), isEntityFiltered(false), result(), callback()
     {
     }
 
@@ -350,7 +358,7 @@ struct Query
     World *world;
     EntityId eId; // = EcsInvalidId if not cache
     QueryTerm *terms;
-    uint8_t* sortedTermIdx;
+    uint8_t *sortedTermIdx;
     QueryResult result;
     QueryCallback callback;
     uint32_t termCount;

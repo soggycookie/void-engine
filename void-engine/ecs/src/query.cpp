@@ -4,42 +4,54 @@
 #include "ecs_utils.h"
 #include "internal_component.h"
 #include "world.h"
-
+#include <cassert>
 
 namespace ECS
 {
 
 ///////////////////////// Matched Archetype ////////////////////////////
 
-void MatchedArchetype::SetMatchedColumns(WorldAllocator &wAllocator,
+void MatchedArchetype::SetMatchedColumnIdx(WorldAllocator &wAllocator,
                                          int32_t *mappedCols, uint32_t count)
 {
     int32_t countDiff = count - InlineArrayOptimizationCount;
 
-    std::memcpy(smallMatchedColumns, mappedCols, count * sizeof(int32_t));
+    std::memcpy(lo_matchedColumnIdx, mappedCols, count * sizeof(int32_t));
 
     if (countDiff > 0)
     {
-        largeMatchedColumns =
+        hi_matchedColumnIdx =
             PTR_CAST(wAllocator.Alloc(countDiff * sizeof(int32_t)), int32_t);
-        std::memcpy(largeMatchedColumns,
+        std::memcpy(hi_matchedColumnIdx,
                     mappedCols + InlineArrayOptimizationCount,
                     countDiff * sizeof(int32_t));
+    }
+}
+
+int32_t MatchedArchetype::GetColumnIdx(uint32_t termIdx) const
+{
+    if (termIdx < InlineArrayOptimizationCount)
+    {
+        return lo_matchedColumnIdx[termIdx];
+    }
+    else
+    {
+        return hi_matchedColumnIdx[termIdx - InlineArrayOptimizationCount];
     }
 }
 
 void MatchedArchetype::Delete(WorldAllocator &wAllocator,
                               uint32_t callbackSigCount)
 {
-    if (largeMatchedColumns)
+    if (hi_matchedColumnIdx)
     {
         assert(callbackSigCount > InlineArrayOptimizationCount);
         wAllocator.Free(sizeof(int32_t) *
                             (callbackSigCount - InlineArrayOptimizationCount),
-                        largeMatchedColumns);
+                        hi_matchedColumnIdx);
     }
 
-    if (largeEntityMask)
+    if (hi_entityMask)
     {
         constexpr const uint32_t numBitOfUint32 = 32;
         int32_t count = std::ceil(CAST(archetype->count, float) /
@@ -49,7 +61,7 @@ void MatchedArchetype::Delete(WorldAllocator &wAllocator,
 
         wAllocator.Free(sizeof(uint32_t) *
                             (count - InlineArrayOptimizationCount),
-                        largeEntityMask);
+                        hi_entityMask);
     }
 }
 //////////////////////////// QueryResult ////////////////////////////////
@@ -60,7 +72,7 @@ void QueryResult::Add(WorldAllocator &wAllocator, MatchedArchetype &&matched)
 
     if (count < InlineArrayOptimizationCount)
     {
-        smallMatchedArchetypes[count] = std::move(matched);
+        lo_matchedArchetypes[count] = std::move(matched);
     }
     else
     {
@@ -74,21 +86,21 @@ void QueryResult::Add(WorldAllocator &wAllocator, MatchedArchetype &&matched)
                 wAllocator.AllocN(sizeof(MatchedArchetype), capa, expandedCapa),
                 MatchedArchetype);
 
-            if (largeMatchedArchetypes)
+            if (hi_matchedArchetypes)
             {
                 for (size_t idx = 0;
                      idx < (count - InlineArrayOptimizationCount); ++idx)
                 {
                     new (&newMatched[idx]) MatchedArchetype(
-                        std::move(largeMatchedArchetypes[idx]));
+                        std::move(hi_matchedArchetypes[idx]));
                 }
             }
 
-            largeMatchedArchetypes = newMatched;
+            hi_matchedArchetypes = newMatched;
             capacity = expandedCapa;
         }
 
-        new (&largeMatchedArchetypes[count - InlineArrayOptimizationCount])
+        new (&hi_matchedArchetypes[count - InlineArrayOptimizationCount])
             MatchedArchetype(std::move(matched));
     }
 
@@ -104,21 +116,21 @@ void QueryResult::Delete(WorldAllocator &wAllocator, uint32_t callbackSigCount)
     {
         for (size_t idx = 0; idx < count; ++idx)
         {
-            smallMatchedArchetypes[idx].Delete(wAllocator, callbackSigCount);
+            lo_matchedArchetypes[idx].Delete(wAllocator, callbackSigCount);
         }
     }
     else
     {
-        assert(largeMatchedArchetypes);
+        assert(hi_matchedArchetypes);
 
         for (size_t idx = 0; idx < count - InlineArrayOptimizationCount; ++idx)
         {
-            largeMatchedArchetypes[idx].Delete(wAllocator, callbackSigCount);
-            largeMatchedArchetypes[idx].~MatchedArchetype();
+            hi_matchedArchetypes[idx].Delete(wAllocator, callbackSigCount);
+            hi_matchedArchetypes[idx].~MatchedArchetype();
         }
 
         wAllocator.Free(sizeof(MatchedArchetype) * capacity,
-                        largeMatchedArchetypes);
+                        hi_matchedArchetypes);
     }
 }
 
@@ -146,22 +158,31 @@ void Query::Filter()
     }
     else
     {
-        anchorTermId =
-            MakeRelationship(anchorTerm.travRelation, anchorTerm.travTarget == EcsAnyId ? 0 : anchorTerm.travTarget);
+        anchorTermId = MakeRelationship(
+            anchorTerm.travRelation,
+            anchorTerm.travTarget == EcsAnyId ? 0 : anchorTerm.travTarget);
     }
 
     const ComponentRecord &cr = world->m_componentIndex[anchorTermId];
 
-    //anchor term work as a point to narrow down archetype list
+    int32_t *matchedColumns = world->m_wAllocator.Alloc<int32_t>(termCount);
+    assert(matchedColumns);
+
+    // anchor term work as a point to narrow down archetype list
     for (size_t aIdx = 0; aIdx < cr.archetypeStore.count; ++aIdx)
     {
         Archetype *archetype = cr.archetypeStore[aIdx];
         const ComponentSet &cs = archetype->componentSet;
         bool isValid = true;
 
-        // termIdx start at 0 not 1 because the first term maybe a traversal term
-        // and it need to be validated carefully
-        // 1 only work with SELF-matched term
+        if (!matchedColumns)
+        {
+            matchedColumns = world->m_wAllocator.Alloc<int32_t>(termCount);
+        }
+
+        // termIdx start at 0 not 1 because the first term maybe a traversal
+        // term and it need to be validated carefully 1 only work with
+        // SELF-matched term
         for (size_t termIdx = 0; termIdx < termCount; ++termIdx)
         {
             QueryTerm &term = terms[sortedTermIdx[termIdx]];
@@ -172,9 +193,14 @@ void Query::Filter()
             {
                 if (term.op == HAS)
                 {
-                    if (!cs.Has(term.cId))
+                    int32_t cIdx = cs.Search(term.cId);
+                    if (cIdx == ComponentSet::NotFoundIdx)
                     {
                         isValid = false;
+                    }
+                    else
+                    {
+                        matchedColumns[termIdx] = archetype->componentMap[cIdx];
                     }
                 }
                 else if (term.op == NOT)
@@ -182,6 +208,10 @@ void Query::Filter()
                     if (cs.Has(term.cId))
                     {
                         isValid = false;
+                    }
+                    else
+                    {
+                        matchedColumns[termIdx] = ComponentSet::NotFoundIdx;
                     }
                 }
                 else
@@ -209,16 +239,27 @@ void Query::Filter()
                         HI_ENTITY_ID(cs[cs.SearchRelationship(relationship)]);
                 }
 
+                Archetype *targetArchetype = world->GetEntityArchetype(target);
+
                 if (term.op == HAS)
                 {
-                    if (!world->HasComponent(target, term.cId) &&
-                        !world->HasRelationship(target, term.cId))
+                    int32_t cIdx =
+                        targetArchetype->componentSet.Search(term.cId);
+                    cIdx =
+                        (cIdx == ComponentSet::NotFoundIdx)
+                            ? targetArchetype->componentSet.SearchRelationship(
+                                  term.cId)
+                            : cIdx;
+
+                    if (cIdx == ComponentSet::NotFoundIdx)
                     {
                         isValid = false;
                     }
                     else
                     {
                         term.validTravTarget = target;
+                        matchedColumns[termIdx] =
+                            targetArchetype->componentMap[cIdx];
                     }
                 }
                 else if (term.op == NOT)
@@ -227,6 +268,10 @@ void Query::Filter()
                         world->HasRelationship(target, term.cId))
                     {
                         isValid = false;
+                    }
+                    else
+                    {
+                        matchedColumns[termIdx] = ComponentSet::NotFoundIdx;
                     }
                 }
                 else
@@ -259,36 +304,46 @@ void Query::Filter()
                     assert(0);
                 }
 
+                Archetype *targetArchetype = world->GetEntityArchetype(target);
+                assert(targetArchetype);
                 if (term.op == HAS)
                 {
                     while (true)
                     {
-                        if (!world->HasComponent(target, term.cId) &&
-                            !world->HasRelationship(target, term.cId))
+                        int32_t cIdx =
+                            targetArchetype->componentSet.Search(term.cId);
+                        cIdx = (cIdx == ComponentSet::NotFoundIdx)
+                                   ? targetArchetype->componentSet
+                                         .SearchRelationship(term.cId)
+                                   : cIdx;
+
+                        if (cIdx == ComponentSet::NotFoundIdx)
                         {
-                            if (!world->HasRelationship(
-                                    target, term.travRelation, EcsAnyId))
+                            int32_t targetRelationshipIdx =
+                                targetArchetype->componentSet
+                                    .SearchRelationship(relationship);
+
+                            if (targetRelationshipIdx ==
+                                ComponentSet::NotFoundIdx)
                             {
                                 isValid = false;
                                 break;
                             }
                             else
                             {
-                                EntityRecord *r =
-                                    world->GetEntityRecord(target);
-                                assert(r);
-
-                                const ComponentSet &tempCs =
-                                    r->archetype->componentSet;
-
                                 target = HI_ENTITY_ID(
-                                    tempCs[tempCs.SearchRelationship(
-                                        relationship)]);
+                                    targetArchetype
+                                        ->componentSet[targetRelationshipIdx]);
+                                targetArchetype =
+                                    world->GetEntityArchetype(target);
+                                assert(targetArchetype);
                             }
                         }
                         else
                         {
                             term.validTravTarget = target;
+                            matchedColumns[termIdx] =
+                                targetArchetype->componentMap[cIdx];
                             // valid
                             break;
                         }
@@ -301,24 +356,24 @@ void Query::Filter()
                         if (world->HasComponent(target, term.cId) ||
                             world->HasRelationship(target, term.cId))
                         {
-                            if (!world->HasRelationship(
-                                    target, term.travRelation, EcsAnyId))
+                            int32_t targetRelationshipIdx =
+                                targetArchetype->componentSet
+                                    .SearchRelationship(relationship);
+
+                            if (targetRelationshipIdx ==
+                                ComponentSet::NotFoundIdx)
                             {
                                 isValid = false;
                                 break;
                             }
                             else
                             {
-                                EntityRecord *r =
-                                    world->GetEntityRecord(target);
-                                assert(r);
-
-                                const ComponentSet &tempCs =
-                                    r->archetype->componentSet;
-
                                 target = HI_ENTITY_ID(
-                                    tempCs[tempCs.SearchRelationship(
-                                        relationship)]);
+                                    targetArchetype
+                                        ->componentSet[targetRelationshipIdx]);
+                                targetArchetype =
+                                    world->GetEntityArchetype(target);
+                                assert(targetArchetype);
                             }
                         }
                         else
@@ -340,6 +395,11 @@ void Query::Filter()
                 assert(0);
             }
             }
+
+            if (!isValid)
+            {
+                break;
+            }
         }
 
         if (isValid)
@@ -350,6 +410,9 @@ void Query::Filter()
             }
 
             MatchedArchetype ma(archetype);
+            ma.SetMatchedColumnIdx(world->m_wAllocator, matchedColumns,
+                                 termCount);
+            matchedColumns = nullptr;
             result.Add(world->m_wAllocator, std::move(ma));
         }
     }

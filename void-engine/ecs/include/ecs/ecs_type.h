@@ -95,6 +95,8 @@ class World;
 template <typename U>
 class TypeInfoBuilder;
 
+struct TypeInfo;
+
 template <typename T>
 class ComponentTypeId
 {
@@ -231,6 +233,8 @@ struct ComponentSet
     EntityId *idArr;
     uint32_t count;
 
+    constexpr static const int32_t NotFoundIdx = -1;
+
     ComponentSet() : idArr(nullptr), count(0) {}
 
     ~ComponentSet() = default;
@@ -338,7 +342,7 @@ struct ComponentSet
 
         if (v == (idArr + count) || *v != id)
         {
-            return -1;
+            return NotFoundIdx;
         }
 
         return static_cast<int32_t>(v - idArr);
@@ -369,11 +373,11 @@ struct ComponentSet
 
             if (HI_ENTITY_ID(idArr[idx]) == 0)
             {
-                return -1;
+                return NotFoundIdx;
             }
         }
 
-        return -1;
+        return NotFoundIdx;
     }
 
     bool Has(EntityId id) const
@@ -447,73 +451,6 @@ template <>
 struct Hash<ComponentSet>
 {
     static uint64_t Value(const ComponentSet &v) { return v.Hash(); }
-};
-
-using CtorHook = void (*)(void *dest);
-using CopyCtorHook = void (*)(void *dest, const void *src);
-using MoveCtorHook = void (*)(void *dest, void *src);
-using DtorHook = void (*)(void *src);
-
-using AddEventHook = void (*)();
-using RemoveEventHook = void (*)();
-using SetEventHook = void (*)(void *dest);
-
-struct TypeHook
-{
-    void (*ctor)(void *dest);
-    void (*copyCtor)(void *dest, const void *src);
-    void (*moveCtor)(void *dest, void *src);
-    void (*dtor)(void *src);
-
-    void (*onAdd)();
-    void (*onRemove)();
-    void (*onSet)(void *dest);
-};
-
-#define COMPONENT_TYPE 1 << 0
-#define TAG_TYPE 1 << 1
-#define RELATION_TYPE 1 << 2
-#define TYPE_HAS_DATA 1 << 3
-#define EXCLUSIVE_RELATION 1 << 4
-#define BITSET_DATA 1 << 5
-#define RELATIONSHIP_TYPE 1 << 6
-
-struct TypeInfo
-{
-    EntityId eId;
-    EntityId cId;
-    uint32_t alignment;
-    uint32_t size;
-    TypeHook hook;
-    uint32_t flags;
-
-    bool HasData() const { return (flags & TYPE_HAS_DATA) == TYPE_HAS_DATA; }
-
-    bool IsExclusive() const
-    {
-        return (flags & (EXCLUSIVE_RELATION | RELATION_TYPE)) ==
-               (EXCLUSIVE_RELATION | RELATION_TYPE);
-    }
-
-    bool IsDataBitset() const
-    {
-        return (flags & (TYPE_HAS_DATA | BITSET_DATA)) ==
-               (TYPE_HAS_DATA | BITSET_DATA);
-    }
-
-    bool IsRelationship() const
-    {
-        return (flags & RELATIONSHIP_TYPE) == RELATIONSHIP_TYPE;
-    }
-
-    bool IsRelation() const { return (flags & RELATION_TYPE) == RELATION_TYPE; }
-
-    bool IsComponent() const
-    {
-        return (flags & COMPONENT_TYPE) == COMPONENT_TYPE;
-    }
-
-    bool IsTag() const { return (flags & TAG_TYPE) == TAG_TYPE; }
 };
 
 struct Column
