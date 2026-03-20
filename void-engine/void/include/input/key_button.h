@@ -2,20 +2,22 @@
 
 namespace VoidEngine
 {
-    enum class VoidKeyButton
-    {
-        A = 0x01,
-        B = 0x02,
+enum class VoidKeyButton
+{
+    NONE = 0,
+    A = 1,
+    B = 2,
 
-        KEY_UNKNOWN
-    };
+    KEY_UNKNOWN
+};
 
-    enum class VoidMouseButton
-    {
-        LEFT_BTN,
-        RIGHT_BTN,
-        MIDDLE_BTN,
-        X_BUTTON_1,
-        X_BUTTON_2
-    };
-}
+enum class VoidMouseButton
+{
+    NONE = 0,
+    LEFT_BTN= 1,
+    RIGHT_BTN = 2,
+    MIDDLE_BTN = 3,
+    X_BUTTON_1 = 4,
+    X_BUTTON_2 = 5
+};
+} // namespace VoidEngine

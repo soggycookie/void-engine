@@ -37,7 +37,7 @@ namespace VoidEngine
         void OnDetach() override;
         void OnAttach() override;
         void OnUpdate(double dt) override;
-        void OnEvent(const Event& e) override;
+        void OnEvent(const InputEvent& e) override;
 
     private:
         ECS::World* world;

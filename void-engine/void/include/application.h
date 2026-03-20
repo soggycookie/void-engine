@@ -3,7 +3,7 @@
 #include "pch.h"
 #include "window.h"
 #include "engine_config.h"
-#include "event/event.h"
+#include "input_event.h"
 #include "layer_stack.h"
 #include "game_layer.h"
 #include "ds/dynamic_array.h"
@@ -31,7 +31,7 @@ namespace VoidEngine
         //void PushOverLay(Layer* layer);
 
     private:
-        void OnEvent(Event& e);
+        void OnEvent(InputEvent& e);
 
     private:
         LayerStack* m_layerStack;

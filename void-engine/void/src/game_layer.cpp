@@ -67,7 +67,7 @@ void GameLayer::OnInit()
 
     world = ECS::CreateWorld();
     world->Component<Position>().Register();
-    world->Component<Velocity>().Register();
+    world->Component<Velocity>().Singleton().Register();
     world->Tag<NPC>().Register();
 
     // uint32_t x = 0, y = 0;
@@ -77,40 +77,39 @@ void GameLayer::OnInit()
     //     ++y}).AddComponent<Velocity>();
     // }
     ECS::Entity e0 = world->CreateEntity("Test subject", 0);
-    // std::cout << e0.GetLowId() << std::endl;
+    // e0.AddComponent<Velocity>().Set<Velocity>(Velocity{0.5f, 0.5f});
+    //  std::cout << e0.GetLowId() << std::endl;
 
     // world->RemoveEntity(e0.GetFullId());
 
-    ECS::Entity e = world->CreateEntity("First", 0);
-    e.AddComponent<Position>().
-        // AddTag<NPC>().
-        // AddComponent<Velocity>().
-        Set<Position>({1, 1});
-    e0.AddComponent<Position>();
-    // std::cout << e.GetLowId() << std::endl;
-    //  ECS::Entity e2 = world->CreateEntity(0);
-    //  e2.AddComponent<Position>().
-    //      AddTag<NPC>().
-    //      AddComponent<Velocity>().
-    //      Set<Position>({1, 1});
+    ECS::Entity e = world->CreateEntity("First", e0.GetFullId());
+    e.AddComponent<Position>().Set<Position>({1, 1});
 
     ECS::Entity e1 = world->CreateEntity("Second ", e.GetFullId());
-    e1.AddComponent<Position>().AddTag<NPC>().
+    e1.AddComponent<Position>().
         // AddComponent<Velocity>().
         // AddPair<ECS::ChildOf>(e.GetFullId()).
         Set<Position>({555, 123123});
 
-    auto q = world->Query<Position>().Cache().
-             // Without<NPC>().
-             Each(
-                 +[](const ECS::QueryIter &iter, const Position &pos)
-                 {
-                     std::cout << "x: " << pos.x << std::endl;
-                     std::cout << "y: " << pos.y << std::endl;
-                 },
-                 nullptr);
+    auto q =
+        world->Query<Position>()
+            .With<Velocity>()
+            .TraverseAny<ECS::EcsChildOf>()
+            .Through(ECS::UP)
+            .Each(
+                +[](const ECS::QueryIter &iter, const Velocity &parentVel,
+                    const Position &e)
+                {
+                    std::cout << "Parent Vel x: " << parentVel.x << std::endl;
+                    std::cout << "Parent Vel y: " << parentVel.y << std::endl;
+                    std::cout << "Entity x: " << e.x << std::endl;
+                    std::cout << "Entity y: " << e.y << std::endl;
+                },
+                nullptr);
     q.Execute();
-    q.Destroy();
+    // q.Destroy();
+    std::cout << world->GetSingleton<Velocity>().x << std::endl;
+    std::cout << world->GetSingleton<Velocity>().y << std::endl;
 
     world->System<Position, ECS::EcsChildOf>(+[](Position &pos)
                                              {
@@ -119,17 +118,17 @@ void GameLayer::OnInit()
                                              });
 }
 
-void GameLayer::OnEvent(const Event &e)
+void GameLayer::OnEvent(const InputEvent &e)
 {
-    switch (e.GetEventType())
+    switch (e.Type())
     {
 
-    case EventType::KEY_PRESSED:
+    case InputEventType::KEY_PRESSED:
     {
         std::cout << "Key Pressed Game Layer" << std::endl;
         break;
     }
-    case EventType::KEY_RELEASED:
+    case InputEventType::KEY_RELEASED:
     {
         std::cout << "Key Released Game Layer" << std::endl;
         break;

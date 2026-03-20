@@ -14,5 +14,3 @@ enum class GraphicAPI
 };
 
 using ResourceGUID = size_t;
-
-
