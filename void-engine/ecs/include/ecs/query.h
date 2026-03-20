@@ -99,9 +99,7 @@ constexpr uint16_t InlineArrayOptimizationCount = 8;
 
 struct MatchedArchetype
 {
-    MatchedArchetype() : hi_matchedColumnIdx(nullptr), hi_entityMask(nullptr)
-    {
-    }
+    MatchedArchetype() : hi_matchedColumnIdx(nullptr), hi_entityMask(nullptr) {}
 
     MatchedArchetype(const Archetype *archetype)
         : archetype(archetype), hi_entityMask(nullptr),
@@ -116,7 +114,8 @@ struct MatchedArchetype
         std::memcpy(lo_matchedColumnIdx, other.lo_matchedColumnIdx,
                     sizeof(int32_t) * InlineArrayOptimizationCount);
         hi_entityMask = other.hi_entityMask;
-        std::memcpy(lo_entityMask, other.lo_entityMask, sizeof(int32_t) * InlineArrayOptimizationCount);
+        std::memcpy(lo_entityMask, other.lo_entityMask,
+                    sizeof(int32_t) * InlineArrayOptimizationCount);
 
         other.archetype = nullptr;
         other.hi_entityMask = nullptr;
@@ -129,7 +128,8 @@ struct MatchedArchetype
         std::memcpy(lo_matchedColumnIdx, other.lo_matchedColumnIdx,
                     sizeof(int32_t) * InlineArrayOptimizationCount);
         hi_entityMask = other.hi_entityMask;
-        std::memcpy(lo_entityMask, other.lo_entityMask, sizeof(int32_t) * InlineArrayOptimizationCount);
+        std::memcpy(lo_entityMask, other.lo_entityMask,
+                    sizeof(int32_t) * InlineArrayOptimizationCount);
 
         other.archetype = nullptr;
         other.hi_entityMask = nullptr;
@@ -138,14 +138,14 @@ struct MatchedArchetype
     }
 
     void SetMatchedColumnIdx(WorldAllocator &wAllocator, int32_t *mappedCols,
-                           uint32_t count);
+                             uint32_t count);
 
     int32_t GetColumnIdx(uint32_t termIdx) const;
 
     void Delete(WorldAllocator &wAllocator, uint32_t callbackSigCount);
 
     const Archetype *archetype;
-    int32_t *hi_matchedColumnIdx; //map term index to column index
+    int32_t *hi_matchedColumnIdx; // map term index to column index
     int32_t lo_matchedColumnIdx[InlineArrayOptimizationCount];
 
     // NOTE: if there are ecs operation like add or delete, bitmask will be
@@ -164,8 +164,9 @@ struct QueryResult
         capacity = other.capacity;
 
         int32_t countDiff = count - InlineArrayOptimizationCount;
-        if(countDiff <= 0){
-            for(size_t idx = 0; idx < count; ++idx)
+        if (countDiff <= 0)
+        {
+            for (size_t idx = 0; idx < count; ++idx)
             {
                 lo_matchedArchetypes[idx] =
                     std::move(other.lo_matchedArchetypes[idx]);
@@ -185,8 +186,9 @@ struct QueryResult
         capacity = other.capacity;
 
         int32_t countDiff = count - InlineArrayOptimizationCount;
-        if(countDiff <= 0){
-            for(size_t idx = 0; idx < count; ++idx)
+        if (countDiff <= 0)
+        {
+            for (size_t idx = 0; idx < count; ++idx)
             {
                 lo_matchedArchetypes[idx] =
                     std::move(other.lo_matchedArchetypes[idx]);
@@ -213,8 +215,7 @@ struct QueryResult
             else
             {
                 assert(hi_matchedArchetypes);
-                return hi_matchedArchetypes[idx -
-                                              InlineArrayOptimizationCount];
+                return hi_matchedArchetypes[idx - InlineArrayOptimizationCount];
             }
         }
         assert(0);
@@ -279,7 +280,8 @@ struct QueryCallback
     void *ctx;
     void (*fn)();
     void (*invoker)(Query *query, void (*fn)(), void *ctx);
-    int32_t *sigIdxToTermIdx; //map sig idx to term idx to support callback signature shuffle
+    int32_t *sigIdxToTermIdx; // map sig idx to term idx to support callback
+                              // signature shuffle
     uint32_t sigCount;
 };
 

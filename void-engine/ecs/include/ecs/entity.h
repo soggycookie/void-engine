@@ -1,33 +1,67 @@
 #pragma once
+#include "ecs_type.h"
 #include "entity_cmd.h"
 #include "id.h"
+#include <type_traits>
 
 namespace ECS
 {
 class World;
+
+struct EntityDesc
+{
+    struct DescEntry
+    {
+        EntityId cId;
+        void *data;
+    };
+
+    EntityDesc() : eId(0), parentId(0), name(nullptr), bulkComponents() {}
+
+    EntityDesc(EntityId eId, EntityId parentId, const char *name)
+        : eId(eId), parentId(parentId), name(name), bulkComponents()
+    {
+    }
+
+    template <typename T>
+    void Add(WorldAllocator &wAllocator, void *data)
+    {
+        static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
+        Add(wAllocator, ComponentTypeId<T>::Id(), data);
+    }
+
+    void Add(WorldAllocator &wAllocator, EntityId cId, void *data);
+
+    void Sort();
+
+    EntityId eId;
+    EntityId parentId;
+    const char *name;
+    Store<DescEntry> bulkComponents;
+};
 
 /*
     Entity Builder declaration
     These ecs operations will apply immediately
 */
 
-class EntityMutator : public Id, public IEntityCommand
+class EntityBuilder : public Id, public IEntityCommand
 {
 protected:
-    EntityMutator(EntityId id, World *world) : m_world(world), Id(id) {}
+    EntityBuilder(EntityId id, World *world) : m_world(world), Id(id) {}
 
-    EntityMutator(LoEntityId lowId, HiEntityId highId, World *world)
+    EntityBuilder(LoEntityId lowId, HiEntityId highId, World *world)
         : m_world(world), Id(lowId, highId)
     {
     }
 
-    virtual ~EntityMutator() = default;
+    virtual ~EntityBuilder() = default;
 
-    EntityMutator(EntityMutator &&other) = default;
-    EntityMutator(const EntityMutator &other) = default;
+    EntityBuilder(EntityBuilder &&other) = default;
+    EntityBuilder(const EntityBuilder &other) = default;
 
-    EntityMutator &operator=(EntityMutator &&other) = default;
-    EntityMutator &operator=(const EntityMutator &other) = default;
+    EntityBuilder &operator=(EntityBuilder &&other) = default;
+    EntityBuilder &operator=(const EntityBuilder &other) = default;
 
 protected:
     void AddComponentImpl(EntityId cId) override;
@@ -45,10 +79,10 @@ protected:
     Entity declaration
 */
 
-class Entity : public EntityMutator
+class Entity : public EntityBuilder
 {
 public:
-    explicit Entity(EntityId id, World *world) : EntityMutator(id, world) {}
+    explicit Entity(EntityId id, World *world) : EntityBuilder(id, world) {}
 
     virtual ~Entity() = default;
 

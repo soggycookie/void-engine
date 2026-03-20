@@ -34,8 +34,6 @@ public:
     Entity CreateEntity(EntityId id, const char *name = nullptr,
                         EntityId parent = 0);
 
-    Entity CreateEntity(EntityDesc &desc);
-
     void RemoveEntity(EntityId eId);
 
     EntityId GetNewId();
@@ -50,7 +48,7 @@ public:
     EntityRecord *GetEntityRecord(EntityId eId);
     Entity GetEntity(EntityId eId);
 
-    void ResolveEntityDesc(EntityRecord &r, EntityDesc &desc);
+    Entity ResolveEntityDesc(EntityDesc &desc);
 
     Archetype *GetEntityArchetype(EntityId eId);
 
@@ -104,6 +102,9 @@ public:
 
     template <typename T>
     T &Get(EntityId eId);
+
+    template <typename T>
+    T &GetSingleton();
 
     void Set(EntityId eId, EntityId cId, void *data);
 

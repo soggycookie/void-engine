@@ -1,63 +1,53 @@
 #pragma once
+#include "ds/world_allocator.h"
 #include "ecs_type.h"
 
 namespace ECS
 {
-    struct EntityDesc
-    {
-        EntityId id;
-        EntityId parent;
-        ComponentSet add;
-        HashMap<EntityId, void*> componentData;
-        char* name;
-    };
+class World;
 
-    class World;
+class IEntityCommand
+{
+public:
+    template <typename Component>
+    IEntityCommand &AddComponent();
 
-    class IEntityCommand
-    {
-    public:
-        template<typename Component>
-        IEntityCommand& AddComponent();
+    template <typename Component>
+    IEntityCommand &AddTag();
 
-        template<typename Component>
-        IEntityCommand& AddTag();
+    template <typename First>
+    IEntityCommand &AddRelationship(EntityId second);
 
-        template<typename First>
-        IEntityCommand& AddRelationship(EntityId second);
+    template <typename Component>
+    IEntityCommand &RemoveComponent();
 
-        template<typename Component>
-        IEntityCommand& RemoveComponent();
+    /*template<typename FirstComponent, typename... Components>
+    EntityMutator& AddComponents(const FirstComponent& f, const Components&...
+    c);
 
-        /*template<typename FirstComponent, typename... Components>
-        EntityMutator& AddComponents(const FirstComponent& f, const Components&... c);
+    template<typename FirstComponent, typename... Components>
+    EntityMutator& RemoveComponents();*/
 
-        template<typename FirstComponent, typename... Components>
-        EntityMutator& RemoveComponents();*/
+    template <typename Component>
+    IEntityCommand &Set(Component &&c);
 
-        template<typename Component>
-        IEntityCommand& Set(Component&& c);
+    template <typename Component>
+    Component &Get();
 
-        template<typename Component>
-        Component& Get();
+protected:
+    virtual void AddComponentImpl(EntityId id) = 0;
+    virtual void AddTagImpl(EntityId id) = 0;
+    virtual void AddPairImpl(EntityId first, EntityId second) = 0;
+    virtual void RemoveComponentImpl(EntityId id) = 0;
+    virtual void *GetImpl(EntityId id) = 0;
+    virtual void SetImpl(EntityId id, void *data) = 0;
+};
 
-    protected:
-        virtual void AddComponentImpl(EntityId id) = 0;
-        virtual void AddTagImpl(EntityId id) = 0;
-        virtual void AddPairImpl(EntityId first, EntityId second) = 0;
-        virtual void RemoveComponentImpl(EntityId id) = 0;
-        virtual void* GetImpl(EntityId id) = 0;
-        virtual void SetImpl(EntityId id, void* data) = 0;
-    };
+// template <typename... Components>
+// struct EntityCommand
+// {
+//     EntityDesc desc;
+//     World *world;
+// };
 
-    template<typename... Components>
-    struct EntityCommand
-    {
-        EntityDesc desc;
-        World* world;
-        
-        
-    };
-
-
-}
+} // namespace ECS

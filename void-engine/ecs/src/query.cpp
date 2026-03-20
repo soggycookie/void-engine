@@ -12,7 +12,7 @@ namespace ECS
 ///////////////////////// Matched Archetype ////////////////////////////
 
 void MatchedArchetype::SetMatchedColumnIdx(WorldAllocator &wAllocator,
-                                         int32_t *mappedCols, uint32_t count)
+                                           int32_t *mappedCols, uint32_t count)
 {
     int32_t countDiff = count - InlineArrayOptimizationCount;
 
@@ -91,8 +91,8 @@ void QueryResult::Add(WorldAllocator &wAllocator, MatchedArchetype &&matched)
                 for (size_t idx = 0;
                      idx < (count - InlineArrayOptimizationCount); ++idx)
                 {
-                    new (&newMatched[idx]) MatchedArchetype(
-                        std::move(hi_matchedArchetypes[idx]));
+                    new (&newMatched[idx])
+                        MatchedArchetype(std::move(hi_matchedArchetypes[idx]));
                 }
             }
 
@@ -411,7 +411,7 @@ void Query::Filter()
 
             MatchedArchetype ma(archetype);
             ma.SetMatchedColumnIdx(world->m_wAllocator, matchedColumns,
-                                 termCount);
+                                   termCount);
             matchedColumns = nullptr;
             result.Add(world->m_wAllocator, std::move(ma));
         }

@@ -2,6 +2,7 @@
 #include "ds/hash_map.h"
 #include "ds/world_allocator.h"
 #include "ecs_pch.h"
+#include <cassert>
 
 namespace ECS
 {
@@ -194,6 +195,7 @@ struct Store
     {
         if (count == capacity)
         {
+            assert(capacity != 0);
             Grow(wAllocator);
         }
 

@@ -278,6 +278,15 @@ T &World::Get(EntityId eId)
     return component;
 }
 
+template <typename T>
+T &World::GetSingleton()
+{
+    static_assert(!std::is_reference_v<T>);
+    // In non-relationship type, cId = eId
+
+    return Get<T>(ComponentTypeId<std::decay_t<T>>::Id());
+}
+
 template <typename... T>
 QueryBuilder<T...> World::Query()
 {

@@ -5,7 +5,7 @@
 #include <type_traits>
 #ifdef __clang__
 #pragma once
-#include "type_info_builder.h"
+#include "type_info.h"
 #include "world.h"
 #endif
 
@@ -76,9 +76,9 @@ TypeInfoBuilder<T> &TypeInfoBuilder<T>::Id(EntityId id)
 }
 
 template <typename T>
-TypeInfoBuilder<T>& TypeInfoBuilder<T>::Singleton()
+TypeInfoBuilder<T> &TypeInfoBuilder<T>::Singleton()
 {
-    if(!ti.IsComponent())
+    if (!ti.IsComponent())
     {
         assert(0 && "Type must be a component to be a singleton!");
     }
