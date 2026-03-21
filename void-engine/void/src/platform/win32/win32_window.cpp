@@ -166,49 +166,49 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
         int32_t x = LOWORD(lParam);
         int32_t y = HIWORD(lParam);
 
-        InputEvent e(InputEventType::MOUSE_MOVE, VoidMouseButton::NONE, x, y);
+        InputEvent e(InputEventType::MOUSE_MOVE, VoidKeyButton::NONE, x, y);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_LBUTTONDOWN:
     {
-        InputEvent e(InputEventType::MOUSE_PRESSED, VoidMouseButton::LEFT_BTN, 0, 0);
+        InputEvent e(InputEventType::MOUSE_PRESSED, VoidKeyButton::LEFT_BTN, 0, 0);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_MBUTTONDOWN:
     {
-        InputEvent e(InputEventType::MOUSE_PRESSED, VoidMouseButton::MIDDLE_BTN, 0, 0);
+        InputEvent e(InputEventType::MOUSE_PRESSED, VoidKeyButton::MIDDLE_BTN, 0, 0);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_RBUTTONDOWN:
     {
-        InputEvent e(InputEventType::MOUSE_PRESSED, VoidMouseButton::RIGHT_BTN, 0, 0);
+        InputEvent e(InputEventType::MOUSE_PRESSED, VoidKeyButton::RIGHT_BTN, 0, 0);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_LBUTTONUP:
     {
-        InputEvent e(InputEventType::MOUSE_RELEASED, VoidMouseButton::LEFT_BTN, 0, 0);
+        InputEvent e(InputEventType::MOUSE_RELEASED, VoidKeyButton::LEFT_BTN, 0, 0);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_MBUTTONUP:
     {
-        InputEvent e(InputEventType::MOUSE_RELEASED, VoidMouseButton::MIDDLE_BTN, 0, 0);
+        InputEvent e(InputEventType::MOUSE_RELEASED, VoidKeyButton::MIDDLE_BTN, 0, 0);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_RBUTTONUP:
     {
-        InputEvent e(InputEventType::MOUSE_RELEASED, VoidMouseButton::RIGHT_BTN, 0, 0);
+        InputEvent e(InputEventType::MOUSE_RELEASED, VoidKeyButton::RIGHT_BTN, 0, 0);
         window->DispatchInputEvent(e);
 
         break;
@@ -226,16 +226,16 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     case WM_XBUTTONDOWN:
     {
         int16_t btn = HIWORD(wParam);
-        VoidMouseButton voidBtn;
+        VoidKeyButton voidBtn;
 
         if (btn == XBUTTON1)
         {
-            voidBtn = VoidMouseButton::X_BUTTON_1;
+            voidBtn = VoidKeyButton::X_BUTTON_1;
             std::cout << "x button 1" << std::endl;
         }
         else
         {
-            voidBtn = VoidMouseButton::X_BUTTON_2;
+            voidBtn = VoidKeyButton::X_BUTTON_2;
             std::cout << "x button 2" << std::endl;
         }
 
@@ -247,15 +247,15 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     case WM_XBUTTONUP:
     {
         int16_t btn = HIWORD(wParam);
-        VoidMouseButton voidBtn;
+        VoidKeyButton voidBtn;
 
         if (btn == XBUTTON1)
         {
-            voidBtn = VoidMouseButton::X_BUTTON_1;
+            voidBtn = VoidKeyButton::X_BUTTON_1;
         }
         else
         {
-            voidBtn = VoidMouseButton::X_BUTTON_2;
+            voidBtn = VoidKeyButton::X_BUTTON_2;
         }
 
         InputEvent e(InputEventType::MOUSE_RELEASED, voidBtn, 0, 0);

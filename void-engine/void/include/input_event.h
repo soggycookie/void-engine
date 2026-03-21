@@ -2,12 +2,12 @@
 #include "common_type.h"
 #include "input/key_button.h"
 #include "pch.h"
-#include <cstdint>
 
 namespace VoidEngine
 {
 enum class InputEventCategory : uint16_t
 {
+    NONE,
     KEYBOARD,
     MOUSE,
     APPLICATION
@@ -15,6 +15,7 @@ enum class InputEventCategory : uint16_t
 
 enum class InputEventType : uint16_t
 {
+    NONE,
     KEY_PRESSED,
     KEY_RELEASED,
 
@@ -34,33 +35,35 @@ enum class InputEventType : uint16_t
 #define EVENT_TYPE(event)                                                      \
     EventType GetEventType() const override { return event; }
 
-// TODO: centralize into event queue
 class InputEvent
 {
 public:
-    InputEvent() = default;
+    InputEvent()
+        : m_category(InputEventCategory::NONE), m_type(InputEventType::NONE),
+          m_keyBtn(VoidKeyButton::NONE), m_x(0), m_y(0), m_isHandled(false)
+    {
+    }
 
     InputEvent(InputEventCategory category, InputEventType type, int32_t x,
-          int32_t y)
+               int32_t y)
         : m_category(category), m_type(type), m_keyBtn(VoidKeyButton::NONE),
           m_x(x), m_y(y), m_isHandled(false)
     {
     }
 
     // keyboard
-    InputEvent(InputEventType type, VoidKeyButton key)
-        : m_category(InputEventCategory::KEYBOARD), m_type(type), m_keyBtn(key),
+    InputEvent(InputEventType type, VoidKeyButton btn)
+        : m_category(InputEventCategory::KEYBOARD), m_type(type), m_keyBtn(btn),
           m_x(0), m_y(0), m_isHandled(false)
     {
     }
 
     // mouse
-    InputEvent(InputEventType type, VoidMouseButton btn, int32_t x, int32_t y)
-        : m_category(InputEventCategory::MOUSE), m_type(type), m_mouseBtn(btn),
+    InputEvent(InputEventType type, VoidKeyButton btn, int32_t x, int32_t y)
+        : m_category(InputEventCategory::MOUSE), m_type(type), m_keyBtn(btn),
           m_x(x), m_y(y), m_isHandled(false)
     {
     }
-
 
     ~InputEvent() = default;
 
@@ -68,21 +71,7 @@ public:
 
     InputEventType Type() const { return m_type; }
 
-    VoidKeyButton KeyBtn() const {
-        if(m_category != InputEventCategory::KEYBOARD)
-        {
-            assert(0);
-        }
-        return m_keyBtn;
-    }
-    
-    VoidMouseButton MouseBtn() const {
-        if(m_category != InputEventCategory::MOUSE)
-        {
-            assert(0);
-        }
-        return m_mouseBtn;
-    }
+    VoidKeyButton KeyBtn() const { return m_keyBtn; }
 
     bool IsHandled() const { return m_isHandled; }
 
@@ -91,11 +80,7 @@ public:
 private:
     InputEventCategory m_category;
     InputEventType m_type;
-    union
-    {
-        VoidKeyButton m_keyBtn;
-        VoidMouseButton m_mouseBtn;
-    };
+    VoidKeyButton m_keyBtn;
     int32_t m_x;
     int32_t m_y;
     bool m_isHandled;

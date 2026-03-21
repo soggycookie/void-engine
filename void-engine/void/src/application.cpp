@@ -75,7 +75,14 @@ void Application::Update()
 
         for (auto it = m_layerStack->End(); it != m_layerStack->Begin();)
         {
-            (*(--it))->OnUpdate(m_window->GetDeltaTime());
+            Layer *layer = *(--it);
+            layer->OnUpdate(m_window->GetDeltaTime());
+        }
+
+        for (auto it = m_layerStack->End(); it != m_layerStack->Begin();)
+        {
+            Layer *layer = *(--it);
+            layer->OnEndFrame();
         }
     }
 }
@@ -104,6 +111,8 @@ void Application::OnEvent(InputEvent &e)
         m_isResizing = false;
         break;
     }
+    default:
+        break;
     }
 
     for (auto it = m_layerStack->End(); it != m_layerStack->Begin();)

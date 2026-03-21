@@ -1,15 +1,14 @@
 #pragma once
-#include "pch.h"
 #include "input_event.h"
+#include "input_manager.h"
+#include "pch.h"
 
 namespace VoidEngine
 {
 class Layer
 {
 public:
-    static constexpr const uint32_t MaxInputBuffer = 16;
-
-    Layer() = default;
+    Layer() : m_inputManager() {}
 
     virtual ~Layer() = default;
     virtual void OnInit() = 0;
@@ -17,10 +16,13 @@ public:
     virtual void OnAttach() = 0;
 
     virtual void OnUpdate(double dt) = 0;
-    virtual void OnEvent(const InputEvent &e) = 0;
+    virtual void OnEvent(InputEvent &e) { m_inputManager.AddEvent(e); };
+    virtual void OnEndFrame() { m_inputManager.Clear(); }
 
-protected:
-    // Event m_inputBuffer[MaxInputBuffer];
+    const InputManager &Input() const { return m_inputManager; }
+
+private:
+    InputManager m_inputManager;
 };
 
 } // namespace VoidEngine
