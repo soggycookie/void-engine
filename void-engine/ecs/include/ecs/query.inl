@@ -15,16 +15,15 @@ namespace ECS
 
 template <typename... CallbackArgs, size_t... I>
 void Query::InvokeCallback(Query *query, void (*cb)(CallbackArgs...),
-                           QueryIter &iter, const MatchedArchetype &matched,
+                           QueryIter &iter, const QueryArchetype &matched,
                            uint32_t eIdx, std::index_sequence<I...>)
 {
     cb(query->GetArg<CallbackArgs>(iter, matched, I, eIdx)...);
 }
 
 template <typename CallbackArg>
-CallbackArg Query::GetArg(const QueryIter &iter,
-                          const MatchedArchetype &matched, uint32_t sigIdx,
-                          uint32_t eIdx)
+CallbackArg Query::GetArg(const QueryIter &iter, const QueryArchetype &matched,
+                          uint32_t sigIdx, uint32_t eIdx)
 {
     if constexpr (std::is_same_v<CallbackArg, const QueryIter &>)
     {

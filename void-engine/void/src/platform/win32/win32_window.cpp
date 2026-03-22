@@ -3,8 +3,8 @@
 #include "renderer.h"
 #include "window.h"
 
-#include "input_event.h"
 #include "input/win32_vk_mapper.h"
+#include "input_event.h"
 
 #include <directxmath.h>
 namespace VoidEngine
@@ -67,14 +67,16 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     }
     case WM_CLOSE:
     {
-        InputEvent e(InputEventCategory::APPLICATION, InputEventType::APP_CLOSED, 0, 0);
+        InputEvent e(InputEventCategory::APPLICATION,
+                     InputEventType::APP_CLOSED, 0, 0);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_DESTROY:
     {
-        InputEvent e(InputEventCategory::APPLICATION, InputEventType::APP_CLOSED, 0, 0);
+        InputEvent e(InputEventCategory::APPLICATION,
+                     InputEventType::APP_CLOSED, 0, 0);
         window->DispatchInputEvent(e);
 
         break;
@@ -84,8 +86,8 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
         int width = LOWORD(lParam);
         int height = HIWORD(lParam);
 
-        InputEvent e(InputEventCategory::APPLICATION, InputEventType::APP_RESIZING,
-                width, height);
+        InputEvent e(InputEventCategory::APPLICATION,
+                     InputEventType::APP_RESIZING, width, height);
         window->DispatchInputEvent(e);
 
         break;
@@ -93,7 +95,7 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     case WM_ENTERSIZEMOVE:
     {
         InputEvent e(InputEventCategory::APPLICATION,
-                InputEventType::APP_ENTER_RESIZE, 0, 0);
+                     InputEventType::APP_ENTER_RESIZE, 0, 0);
         window->DispatchInputEvent(e);
         break;
     }
@@ -102,8 +104,8 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
 
         ClientDimension dimension = GetClientDimension(hwnd);
         InputEvent e(InputEventCategory::APPLICATION,
-                InputEventType::APP_EXIT_RESIZE, dimension.width,
-                dimension.height);
+                     InputEventType::APP_EXIT_RESIZE, dimension.width,
+                     dimension.height);
         window->DispatchInputEvent(e);
         break;
     }
@@ -173,42 +175,48 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     }
     case WM_LBUTTONDOWN:
     {
-        InputEvent e(InputEventType::MOUSE_PRESSED, VoidKeyButton::LEFT_BTN, 0, 0);
+        InputEvent e(InputEventType::MOUSE_PRESSED, VoidKeyButton::LEFT_BTN, 0,
+                     0);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_MBUTTONDOWN:
     {
-        InputEvent e(InputEventType::MOUSE_PRESSED, VoidKeyButton::MIDDLE_BTN, 0, 0);
+        InputEvent e(InputEventType::MOUSE_PRESSED, VoidKeyButton::MIDDLE_BTN,
+                     0, 0);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_RBUTTONDOWN:
     {
-        InputEvent e(InputEventType::MOUSE_PRESSED, VoidKeyButton::RIGHT_BTN, 0, 0);
+        InputEvent e(InputEventType::MOUSE_PRESSED, VoidKeyButton::RIGHT_BTN, 0,
+                     0);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_LBUTTONUP:
     {
-        InputEvent e(InputEventType::MOUSE_RELEASED, VoidKeyButton::LEFT_BTN, 0, 0);
+        InputEvent e(InputEventType::MOUSE_RELEASED, VoidKeyButton::LEFT_BTN, 0,
+                     0);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_MBUTTONUP:
     {
-        InputEvent e(InputEventType::MOUSE_RELEASED, VoidKeyButton::MIDDLE_BTN, 0, 0);
+        InputEvent e(InputEventType::MOUSE_RELEASED, VoidKeyButton::MIDDLE_BTN,
+                     0, 0);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_RBUTTONUP:
     {
-        InputEvent e(InputEventType::MOUSE_RELEASED, VoidKeyButton::RIGHT_BTN, 0, 0);
+        InputEvent e(InputEventType::MOUSE_RELEASED, VoidKeyButton::RIGHT_BTN,
+                     0, 0);
         window->DispatchInputEvent(e);
 
         break;
@@ -217,8 +225,8 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     {
         // TODO: handle rotate direction, distance
 
-        InputEvent e(InputEventCategory::MOUSE, InputEventType::MOUSE_WHEEL_ROTATED,
-                0, 0);
+        InputEvent e(InputEventCategory::MOUSE,
+                     InputEventType::MOUSE_WHEEL_ROTATED, 0, 0);
         window->DispatchInputEvent(e);
 
         break;

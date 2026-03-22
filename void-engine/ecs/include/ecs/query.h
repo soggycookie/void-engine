@@ -3,6 +3,8 @@
 #include "ecs_type.h"
 #include "entity.h"
 #include "internal_component.h"
+#include "type_info.h"
+#include <cstdint>
 
 namespace ECS
 {
@@ -97,17 +99,17 @@ struct QueryTerm
 
 constexpr uint16_t InlineArrayOptimizationCount = 8;
 
-struct MatchedArchetype
+struct QueryArchetype
 {
-    MatchedArchetype() : hi_matchedColumnIdx(nullptr), hi_entityMask(nullptr) {}
+    QueryArchetype() : hi_matchedColumnIdx(nullptr), hi_entityMask(nullptr) {}
 
-    MatchedArchetype(const Archetype *archetype)
+    QueryArchetype(const Archetype *archetype)
         : archetype(archetype), hi_entityMask(nullptr),
           hi_matchedColumnIdx(nullptr)
     {
     }
 
-    MatchedArchetype(MatchedArchetype &&other) noexcept
+    QueryArchetype(QueryArchetype &&other) noexcept
     {
         archetype = other.archetype;
         hi_matchedColumnIdx = other.hi_matchedColumnIdx;
@@ -121,7 +123,7 @@ struct MatchedArchetype
         other.hi_entityMask = nullptr;
     }
 
-    MatchedArchetype &operator=(MatchedArchetype &&other) noexcept
+    QueryArchetype &operator=(QueryArchetype &&other) noexcept
     {
         archetype = other.archetype;
         hi_matchedColumnIdx = other.hi_matchedColumnIdx;
@@ -156,7 +158,7 @@ struct MatchedArchetype
 
 struct QueryResult
 {
-    QueryResult() : hi_matchedArchetypes(nullptr), count(0), capacity(0) {}
+    QueryResult() : hi_queryArchetypes(nullptr), count(0), capacity(0) {}
 
     QueryResult(QueryResult &&other) noexcept
     {
@@ -168,16 +170,16 @@ struct QueryResult
         {
             for (size_t idx = 0; idx < count; ++idx)
             {
-                lo_matchedArchetypes[idx] =
-                    std::move(other.lo_matchedArchetypes[idx]);
+                lo_queryArchetypes[idx] =
+                    std::move(other.lo_queryArchetypes[idx]);
             }
         }
         else
         {
-            assert(other.hi_matchedArchetypes);
-            hi_matchedArchetypes = other.hi_matchedArchetypes;
+            assert(other.hi_queryArchetypes);
+            hi_queryArchetypes = other.hi_queryArchetypes;
         }
-        other.hi_matchedArchetypes = nullptr;
+        other.hi_queryArchetypes = nullptr;
     }
 
     QueryResult &operator=(QueryResult &&other) noexcept
@@ -190,32 +192,32 @@ struct QueryResult
         {
             for (size_t idx = 0; idx < count; ++idx)
             {
-                lo_matchedArchetypes[idx] =
-                    std::move(other.lo_matchedArchetypes[idx]);
+                lo_queryArchetypes[idx] =
+                    std::move(other.lo_queryArchetypes[idx]);
             }
         }
         else
         {
-            assert(other.hi_matchedArchetypes);
-            hi_matchedArchetypes = other.hi_matchedArchetypes;
+            assert(other.hi_queryArchetypes);
+            hi_queryArchetypes = other.hi_queryArchetypes;
         }
-        other.hi_matchedArchetypes = nullptr;
+        other.hi_queryArchetypes = nullptr;
 
         return *this;
     }
 
-    MatchedArchetype &operator[](size_t idx)
+    QueryArchetype &operator[](size_t idx)
     {
         if (idx < count)
         {
             if (idx < InlineArrayOptimizationCount)
             {
-                return lo_matchedArchetypes[idx];
+                return lo_queryArchetypes[idx];
             }
             else
             {
-                assert(hi_matchedArchetypes);
-                return hi_matchedArchetypes[idx - InlineArrayOptimizationCount];
+                assert(hi_queryArchetypes);
+                return hi_queryArchetypes[idx - InlineArrayOptimizationCount];
             }
         }
         assert(0);
@@ -227,12 +229,12 @@ struct QueryResult
 #endif
     }
 
-    void Add(WorldAllocator &wAllocator, MatchedArchetype &&matched);
+    void Add(WorldAllocator &wAllocator, QueryArchetype &&matched);
 
     void Delete(WorldAllocator &wAllocator, uint32_t callbackSigCount);
 
-    MatchedArchetype lo_matchedArchetypes[InlineArrayOptimizationCount];
-    MatchedArchetype *hi_matchedArchetypes;
+    QueryArchetype lo_queryArchetypes[InlineArrayOptimizationCount];
+    QueryArchetype *hi_queryArchetypes;
 
     uint32_t count;
     uint32_t capacity;
@@ -264,7 +266,8 @@ constexpr bool is_first_arg_query_iter =
 
 class Query;
 
-// Map callback signature to query term index
+// Map callmatched.matchedColummatched.matchedColumns signature to query term
+// index
 constexpr int32_t QueryIterIndex = -1;
 constexpr int32_t EntityIndex = -2;
 constexpr int32_t InvalidIndex = -3;
@@ -299,11 +302,18 @@ struct QueryDesc
 template <typename... T>
 class QueryBuilder;
 
+struct MatchedArchetype
+{
+    int *matchedColumns;
+    bool matched;
+};
+
 struct Query
 {
     Query(World *world, EntityId eId = 0)
         : world(world), eId(eId), terms(nullptr), sortedTermIdx(nullptr),
-          termCount(0), isEntityFiltered(false), result(), callback()
+          termCount(0), isEntityFiltered(false), result(), callback(),
+          lastSweep(0)
     {
     }
 
@@ -317,6 +327,7 @@ struct Query
         termCount = other.termCount;
         isEntityFiltered = other.isEntityFiltered;
         sortedTermIdx = other.sortedTermIdx;
+        lastSweep = other.lastSweep;
 
         other.terms = nullptr;
         other.sortedTermIdx = nullptr;
@@ -332,6 +343,7 @@ struct Query
         termCount = other.termCount;
         isEntityFiltered = other.isEntityFiltered;
         sortedTermIdx = other.sortedTermIdx;
+        lastSweep = other.lastSweep;
 
         other.terms = nullptr;
         other.sortedTermIdx = nullptr;
@@ -348,13 +360,15 @@ struct Query
 
     void Filter();
 
+    MatchedArchetype IsMatch(Archetype *archeytype);
+
     template <typename... CallbackArgs, size_t... I>
     static void InvokeCallback(Query *query, void (*cb)(CallbackArgs...),
-                               QueryIter &iter, const MatchedArchetype &matched,
+                               QueryIter &iter, const QueryArchetype &matched,
                                uint32_t eIdx, std::index_sequence<I...>);
 
     template <typename CallbackArg>
-    CallbackArg GetArg(const QueryIter &iter, const MatchedArchetype &matched,
+    CallbackArg GetArg(const QueryIter &iter, const QueryArchetype &matched,
                        uint32_t sigIdx, uint32_t eIdx);
 
     World *world;
@@ -363,6 +377,7 @@ struct Query
     uint8_t *sortedTermIdx;
     QueryResult result;
     QueryCallback callback;
+    uint64_t lastSweep;
     uint32_t termCount;
     bool isEntityFiltered;
 };

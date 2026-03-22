@@ -3,7 +3,11 @@
 #include "ecs_utils.h"
 #include "entity.h"
 #include "internal_component.h"
+#include "query.h"
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 
 namespace ECS
 {
@@ -124,12 +128,17 @@ void World::Register(const TypeInfo &typeInfo, EntityId relationId,
     cr.typeInfo = ti;
     cr.archetypeStore.Init(m_wAllocator);
 
+#ifdef ECS_DEBUG
+    std::memcpy(cr.name, name, strlen(name));
+#endif
+
     assert(cr.archetypeStore.store);
 
     m_componentIndex.Insert(ti->cId, std::move(cr));
     m_typeInfos.Insert(ti->cId, ti);
 
     EntityDesc eDesc(ti->eId, 0, name);
+
     if (ti->IsSingleton())
     {
         eDesc.Add(m_wAllocator, ti->cId, nullptr);
@@ -820,17 +829,64 @@ Archetype *World::CreateArchetype(ComponentSet &&componentSet)
     // Add newly created archetype to component record for query purpose
     // if component record is relationship,
     // add this archetype to base relation and specific relationship
+    // Notify all the cached queries
 
-    // NOTE: Test this
+    static uint64_t sweep = 0;
+    ++sweep;
+
     for (uint32_t idx = 0; idx < componentSet.count; idx++)
     {
         ComponentRecord &cr = m_componentIndex[componentSet[idx]];
+
+        for (size_t qIdx = 0; qIdx < cr.cachedQueries.count; ++qIdx)
+        {
+            EcsQuery &q = Get<EcsQuery>(cr.cachedQueries[qIdx]);
+            if (q.query->lastSweep == sweep)
+            {
+                continue;
+            }
+
+            q.query->lastSweep = sweep;
+            MatchedArchetype ma = q.query->IsMatch(rArchetype);
+
+            if (ma.matched)
+            {
+                assert(ma.matchedColumns);
+                rArchetype->trackedQuery.Add(m_wAllocator, q.query->eId);
+                QueryArchetype qAr(rArchetype);
+                qAr.SetMatchedColumnIdx(m_wAllocator, ma.matchedColumns,
+                                        q.query->termCount);
+                q.query->result.Add(m_wAllocator, std::move(qAr));
+            }
+        }
 
         // union pair
         if (cr.typeInfo->IsRelationship())
         {
             ComponentRecord &pCr =
                 m_componentIndex[LO_ENTITY_ID(componentSet[idx])];
+
+            for (size_t qIdx = 0; qIdx < cr.cachedQueries.count; ++qIdx)
+            {
+                EcsQuery &q = Get<EcsQuery>(cr.cachedQueries[qIdx]);
+                if (q.query->lastSweep == sweep)
+                {
+                    continue;
+                }
+
+                q.query->lastSweep = sweep;
+                MatchedArchetype ma = q.query->IsMatch(rArchetype);
+
+                if (ma.matched)
+                {
+                    assert(ma.matchedColumns);
+                    rArchetype->trackedQuery.Add(m_wAllocator, q.query->eId);
+                    QueryArchetype qAr(rArchetype);
+                    qAr.SetMatchedColumnIdx(m_wAllocator, ma.matchedColumns,
+                                            q.query->termCount);
+                    q.query->result.Add(m_wAllocator, std::move(qAr));
+                }
+            }
 
             if (pCr.archetypeStore.count == pCr.archetypeStore.capacity)
             {
@@ -1014,10 +1070,10 @@ void World::MoveArchetype_Add(EntityId eId, EntityRecord &r,
         // SWAP BACK IN SRC ARCHETYPE
         SwapBack(r);
 
-        for (uint32_t i = 0; i < destArchetype->componentSet.count; i++)
+        for (size_t idx = 0; idx < destArchetype->componentSet.count; idx++)
         {
             // skip no data tag and relationship
-            int32_t destColIdx = destArchetype->componentMap[i];
+            int32_t destColIdx = destArchetype->componentMap[idx];
 
             if (destColIdx == -1)
             {
@@ -1030,7 +1086,7 @@ void World::MoveArchetype_Add(EntityId eId, EntityRecord &r,
             void *dest = OFFSET(destCol.data, ti.size * destArchetype->count);
 
             int32_t srcIndex = r.archetype->componentSet.Search(
-                destArchetype->componentSet[i]);
+                destArchetype->componentSet[idx]);
 
             if (srcIndex == -1)
             {
@@ -1116,7 +1172,7 @@ void World::MoveArchetype_Remove(EntityId eId, EntityRecord &r,
             GrowArchetype(*destArchetype);
         }
 
-        for (uint32_t idx = 0; idx < srcArchetype->componentSet.count; idx++)
+        for (size_t idx = 0; idx < srcArchetype->componentSet.count; idx++)
         {
             int32_t srcColIdx = srcArchetype->componentMap[idx];
 
@@ -1242,13 +1298,13 @@ void World::Progress(double dt)
 void World::Destroy()
 {
     // clear archetype
-    for (uint32_t aIdx = 1; aIdx <= m_archetypes.GetCount(); aIdx++)
+    for (size_t aIdx = 1; aIdx <= m_archetypes.GetCount(); aIdx++)
     {
         Archetype *archetype =
             m_archetypes.GetPageData(m_archetypes.GetId(aIdx));
         assert(archetype);
 
-        for (uint32_t cIdx = 0; cIdx < archetype->columnCount; cIdx++)
+        for (size_t cIdx = 0; cIdx < archetype->columnCount; cIdx++)
         {
             Column &col = archetype->columns[cIdx];
             TypeInfo &ti = *col.typeInfo;

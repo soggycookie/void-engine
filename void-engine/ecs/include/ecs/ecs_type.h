@@ -158,6 +158,12 @@ struct Store
 
     void Grow(WorldAllocator &wAllocator)
     {
+        if (capacity == 0)
+        {
+            Init(wAllocator, 4);
+            return;
+        }
+
         uint32_t newStoreCapacity = capacity * 2;
         T *newStore = PTR_CAST(
             wAllocator.AllocN(sizeof(T), newStoreCapacity, newStoreCapacity),
@@ -195,7 +201,6 @@ struct Store
     {
         if (count == capacity)
         {
-            assert(capacity != 0);
             Grow(wAllocator);
         }
 
@@ -541,8 +546,9 @@ struct ComponentRecord
     EntityId id;
     Store<Archetype *> archetypeStore;
     TypeInfo *typeInfo;
+    Store<EntityId> cachedQueries;
 #ifdef ECS_DEBUG
-    char name[16];
+    char name[32];
 #endif
 };
 

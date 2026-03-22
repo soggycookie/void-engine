@@ -8,11 +8,6 @@ namespace ECS
 
 void EntityDesc::Add(WorldAllocator &wAllocator, EntityId cId, void *data)
 {
-    if (bulkComponents.capacity == 0)
-    {
-        bulkComponents.Init(wAllocator, 4);
-    }
-
     bulkComponents.Add(wAllocator, DescEntry{cId, data});
 }
 
