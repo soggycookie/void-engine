@@ -313,7 +313,7 @@ struct Query
     Query(World *world, EntityId eId = 0)
         : world(world), eId(eId), terms(nullptr), sortedTermIdx(nullptr),
           termCount(0), isEntityFiltered(false), result(), callback(),
-          lastSweep(0)
+          lastSweep_archetype(0)
     {
     }
 
@@ -327,7 +327,7 @@ struct Query
         termCount = other.termCount;
         isEntityFiltered = other.isEntityFiltered;
         sortedTermIdx = other.sortedTermIdx;
-        lastSweep = other.lastSweep;
+        lastSweep_archetype = other.lastSweep_archetype;
 
         other.terms = nullptr;
         other.sortedTermIdx = nullptr;
@@ -343,7 +343,7 @@ struct Query
         termCount = other.termCount;
         isEntityFiltered = other.isEntityFiltered;
         sortedTermIdx = other.sortedTermIdx;
-        lastSweep = other.lastSweep;
+        lastSweep_archetype = other.lastSweep_archetype;
 
         other.terms = nullptr;
         other.sortedTermIdx = nullptr;
@@ -377,7 +377,7 @@ struct Query
     uint8_t *sortedTermIdx;
     QueryResult result;
     QueryCallback callback;
-    uint64_t lastSweep;
+    uint32_t lastSweep_archetype;
     uint32_t termCount;
     bool isEntityFiltered;
 };

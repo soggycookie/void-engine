@@ -18,7 +18,9 @@ struct Allocators
 class World
 {
 public:
-    World() : m_nextFreeId(200), m_isDefered(false) {}
+    World() : m_nextFreeId(200), m_isDefered(false), m_q_revalSweep_archetype(0)
+    {
+    }
 
     static constexpr const char *DefaultEntityName = "Entity %u";
     static constexpr const size_t MaxEntityNameLength = 32;
@@ -132,6 +134,22 @@ public:
     template <typename... T>
     QueryBuilder<T...> Query();
 
+    enum class EntityRevalidationMode
+    {
+        ON_ADDED,
+        ON_REMOVED,
+        ON_MODIFIED,
+    };
+
+    void RevalidateCachedQuery_EntityFilter(Archetype *archetype,
+                                            uint32_t removeRow,
+                                            EntityRevalidationMode mode);
+
+    // if newArchetype = false -> archetype is removed
+    void RevalidateCachedQuery_ArchetypeFilter(ComponentRecord &cr,
+                                               Archetype *archetype,
+                                               bool newArchetype);
+
     // NOTE: System store list of cache archetypes, but the list can be
     // invalidated at runtime, so I need to find a new way to re-validate this
     // or rewrite this in a different way basically, I have to introduce sync
@@ -159,6 +177,7 @@ public:
                            // value's key ref
     Store<EntityId> m_componentStore;
     Store<SystemCallback> m_systemStore;
+    uint32_t m_q_revalSweep_archetype;
     uint32_t m_nextFreeId;
     bool m_isDefered;
 };

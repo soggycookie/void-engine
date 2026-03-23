@@ -595,6 +595,9 @@ void World::Set(EntityId eId, EntityId cId, void *data)
         std::memcpy(dest, data, ti->size);
     }
 
+    RevalidateCachedQuery_EntityFilter(r->archetype, r->row,
+                                       EntityRevalidationMode::ON_MODIFIED);
+
     ti->hook.onSet(dest);
 }
 
@@ -631,6 +634,9 @@ void World::Set(EntityId eId, EntityId cId, const void *data)
     {
         std::memcpy(dest, data, ti->size);
     }
+
+    RevalidateCachedQuery_EntityFilter(r->archetype, r->row,
+                                       EntityRevalidationMode::ON_MODIFIED);
 
     ti->hook.onSet(dest);
 }
@@ -799,7 +805,7 @@ Archetype *World::CreateArchetype(ComponentSet &&componentSet)
                  EntityId);
     archetype.componentMap = PTR_CAST(
         m_wAllocator.Calloc(sizeof(int32_t) * componentSet.count * 2), int32_t);
-    archetype.trackedQuery.Init(m_wAllocator, 4);
+    archetype.trackedQueries.Init(m_wAllocator, 4);
 
     // Set up component map to determine what column has data
     uint32_t dataColCounter = 0;
@@ -829,36 +835,16 @@ Archetype *World::CreateArchetype(ComponentSet &&componentSet)
     // Add newly created archetype to component record for query purpose
     // if component record is relationship,
     // add this archetype to base relation and specific relationship
+
     // Notify all the cached queries
 
-    static uint64_t sweep = 0;
-    ++sweep;
+    ++m_q_revalSweep_archetype;
 
     for (uint32_t idx = 0; idx < componentSet.count; idx++)
     {
         ComponentRecord &cr = m_componentIndex[componentSet[idx]];
 
-        for (size_t qIdx = 0; qIdx < cr.cachedQueries.count; ++qIdx)
-        {
-            EcsQuery &q = Get<EcsQuery>(cr.cachedQueries[qIdx]);
-            if (q.query->lastSweep == sweep)
-            {
-                continue;
-            }
-
-            q.query->lastSweep = sweep;
-            MatchedArchetype ma = q.query->IsMatch(rArchetype);
-
-            if (ma.matched)
-            {
-                assert(ma.matchedColumns);
-                rArchetype->trackedQuery.Add(m_wAllocator, q.query->eId);
-                QueryArchetype qAr(rArchetype);
-                qAr.SetMatchedColumnIdx(m_wAllocator, ma.matchedColumns,
-                                        q.query->termCount);
-                q.query->result.Add(m_wAllocator, std::move(qAr));
-            }
-        }
+        RevalidateCachedQuery_ArchetypeFilter(cr, rArchetype, true);
 
         // union pair
         if (cr.typeInfo->IsRelationship())
@@ -866,27 +852,7 @@ Archetype *World::CreateArchetype(ComponentSet &&componentSet)
             ComponentRecord &pCr =
                 m_componentIndex[LO_ENTITY_ID(componentSet[idx])];
 
-            for (size_t qIdx = 0; qIdx < cr.cachedQueries.count; ++qIdx)
-            {
-                EcsQuery &q = Get<EcsQuery>(cr.cachedQueries[qIdx]);
-                if (q.query->lastSweep == sweep)
-                {
-                    continue;
-                }
-
-                q.query->lastSweep = sweep;
-                MatchedArchetype ma = q.query->IsMatch(rArchetype);
-
-                if (ma.matched)
-                {
-                    assert(ma.matchedColumns);
-                    rArchetype->trackedQuery.Add(m_wAllocator, q.query->eId);
-                    QueryArchetype qAr(rArchetype);
-                    qAr.SetMatchedColumnIdx(m_wAllocator, ma.matchedColumns,
-                                            q.query->termCount);
-                    q.query->result.Add(m_wAllocator, std::move(qAr));
-                }
-            }
+            RevalidateCachedQuery_ArchetypeFilter(pCr, rArchetype, true);
 
             if (pCr.archetypeStore.count == pCr.archetypeStore.capacity)
             {
@@ -1046,6 +1012,7 @@ Archetype *World::GetOrCreateArchetype_Remove(Archetype *src, EntityId cId)
 void World::MoveArchetype_Add(EntityId eId, EntityRecord &r,
                               Archetype *destArchetype)
 {
+    Archetype *srcArchetype = r.archetype;
     assert(destArchetype);
 
     if (destArchetype->count == destArchetype->capacity)
@@ -1054,14 +1021,21 @@ void World::MoveArchetype_Add(EntityId eId, EntityRecord &r,
     }
 
     // empty entity
-    if (!r.archetype)
+    if (!srcArchetype)
     {
         if (destArchetype->columnCount == 1)
         {
             TypeInfo &ti = *destArchetype->columns[0].typeInfo;
             void *dataAddr = OFFSET(destArchetype->columns[0].data,
                                     destArchetype->count * ti.size);
-            ti.hook.ctor(dataAddr);
+            if (ti.hook.ctor)
+            {
+                ti.hook.ctor(dataAddr);
+            }
+            else
+            {
+                assert(0);
+            }
         }
     }
     // at least 1 component
@@ -1085,7 +1059,7 @@ void World::MoveArchetype_Add(EntityId eId, EntityRecord &r,
 
             void *dest = OFFSET(destCol.data, ti.size * destArchetype->count);
 
-            int32_t srcIndex = r.archetype->componentSet.Search(
+            int32_t srcIndex = srcArchetype->componentSet.Search(
                 destArchetype->componentSet[idx]);
 
             if (srcIndex == -1)
@@ -1095,14 +1069,14 @@ void World::MoveArchetype_Add(EntityId eId, EntityRecord &r,
             }
             else
             {
-                int32_t srcColIdx = r.archetype->componentMap[srcIndex];
+                int32_t srcColIdx = srcArchetype->componentMap[srcIndex];
 
                 if (srcColIdx == -1)
                 {
                     assert(0 && "Mismatch type");
                 }
 
-                Column &srcCol = r.archetype->columns[srcColIdx];
+                Column &srcCol = srcArchetype->columns[srcColIdx];
                 void *src = OFFSET(srcCol.data, ti.size * r.row);
 
                 if (ti.hook.moveCtor)
@@ -1125,13 +1099,20 @@ void World::MoveArchetype_Add(EntityId eId, EntityRecord &r,
             }
         }
 
-        --r.archetype->count;
+        --srcArchetype->count;
     }
+
+    uint32_t removeRow = r.row;
 
     destArchetype->entities[destArchetype->count] = eId;
     r.archetype = destArchetype;
     r.row = destArchetype->count;
     ++destArchetype->count;
+
+    RevalidateCachedQuery_EntityFilter(srcArchetype, removeRow,
+                                       EntityRevalidationMode::ON_REMOVED);
+    RevalidateCachedQuery_EntityFilter(destArchetype, destArchetype->count - 1,
+                                       EntityRevalidationMode::ON_ADDED);
 }
 
 void World::MoveArchetype_Remove(EntityId eId, EntityRecord &r,
@@ -1139,6 +1120,8 @@ void World::MoveArchetype_Remove(EntityId eId, EntityRecord &r,
 {
     Archetype *srcArchetype = r.archetype;
     SwapBack(r);
+
+    uint32_t removeRow = r.row;
 
     if (!destArchetype)
     {
@@ -1157,7 +1140,7 @@ void World::MoveArchetype_Remove(EntityId eId, EntityRecord &r,
             }
 
             r.row = 0;
-            --r.archetype->count;
+            --srcArchetype->count;
             r.archetype = destArchetype;
         }
         else
@@ -1218,10 +1201,97 @@ void World::MoveArchetype_Remove(EntityId eId, EntityRecord &r,
         }
 
         destArchetype->entities[destArchetype->count] = eId;
-        --r.archetype->count;
+        --srcArchetype->count;
         r.archetype = destArchetype;
         r.row = destArchetype->count;
         ++destArchetype->count;
+    }
+
+    RevalidateCachedQuery_EntityFilter(srcArchetype, removeRow,
+                                       EntityRevalidationMode::ON_REMOVED);
+    RevalidateCachedQuery_EntityFilter(
+        destArchetype, destArchetype == nullptr ? 0 : destArchetype->count - 1,
+        EntityRevalidationMode::ON_ADDED);
+}
+
+void World::RevalidateCachedQuery_EntityFilter(Archetype *archetype,
+                                               uint32_t affectedRow,
+                                               EntityRevalidationMode mode)
+{
+    if (!archetype)
+    {
+        return;
+    }
+
+    // TODO:
+    for (size_t qIdx = 0; qIdx < archetype->trackedQueries.count; ++qIdx)
+    {
+        TrackedQuery &trackedQuery = archetype->trackedQueries[qIdx];
+        EcsQuery &q = Get<EcsQuery>(trackedQuery.id);
+
+        if (!q.query->isEntityFiltered)
+        {
+            continue;
+        }
+
+        QueryArchetype &qAr = q.query->result[trackedQuery.idx];
+
+        switch (mode)
+        {
+        case World::EntityRevalidationMode::ON_ADDED:
+        {
+            // Run entity filter on last entity
+
+            break;
+        }
+        case World::EntityRevalidationMode::ON_REMOVED:
+        {
+            // Swap bitmask at count idx and remove idx (count is probably minus
+            // 1 at this point)
+
+            break;
+        }
+        case World::EntityRevalidationMode::ON_MODIFIED:
+        {
+            break;
+        }
+        }
+    }
+}
+
+void World::RevalidateCachedQuery_ArchetypeFilter(ComponentRecord &cr,
+                                                  Archetype *archetype,
+                                                  bool isNewArchetype)
+{
+    if (isNewArchetype)
+    {
+        for (size_t qIdx = 0; qIdx < cr.cachedQueries.count; ++qIdx)
+        {
+            EcsQuery &q = Get<EcsQuery>(cr.cachedQueries[qIdx]);
+            if (q.query->lastSweep_archetype == m_q_revalSweep_archetype)
+            {
+                continue;
+            }
+
+            q.query->lastSweep_archetype = m_q_revalSweep_archetype;
+            MatchedArchetype ma = q.query->IsMatch(archetype);
+
+            if (ma.matched)
+            {
+                assert(ma.matchedColumns);
+                archetype->trackedQueries.Add(
+                    m_wAllocator,
+                    TrackedQuery{q.query->eId, q.query->result.count});
+                QueryArchetype qAr(archetype);
+                qAr.SetMatchedColumnIdx(m_wAllocator, ma.matchedColumns,
+                                        q.query->termCount);
+                q.query->result.Add(m_wAllocator, std::move(qAr));
+            }
+        }
+    }
+    else
+    {
+        // TODO: handle cached query when remove archetype
     }
 }
 

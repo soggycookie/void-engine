@@ -199,12 +199,14 @@ struct Store
     template <typename U = T>
     void Add(WorldAllocator &wAllocator, U &&element)
     {
+        static_assert(std::is_same_v<T, U>, "Wrong argument type!");
+
         if (count == capacity)
         {
             Grow(wAllocator);
         }
 
-        store[count] = std::move(element);
+        new (&store[count]) T(std::move(element));
         ++count;
     }
 
@@ -471,6 +473,16 @@ using ArchetypeId = uint32_t;
 
 constexpr uint32_t DefaultArchetypeCapacity = 4;
 
+struct TrackedQuery
+{
+    EntityId id;
+    uint32_t idx;
+
+    TrackedQuery(TrackedQuery &&other) = default;
+
+    TrackedQuery &operator=(TrackedQuery &&other) = default;
+};
+
 struct Archetype
 {
     ArchetypeId id;
@@ -483,13 +495,13 @@ struct Archetype
     int32_t *componentMap;
     HashMap<EntityId, Archetype *> addEdges;
     HashMap<EntityId, Archetype *> removeEdges;
-    Store<EntityId> trackedQuery;
+    Store<TrackedQuery> trackedQueries;
     uint32_t columnCount;
 
     Archetype()
         : id(0), count(0), capacity(0), flags(0), columns(nullptr),
           entities(nullptr), componentSet(), addEdges(), removeEdges(),
-          trackedQuery(), columnCount(0)
+          trackedQueries(), columnCount(0), componentMap()
     {
     }
 
@@ -506,7 +518,7 @@ struct Archetype
         componentSet = std::move(other.componentSet);
         addEdges = std::move(other.addEdges);
         removeEdges = std::move(other.removeEdges);
-        trackedQuery = std::move(other.trackedQuery);
+        trackedQueries = std::move(other.trackedQueries);
 
         other.columns = nullptr;
         other.entities = nullptr;
@@ -525,7 +537,7 @@ struct Archetype
         componentSet = std::move(other.componentSet);
         addEdges = std::move(other.addEdges);
         removeEdges = std::move(other.removeEdges);
-        trackedQuery = std::move(other.trackedQuery);
+        trackedQueries = std::move(other.trackedQueries);
 
         other.columns = nullptr;
         other.entities = nullptr;

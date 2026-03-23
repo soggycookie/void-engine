@@ -212,7 +212,8 @@ void Query::Filter()
             assert(matched.matchedColumns);
             if (eId != EcsInvalidId)
             {
-                archetype->trackedQuery.Add(world->m_wAllocator, eId);
+                archetype->trackedQueries.Add(world->m_wAllocator,
+                                              TrackedQuery{eId, result.count});
             }
 
             QueryArchetype qAr(archetype);
