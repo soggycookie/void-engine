@@ -1,5 +1,6 @@
 #include "input_manager.h"
 #include "input/key_button.h"
+#include "input_event.h"
 #include "pch.h"
 #include <cassert>
 #include <cstdint>
@@ -10,14 +11,22 @@ namespace VoidEngine
 bool InputManager::IsBtnPressed(VoidKeyButton btn)
 {
     assert(btn != VoidKeyButton::NONE);
-    return m_currInputs[static_cast<uint16_t>(btn)] == 1;
+    return m_prevInputState[static_cast<uint16_t>(btn)] == 0 && 
+        m_currInputState[static_cast<uint16_t>(btn)] == 1;
 }
 
 bool InputManager::IsBtnReleased(VoidKeyButton btn)
 {
     assert(btn != VoidKeyButton::NONE);
-    return m_prevInputs[static_cast<uint16_t>(btn)] == 1 &&
-           m_currInputs[static_cast<uint16_t>(btn)] == 0;
+    return m_prevInputState[static_cast<uint16_t>(btn)] == 1 &&
+           m_currInputState[static_cast<uint16_t>(btn)] == 0;
+}
+
+bool InputManager::IsBtnHeld(VoidKeyButton btn)
+{
+    assert(btn != VoidKeyButton::NONE);
+    return m_prevInputState[static_cast<uint16_t>(btn)] == 1 &&
+           m_currInputState[static_cast<uint16_t>(btn)] == 1;
 }
 
 bool InputManager::IsBtnPressed(char c)
@@ -53,9 +62,19 @@ void InputManager::AddEvent(const InputEvent &e)
     switch (e.Category())
     {
     case InputEventCategory::MOUSE:
+    {
+        m_currInputState.set(static_cast<uint16_t>(e.KeyBtn()));
+
+        if (InputEventType::MOUSE_MOVE == e.Type())
+        {
+            m_mousePos = e.GetMousePos();
+        }
+
+        break;
+    }
     case InputEventCategory::KEYBOARD:
     {
-        m_currInputs.set(static_cast<uint16_t>(e.KeyBtn()));
+        m_currInputState.set(static_cast<uint16_t>(e.KeyBtn()));
 
         break;
     }
@@ -67,7 +86,7 @@ void InputManager::Clear()
 {
     m_frameInputCount = 0;
 
-    m_prevInputs = m_currInputs;
-    m_currInputs.reset();
+    m_prevInputState = m_currInputState;
+    m_currInputState.reset();
 }
 } // namespace VoidEngine

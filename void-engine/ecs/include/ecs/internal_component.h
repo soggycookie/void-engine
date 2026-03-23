@@ -1,5 +1,7 @@
 #pragma once
 #include "ecs_type.h"
+#include <bitset>
+#include <cstdint>
 
 namespace ECS
 {
@@ -21,8 +23,10 @@ constexpr EntityId EcsDisabledId = 11;
 constexpr EntityId EcsInheritId = 12;
 constexpr EntityId EcsIsAId = 13;
 
+constexpr EntityId EcsInputManagerId = 100;
+constexpr EntityId EcsTimeId = 101;
 // flags
-constexpr EntityId EcsAnyId = 100;
+constexpr EntityId EcsAnyId = 199;
 
 // internal components
 
@@ -45,6 +49,54 @@ struct EcsQuery
 struct EcsSystem
 {
     EntityId queryId;
+};
+
+//////////////// Input Manager ///////////////
+
+struct MousePos
+{
+    MousePos() = default;
+
+    int32_t mouseX;
+    int32_t mouseY;
+};
+
+class EcsInputManager
+{
+public:
+    EcsInputManager() : m_mousePos()
+    {
+        m_prevInputState.reset();
+        m_currInputState.reset();
+    }
+
+    bool IsBtnPressed(char btn) { return true; }
+    bool IsBtnReleased(char btn) { return true; }
+    bool IsBtnHeld(char btn) { return true; }
+
+    MousePos GetMousePos() const { return m_mousePos; }
+
+    void Set(const std::bitset<256> &prev, const std::bitset<256> &curr,
+             int32_t mouseX, int32_t mouseY)
+    {
+        m_prevInputState = prev;
+        m_currInputState = curr;
+        m_mousePos.mouseX = mouseX;
+        m_mousePos.mouseY = mouseY;
+    }
+
+private:
+    std::bitset<256> m_prevInputState;
+    std::bitset<256> m_currInputState;
+    MousePos m_mousePos;
+};
+
+struct EcsTime
+{
+    double deltaTime;
+    double elapsedTime;
+    double realElapsedTime;
+    double applicationTime;
 };
 
 // internal tag

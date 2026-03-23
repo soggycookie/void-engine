@@ -13,7 +13,7 @@ TypeInfoBuilder<T> World::Component()
     // TypeInfo* ti = new (m_wAllocator.Init(sizeof(TypeInfo))) TypeInfo();
     static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
     static_assert(std::is_destructible_v<T>);
-    static_assert(std::is_trivially_constructible_v<T>);
+    static_assert(std::is_default_constructible_v<T>);
     static_assert(sizeof(T) != 1);
 
     TypeInfoBuilder<T> tiBuilder(this);
@@ -97,7 +97,7 @@ TypeInfoBuilder<T> World::Relation()
 {
     static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
     static_assert(std::is_destructible_v<T>);
-    static_assert(std::is_trivially_constructible_v<T>);
+    static_assert(std::is_default_constructible_v<T>);
 
     TypeInfoBuilder<T> tiBuilder(this);
     tiBuilder.Relation();
