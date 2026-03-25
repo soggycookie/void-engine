@@ -1,4 +1,5 @@
 #include "entity.h"
+#include "ecs_type.h"
 #include "world.h"
 #include <algorithm>
 
@@ -42,5 +43,12 @@ void EntityBuilder::SetImpl(EntityId cId, void *data)
 {
     m_world->Set(m_id, cId, data);
 }
+
+void EntityBuilder::ChildOf(EntityId parentId)
+{
+    m_world->ChildOf(m_id, parentId);
+}
+
+EntityId EntityBuilder::Parent() { return m_world->Parent(m_id); }
 
 } // namespace ECS

@@ -2,6 +2,7 @@
 #include "ecs_utils.h"
 #include "entity.h"
 #include "internal_component.h"
+#include <vcruntime_typeinfo.h>
 #ifdef __clang__
 #pragma once
 #include "query.h"
@@ -177,10 +178,10 @@ void Query::Each(void (*cb)(CallbackArgs...), void *ctx)
     };
 }
 
-////////////////////////// Query Builder //////////////////////////////
+////////////////////////// QueryBuilderBase //////////////////////////////
 
-template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::Term(EntityId cId)
+template <typename Derived, typename Handle, typename... T>
+Derived &QueryBuilderBase<Derived, Handle, T...>::Term(EntityId cId)
 {
     if (!m_firstTerm)
     {
@@ -196,11 +197,12 @@ QueryBuilder<T...> &QueryBuilder<T...>::Term(EntityId cId)
 
     m_currTerm.cId = cId;
 
-    return *this;
+    return Self();
 }
 
-template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::Term(EntityId first, EntityId second)
+template <typename Derived, typename Handle, typename... T>
+Derived &QueryBuilderBase<Derived, Handle, T...>::Term(EntityId first,
+                                                       EntityId second)
 {
     if (!m_firstTerm)
     {
@@ -216,21 +218,21 @@ QueryBuilder<T...> &QueryBuilder<T...>::Term(EntityId first, EntityId second)
 
     m_currTerm.cId = MakeRelationship(first, second);
 
-    return *this;
+    return Self();
 }
 
-template <typename... T>
+template <typename Derived, typename Handle, typename... T>
 template <typename U>
-QueryBuilder<T...> &QueryBuilder<T...>::Term()
+Derived &QueryBuilderBase<Derived, Handle, T...>::Term()
 {
     return Term(ComponentTypeId<U>::Id());
 }
 
-template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::Through(TraverseMethod method)
+template <typename Derived, typename Handle, typename... T>
+Derived &QueryBuilderBase<Derived, Handle, T...>::Through(TraverseMethod method)
 {
     m_currTerm.travMethod = method;
-    return *this;
+    return Self();
 }
 
 // template <typename... T>
@@ -240,72 +242,56 @@ QueryBuilder<T...> &QueryBuilder<T...>::Through(TraverseMethod method)
 //     return *this;
 // }
 
-template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::Traverse(EntityId relation,
-                                                 EntityId target)
+template <typename Derived, typename Handle, typename... T>
+Derived &QueryBuilderBase<Derived, Handle, T...>::Traverse(EntityId relation,
+                                                           EntityId target)
 {
     m_currTerm.travRelation = relation;
     m_currTerm.travTarget = target;
-    return *this;
+    return Self();
 }
 
-template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::TraverseAny(EntityId relation)
+template <typename Derived, typename Handle, typename... T>
+Derived &QueryBuilderBase<Derived, Handle, T...>::TraverseAny(EntityId relation)
 {
     return Traverse(relation, EcsAnyId);
 }
 
-template <typename... T>
+template <typename Derived, typename Handle, typename... T>
 template <typename U>
-QueryBuilder<T...> &QueryBuilder<T...>::Traverse(EntityId target)
+Derived &QueryBuilderBase<Derived, Handle, T...>::Traverse(EntityId target)
 {
     static_assert(!std::is_reference_v<U> && !std::is_const_v<U>);
 
     return Traverse(ComponentTypeId<U>::Id(), target);
 }
 
-template <typename... T>
+template <typename Derived, typename Handle, typename... T>
 template <typename U>
-QueryBuilder<T...> &QueryBuilder<T...>::TraverseAny()
+Derived &QueryBuilderBase<Derived, Handle, T...>::TraverseAny()
 {
     static_assert(!std::is_reference_v<U> && !std::is_const_v<U>);
 
     return TraverseAny(ComponentTypeId<U>::Id());
 }
 
-template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::Op(TermOp op)
+template <typename Derived, typename Handle, typename... T>
+Derived &QueryBuilderBase<Derived, Handle, T...>::Op(TermOp op)
 {
     m_currTerm.op = op;
-    return *this;
+    return Self();
 }
 
-template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::Cache(EntityId cacheId)
-{
-    m_desc.cache = true;
-    m_desc.eId = cacheId;
-    return *this;
-}
-
-template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::Scope()
-{
-    m_desc.cache = false;
-
-    return *this;
-}
-
-template <typename... T>
+template <typename Derived, typename Handle, typename... T>
 template <typename U>
-QueryBuilder<T...> &QueryBuilder<T...>::With()
+Derived &QueryBuilderBase<Derived, Handle, T...>::With()
 {
     return Term<U>().Op(HAS);
 }
 
-template <typename... T>
+template <typename Derived, typename Handle, typename... T>
 template <typename U>
-QueryBuilder<T...> &QueryBuilder<T...>::Without()
+Derived &QueryBuilderBase<Derived, Handle, T...>::Without()
 {
     return Term<U>().Op(NOT);
 }
@@ -355,33 +341,34 @@ QueryBuilder<T...> &QueryBuilder<T...>::Without()
 //     return Traverse(UP).TraveseTarget(target);
 // }
 
-template <typename... T>
+template <typename Derived, typename Handle, typename... T>
 template <typename U>
-QueryBuilder<T...> &QueryBuilder<T...>::Up(EntityId target)
+Derived &QueryBuilderBase<Derived, Handle, T...>::Up(EntityId target)
 {
     static_assert(!std::is_reference_v<U> && !std::is_const_v<U>);
 
     return Up(ComponentTypeId<U>::Id(), target);
 }
 
-template <typename... T>
+template <typename Derived, typename Handle, typename... T>
 template <typename U>
-QueryBuilder<T...> &QueryBuilder<T...>::Cascade()
+Derived &QueryBuilderBase<Derived, Handle, T...>::Cascade()
 {
     static_assert(!std::is_reference_v<U> && !std::is_const_v<U>);
 
     return Cascade(ComponentTypeId<U>::Id());
 }
 
-template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::Up(EntityId relation, EntityId target)
+template <typename Derived, typename Handle, typename... T>
+Derived &QueryBuilderBase<Derived, Handle, T...>::Up(EntityId relation,
+                                                     EntityId target)
 {
     m_currTerm.validTravTarget = target;
     return Through(UP).Traverse(relation, target);
 }
 
-template <typename... T>
-QueryBuilder<T...> &QueryBuilder<T...>::Cascade(EntityId relation)
+template <typename Derived, typename Handle, typename... T>
+Derived &QueryBuilderBase<Derived, Handle, T...>::Cascade(EntityId relation)
 {
     return Through(CASCADE).TraverseAny(relation);
 }
@@ -393,25 +380,26 @@ QueryBuilder<T...> &QueryBuilder<T...>::Cascade(EntityId relation)
 //     return Traverse(CASCADE).TraveseTarget(first, second);
 // }
 
-template <typename... T>
+template <typename Derived, typename Handle, typename... T>
 template <typename U>
-QueryBuilder<T...> &QueryBuilder<T...>::Modify()
+Derived &QueryBuilderBase<Derived, Handle, T...>::Modify()
 {
     Term<U>();
     m_currTerm.behavior = STRUCTURE_CHANGE;
 
-    return *this;
+    return Self();
 }
 
-template <typename... T>
+template <typename Derived, typename Handle, typename... T>
 template <typename... CallbackArgs>
-QueryHandle QueryBuilder<T...>::Each(void (*callback)(CallbackArgs...),
-                                     void *ctx)
+Handle
+QueryBuilderBase<Derived, Handle, T...>::Each(void (*callback)(CallbackArgs...),
+                                              void *ctx)
 {
     m_desc.terms[m_currTermIdx] = m_currTerm;
 
     // construct query
-    void *addr = m_world->m_wAllocator.Alloc(sizeof(Query));
+    void *addr = m_world->m_allocators.queries.Alloc();
     Query *query = new (addr) Query(m_world, 0);
     query->termCount = m_currTermIdx + 1;
     QueryTerm *terms = m_world->m_wAllocator.Alloc<QueryTerm>(query->termCount);
@@ -464,7 +452,7 @@ QueryHandle QueryBuilder<T...>::Each(void (*callback)(CallbackArgs...),
     {
         Entity e = m_world->CreateEntity(m_desc.eId);
         query->eId = e.GetLowId();
-        query->Filter();
+        query->ArchetypeFilter();
 
         e.AddComponent<EcsQuery>();
         e.Set<EcsQuery>(EcsQuery{query});
@@ -474,6 +462,25 @@ QueryHandle QueryBuilder<T...>::Each(void (*callback)(CallbackArgs...),
 
     query->Each<CallbackArgs...>(callback, ctx);
 
-    return QueryHandle(query->eId, query);
+    return Handle(query->eId, query);
 }
+
+//////////////////////////////// QueryBuilder ///////////////////////////////
+
+template <typename... T>
+QueryBuilder<T...> &QueryBuilder<T...>::Cache(EntityId cacheId)
+{
+    this->m_desc.cache = true;
+    this->m_desc.eId = cacheId;
+    return *this;
+}
+
+template <typename... T>
+QueryBuilder<T...> &QueryBuilder<T...>::Scope()
+{
+    this->m_desc.cache = false;
+
+    return *this;
+}
+
 } // namespace ECS

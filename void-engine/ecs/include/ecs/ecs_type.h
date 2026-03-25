@@ -199,7 +199,8 @@ struct Store
     template <typename U = T>
     void Add(WorldAllocator &wAllocator, U &&element)
     {
-        static_assert(std::is_same_v<std::decay_t<T>, std::decay_t<U>>, "Wrong argument type!");
+        static_assert(std::is_same_v<std::decay_t<T>, std::decay_t<U>>,
+                      "Wrong argument type!");
 
         if (count == capacity)
         {

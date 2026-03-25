@@ -11,8 +11,8 @@ namespace VoidEngine
 bool InputManager::IsBtnPressed(VoidKeyButton btn)
 {
     assert(btn != VoidKeyButton::NONE);
-    return m_prevInputState[static_cast<uint16_t>(btn)] == 0 && 
-        m_currInputState[static_cast<uint16_t>(btn)] == 1;
+    return m_prevInputState[static_cast<uint16_t>(btn)] == 0 &&
+           m_currInputState[static_cast<uint16_t>(btn)] == 1;
 }
 
 bool InputManager::IsBtnReleased(VoidKeyButton btn)

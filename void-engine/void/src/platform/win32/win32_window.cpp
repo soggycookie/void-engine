@@ -75,9 +75,9 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     }
     case WM_DESTROY:
     {
-        InputEvent e(InputEventCategory::APPLICATION,
-                     InputEventType::APP_CLOSED, 0, 0);
-        window->DispatchInputEvent(e);
+        //InputEvent e(InputEventCategory::APPLICATION,
+        //             InputEventType::APP_CLOSED, 0, 0);
+        //window->DispatchInputEvent(e);
 
         break;
     }
@@ -137,7 +137,7 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     }
     case WM_MOVING:
     {
-        Renderer::EndFrame();
+        //Renderer::EndFrame();
         break;
     }
     //////////////////////////////////////////////////////////////

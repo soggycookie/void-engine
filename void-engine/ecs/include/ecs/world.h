@@ -1,4 +1,5 @@
 #pragma once
+#include "ds/block_allocator.h"
 #include "ds/world_allocator.h"
 #include "ecs_type.h"
 #include "entity.h"
@@ -13,6 +14,7 @@ struct Allocators
 {
     // BlockAllocator typeInfo;
     BlockAllocator archetypes;
+    BlockAllocator queries;
 };
 
 class World
@@ -25,11 +27,12 @@ public:
     static constexpr const char *DefaultEntityName = "Entity %u";
     static constexpr const size_t MaxEntityNameLength = 32;
 
-    void Init();
+    void Bootstrap();
 
     void InitAllocators();
 
     void RegisterInternalComponents();
+    void InitDefaultPipelinePhase();
 
     Entity CreateEntity(const char *name = nullptr, EntityId parent = 0);
     Entity CreateEntity(char *name, EntityId parent = 0);
@@ -49,6 +52,12 @@ public:
 
     EntityRecord *GetEntityRecord(EntityId eId);
     Entity GetEntity(EntityId eId);
+
+    void ChildOf(EntityId eId, EntityId parentId);
+
+    EntityId Parent(EntityId eId);
+
+    Store<EntityId> GetChildren(EntityId eId);
 
     Entity ResolveEntityDesc(EntityDesc &desc);
 
@@ -132,7 +141,7 @@ public:
     // Query
 
     template <typename... T>
-    QueryBuilder<T...> Query();
+    QueryBuilder<T...> CreateQuery();
 
     enum class EntityRevalidationMode
     {

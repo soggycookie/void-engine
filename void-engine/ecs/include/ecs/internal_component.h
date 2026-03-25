@@ -25,7 +25,32 @@ constexpr EntityId EcsIsAId = 13;
 
 constexpr EntityId EcsInputManagerId = 100;
 constexpr EntityId EcsTimeId = 101;
-// flags
+
+// Entity id support component
+
+// run once
+constexpr EntityId EcsOnBootId = 150;
+constexpr EntityId EcsOnStartId = 151;
+
+// run every frame
+constexpr EntityId EcsOnLoopId = 152;
+constexpr EntityId EcsOnValidationId = 153;
+constexpr EntityId EcsOnStartFrameId = 154;
+constexpr EntityId EcsOnPreUpdateId = 155;
+constexpr EntityId EcsOnUpdateId = 156;
+constexpr EntityId EcsOnPostUpdateId = 157;
+constexpr EntityId EcsOnEndFrameId = 158;
+
+constexpr const char *EcsOnBoot = "EcsOnBoot";
+constexpr const char *EcsOnStart = "EcsOnStart";
+constexpr const char *EcsOnLoop = "EcsOnLoop";
+constexpr const char *EcsOnValidation = "EcsOnValidation";
+constexpr const char *EcsOnStartFrame = "EcsOnStartFrame";
+constexpr const char *EcsOnPreUpdate = "EcsOnPreUpdate";
+constexpr const char *EcsOnUpdate = "EcsOnUpdate";
+constexpr const char *EcsOnPostUpdate = "EcsOnPostUpdate";
+constexpr const char *EcsOnEndFrame = "EcsOnEndFrame";
+
 constexpr EntityId EcsAnyId = 199;
 
 // internal components

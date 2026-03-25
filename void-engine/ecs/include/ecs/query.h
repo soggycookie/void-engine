@@ -5,6 +5,7 @@
 #include "internal_component.h"
 #include "type_info.h"
 #include <cstdint>
+#include <type_traits>
 
 namespace ECS
 {
@@ -313,7 +314,7 @@ struct Query
     Query(World *world, EntityId eId = 0)
         : world(world), eId(eId), terms(nullptr), sortedTermIdx(nullptr),
           termCount(0), isEntityFiltered(false), result(), callback(),
-          lastSweep_archetype(0)
+          entityFilterCallback(), lastSweep_archetype(0)
     {
     }
 
@@ -328,6 +329,7 @@ struct Query
         isEntityFiltered = other.isEntityFiltered;
         sortedTermIdx = other.sortedTermIdx;
         lastSweep_archetype = other.lastSweep_archetype;
+        entityFilterCallback = other.entityFilterCallback;
 
         other.terms = nullptr;
         other.sortedTermIdx = nullptr;
@@ -344,6 +346,7 @@ struct Query
         isEntityFiltered = other.isEntityFiltered;
         sortedTermIdx = other.sortedTermIdx;
         lastSweep_archetype = other.lastSweep_archetype;
+        entityFilterCallback = other.entityFilterCallback;
 
         other.terms = nullptr;
         other.sortedTermIdx = nullptr;
@@ -358,7 +361,9 @@ struct Query
 
     void Destroy();
 
-    void Filter();
+    void ArchetypeFilter();
+
+    void EntityFilter();
 
     MatchedArchetype IsMatch(Archetype *archeytype);
 
@@ -377,6 +382,7 @@ struct Query
     uint8_t *sortedTermIdx;
     QueryResult result;
     QueryCallback callback;
+    QueryCallback entityFilterCallback;
     uint32_t lastSweep_archetype;
     uint32_t termCount;
     bool isEntityFiltered;
@@ -422,8 +428,8 @@ public:
     void Destroy();
 
 private:
-    template <typename... T>
-    friend class QueryBuilder;
+    template <typename Derived, typename Handle, typename... T>
+    friend class QueryBuilderBase;
 
     // ad-hoc
     QueryHandle(EntityId eId, Query *query) : m_eId(eId), m_query(query)
@@ -436,51 +442,55 @@ private:
     Query *m_query;
 };
 
-template <typename... T>
-class QueryBuilder
+using SystemHandle = QueryHandle;
+
+template <typename Derived, typename Handle, typename... T>
+class QueryBuilderBase
 {
-public:
-    QueryBuilder(World *world)
+protected:
+    QueryBuilderBase(World *world)
         : m_world(world), m_currTermIdx(0), m_desc(), m_firstTerm(true)
     {
+        static_assert(!std::is_reference_v<Derived> &&
+                      !std::is_const_v<Derived>);
+        static_assert(!std::is_reference_v<Handle> && !std::is_const_v<Handle>);
         static_assert(((!std::is_reference_v<T> && !std::is_const_v<T>) && ...),
                       "Query terms must not be ref or const!");
         assert(m_world);
         (Term<T>(), ...);
     }
 
-    QueryBuilder<T...> &Term(EntityId id);
+    Derived &Self() { return *PTR_CAST(this, Derived); }
 
-    QueryBuilder<T...> &Term(EntityId first, EntityId second);
+public:
+    Derived &Term(EntityId id);
+
+    Derived &Term(EntityId first, EntityId second);
 
     template <typename U>
-    QueryBuilder<T...> &Term();
+    Derived &Term();
 
-    QueryBuilder<T...> &Through(TraverseMethod method);
+    Derived &Through(TraverseMethod method);
 
     // QueryBuilder<T...> &TraveseTarget(EntityId targetId);
 
-    QueryBuilder<T...> &Traverse(EntityId relation, EntityId target);
+    Derived &Traverse(EntityId relation, EntityId target);
 
-    QueryBuilder<T...> &TraverseAny(EntityId relation);
-
-    template <typename U>
-    QueryBuilder<T...> &Traverse(EntityId target);
+    Derived &TraverseAny(EntityId relation);
 
     template <typename U>
-    QueryBuilder<T...> &TraverseAny();
-
-    QueryBuilder<T...> &Op(TermOp op);
-
-    QueryBuilder<T...> &Cache(EntityId cacheId = 0);
-
-    QueryBuilder<T...> &Scope();
+    Derived &Traverse(EntityId target);
 
     template <typename U>
-    QueryBuilder<T...> &With();
+    Derived &TraverseAny();
+
+    Derived &Op(TermOp op);
 
     template <typename U>
-    QueryBuilder<T...> &Without();
+    Derived &With();
+
+    template <typename U>
+    Derived &Without();
 
     // QueryBuilder<T...> &With();
     //
@@ -493,26 +503,53 @@ public:
     // QueryBuilder<T...> &Up(EntityId target);
 
     template <typename U>
-    QueryBuilder<T...> &Up(EntityId target);
+    Derived &Up(EntityId target);
 
     template <typename U>
-    QueryBuilder<T...> &Cascade();
+    Derived &Cascade();
 
-    QueryBuilder<T...> &Up(EntityId relation, EntityId target);
+    Derived &Up(EntityId relation, EntityId target);
 
-    QueryBuilder<T...> &Cascade(EntityId relation);
+    Derived &Cascade(EntityId relation);
 
     template <typename U>
-    QueryBuilder<T...> &Modify();
+    Derived &Modify();
 
     template <typename... CallbackArgs>
-    QueryHandle Each(void (*)(CallbackArgs...), void *ctx = nullptr);
+    Handle Each(void (*)(CallbackArgs...), void *ctx = nullptr);
 
-private:
+protected:
     World *m_world;
     QueryDesc m_desc;
     QueryTerm m_currTerm;
     uint32_t m_currTermIdx;
     bool m_firstTerm;
+};
+
+template <typename... T>
+class QueryBuilder
+    : public QueryBuilderBase<QueryBuilder<T...>, QueryHandle, T...>
+{
+public:
+    QueryBuilder(World *world)
+        : ECS::QueryBuilderBase<QueryBuilder<T...>, QueryHandle, T...>(world)
+    {
+    }
+
+    QueryBuilder<T...> &Cache(EntityId cacheId = EcsInvalidId);
+
+    QueryBuilder<T...> &Scope();
+};
+
+template <typename... T>
+class SystemBuilder
+    : public QueryBuilderBase<SystemBuilder<T...>, SystemHandle, T...>
+{
+public:
+    SystemBuilder(World *world)
+        : ECS::QueryBuilderBase<SystemBuilder<T...>, SystemHandle, T...>(world)
+    {
+        this->m_desc.cache = true;
+    }
 };
 } // namespace ECS

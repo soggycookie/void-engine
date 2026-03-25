@@ -63,6 +63,10 @@ protected:
     EntityBuilder &operator=(EntityBuilder &&other) = default;
     EntityBuilder &operator=(const EntityBuilder &other) = default;
 
+    void ChildOf(EntityId parentId);
+
+    EntityId Parent();
+
 protected:
     void AddComponentImpl(EntityId cId) override;
     void AddTagImpl(EntityId cId) override;

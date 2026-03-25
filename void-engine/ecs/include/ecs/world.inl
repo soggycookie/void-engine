@@ -288,7 +288,7 @@ T &World::GetSingleton()
 }
 
 template <typename... T>
-QueryBuilder<T...> World::Query()
+QueryBuilder<T...> World::CreateQuery()
 {
     return QueryBuilder<T...>(this);
 }

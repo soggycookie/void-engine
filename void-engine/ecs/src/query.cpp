@@ -138,7 +138,9 @@ void QueryResult::Delete(WorldAllocator &wAllocator, uint32_t callbackSigCount)
 
 void Query::Execute() { callback.invoker(this, callback.fn, callback.ctx); }
 
-void Query::Filter()
+void Query::EntityFilter() {}
+
+void Query::ArchetypeFilter()
 {
     assert(termCount > 0);
     QueryResult result;
@@ -483,7 +485,7 @@ void QueryHandle::Execute()
         if (m_eId == EcsInvalidId)
         {
             // ad-hoc filter
-            m_query->Filter();
+            m_query->ArchetypeFilter();
         }
 
         m_query->Execute();
@@ -501,7 +503,7 @@ void QueryHandle::Destroy()
             m_query->world->RemoveEntity(m_eId);
         }
 
-        m_query->world->m_wAllocator.Free(sizeof(Query), m_query);
+        m_query->world->m_allocators.queries.Free(m_query);
         m_query = nullptr;
     }
     else

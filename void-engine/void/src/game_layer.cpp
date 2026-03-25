@@ -17,6 +17,12 @@ void GameLayer::OnAttach()
 void GameLayer::OnUpdate(double dt)
 {
     world->Progress(0);
+    ECS::EcsInputManager &input = world->GetSingleton<ECS::EcsInputManager>();
+    input.Set(Input().PrevMask(), Input().CurrMask(),
+              Input().GetMousePos().mouseX, Input().GetMousePos().mouseY);
+
+    // std::cout << "Mouse Pos ECS: " << input.GetMousePos().mouseX <<
+    // std::endl;
 
     Renderer::NewFrame();
     Renderer::Draw(mesh, material);
@@ -67,7 +73,7 @@ void GameLayer::OnInit()
 
     world = ECS::CreateWorld();
     world->Component<Position>().Register();
-    world->Component<Velocity>().Singleton().Register();
+    world->Component<Velocity>().Register();
     world->Tag<NPC>().Register();
 
     // uint32_t x = 0, y = 0;
@@ -83,7 +89,7 @@ void GameLayer::OnInit()
     // world->RemoveEntity(e0.GetFullId());
 
     ECS::Entity e = world->CreateEntity("First", e0.GetFullId());
-    e.AddComponent<Position>().Set<Position>({1, 1});
+    e.AddComponent<Velocity>().Set<Velocity>({1, 1});
 
     ECS::Entity e1 = world->CreateEntity("Second ", e.GetFullId());
     e1.AddComponent<Position>().
@@ -91,25 +97,19 @@ void GameLayer::OnInit()
         // AddPair<ECS::ChildOf>(e.GetFullId()).
         Set<Position>({555, 123123});
 
-    auto q =
-        world->Query<Position>()
-            .With<Velocity>()
-            .TraverseAny<ECS::EcsChildOf>()
-            .Through(ECS::UP)
-            .Each(
-                +[](const ECS::QueryIter &iter, const Velocity &parentVel,
-                    const Position &e)
-                {
-                    std::cout << "Parent Vel x: " << parentVel.x << std::endl;
-                    std::cout << "Parent Vel y: " << parentVel.y << std::endl;
-                    std::cout << "Entity x: " << e.x << std::endl;
-                    std::cout << "Entity y: " << e.y << std::endl;
-                },
-                nullptr);
+    auto q = world->CreateQuery<Position>().Cache().Each(
+        +[](const ECS::QueryIter &iter, const Position &e)
+        {
+            std::cout << "Entity x: " << e.x << std::endl;
+            std::cout << "Entity y: " << e.y << std::endl;
+        },
+        nullptr);
     q.Execute();
+
+    e.AddComponent<Position>();
+    q.Execute();
+
     // q.Destroy();
-    std::cout << world->GetSingleton<Velocity>().x << std::endl;
-    std::cout << world->GetSingleton<Velocity>().y << std::endl;
 
     world->System<Position, ECS::EcsChildOf>(+[](Position &pos)
                                              {
@@ -118,25 +118,8 @@ void GameLayer::OnInit()
                                              });
 }
 
-void GameLayer::OnEvent(const InputEvent &e)
-{
-    switch (e.Type())
-    {
+void GameLayer::OnEvent(InputEvent &e) { Layer::OnEvent(e); }
 
-    case InputEventType::KEY_PRESSED:
-    {
-        std::cout << "Key Pressed Game Layer" << std::endl;
-        break;
-    }
-    case InputEventType::KEY_RELEASED:
-    {
-        std::cout << "Key Released Game Layer" << std::endl;
-        break;
-    }
-    default:
-    {
-        break;
-    }
-    }
-}
+void GameLayer::OnEndFrame() { Layer::OnEndFrame(); }
+
 } // namespace VoidEngine

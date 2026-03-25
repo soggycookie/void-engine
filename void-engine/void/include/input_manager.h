@@ -25,10 +25,10 @@ public:
     bool IsBtnPressed(char c);
     bool IsBtnReleased(char c);
 
-    const std::bitset<256>& PrevMask() const {return m_prevInputState;}
-    const std::bitset<256>& CurrMask() const {return m_currInputState;}
+    const std::bitset<256> &PrevMask() const { return m_prevInputState; }
+    const std::bitset<256> &CurrMask() const { return m_currInputState; }
 
-    MousePos GetMousePos() const {return m_mousePos;}
+    MousePos GetMousePos() const { return m_mousePos; }
 
 private:
     friend class Layer;

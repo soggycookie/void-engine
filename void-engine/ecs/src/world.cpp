@@ -4,19 +4,15 @@
 #include "entity.h"
 #include "internal_component.h"
 #include "query.h"
-#include <cassert>
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
 
 namespace ECS
 {
 World *CreateWorld()
 {
     auto w = new World();
-    w->Init();
+    w->Bootstrap();
     // w->CreateInternalEntity();
-    w->RegisterInternalComponents();
+    // w->RegisterInternalComponents();
     return w;
 }
 
@@ -26,7 +22,7 @@ void DestroyWorld(World *world)
     delete world;
 }
 
-void World::Init()
+void World::Bootstrap()
 {
     m_wAllocator.Init();
     InitAllocators();
@@ -39,11 +35,15 @@ void World::Init()
     m_systemStore.Init(m_wAllocator);
     m_componentStore.Init(m_wAllocator);
     m_isDefered = false;
+
+    RegisterInternalComponents();
+    InitDefaultPipelinePhase();
 }
 
 void World::InitAllocators()
 {
     m_allocators.archetypes.Init(SparsePageCount * sizeof(Archetype));
+    m_allocators.archetypes.Init(SparsePageCount * sizeof(Query));
 }
 
 void World::RegisterInternalComponents()
@@ -64,6 +64,26 @@ void World::RegisterInternalComponents()
     Relation<EcsDependOn>().Id(EcsDependOnId).Register();
     Relation<EcsToggle>().Id(EcsToggleId).Register();
     Relation<EcsIsA>().Id(EcsIsAId).Register();
+}
+
+void World::InitDefaultPipelinePhase()
+{
+    CreateEntity(EcsOnBootId, EcsOnBoot, EcsInvalidId).AddTag<EcsPhase>();
+    CreateEntity(EcsOnStartId, EcsOnStart, EcsOnBootId).AddTag<EcsPhase>();
+
+    CreateEntity(EcsOnLoopId, EcsOnLoop, EcsInvalidId).AddTag<EcsPhase>();
+    CreateEntity(EcsOnValidationId, EcsOnValidation, EcsOnLoopId)
+        .AddTag<EcsPhase>();
+    CreateEntity(EcsOnStartFrameId, EcsOnStartFrame, EcsOnValidationId)
+        .AddTag<EcsPhase>();
+    CreateEntity(EcsOnPreUpdateId, EcsOnPreUpdate, EcsOnStartFrameId)
+        .AddTag<EcsPhase>();
+    CreateEntity(EcsOnUpdateId, EcsOnUpdate, EcsOnPreUpdateId)
+        .AddTag<EcsPhase>();
+    CreateEntity(EcsOnPostUpdateId, EcsOnPostUpdate, EcsOnUpdateId)
+        .AddTag<EcsPhase>();
+    CreateEntity(EcsOnEndFrameId, EcsOnEndFrame, EcsOnPostUpdateId)
+        .AddTag<EcsPhase>();
 }
 
 // Register Type
@@ -230,6 +250,7 @@ std::pair<bool, EntityId> World::GetResuedOrNewId()
 Entity World::GetEntity(EntityId eId)
 {
     EntityRecord *r = m_entityIndex.GetPageData(eId);
+    assert(r);
     uint32_t dense = r->dense;
     uint64_t versionedId = m_entityIndex.GetDenseArr()[dense];
     if (!r || versionedId != eId)
@@ -245,6 +266,58 @@ EntityRecord *World::GetEntityRecord(EntityId eId)
     EntityRecord *e = m_entityIndex.GetPageData(eId);
 
     return e;
+}
+
+void World::ChildOf(EntityId eId, EntityId parentId)
+{
+    EntityRecord *r = m_entityIndex.GetPageData(eId);
+    assert(r);
+
+    if (r->archetype->componentSet.HasRelationship(
+            MakeRelationship(EcsChildOfId, EcsAnyId)))
+    {
+        assert(0);
+    }
+
+    AddRelationship(eId, EcsChildOfId, parentId);
+}
+
+EntityId World::Parent(EntityId eId)
+{
+    EntityRecord *r = m_entityIndex.GetPageData(eId);
+    assert(r);
+
+    int32_t cIdx = r->archetype->componentSet.SearchRelationship(
+        MakeRelationship(EcsChildOfId, EcsAnyId));
+
+    if (cIdx == ComponentSet::NotFoundIdx)
+    {
+        return EcsInvalidId;
+    }
+
+    return HI_ENTITY_ID(r->archetype->componentSet[cIdx]);
+}
+
+Store<EntityId> World::GetChildren(EntityId eId)
+{
+    EntityId relationshipId = MakeRelationship(EcsChildOfId, eId);
+    if (!m_componentIndex.ContainsKey(relationshipId))
+    {
+        return Store<EntityId>();
+    }
+
+    ComponentRecord &cr = m_componentIndex[relationshipId];
+    Store<EntityId> store;
+
+    for (size_t idx = 0; idx < cr.archetypeStore.count; ++idx)
+    {
+        for (size_t eIdx = 0; eIdx < cr.archetypeStore[idx]->count; ++eIdx)
+        {
+            store.Add(m_wAllocator, cr.archetypeStore[idx]->entities[eIdx]);
+        }
+    }
+
+    return store;
 }
 
 Entity World::ResolveEntityDesc(EntityDesc &desc)
@@ -1415,6 +1488,7 @@ void World::Destroy()
     m_typeInfos.Destroy();
 
     m_allocators.archetypes.Destroy();
+    m_allocators.queries.Destroy();
     m_componentStore.Destroy(m_wAllocator);
 
     for (uint32_t sIdx = 0; sIdx < m_systemStore.count; sIdx++)

@@ -46,7 +46,7 @@ namespace VoidEngine
         UINT deviceFlag = 0;
 
 #ifdef VOID_DEBUG
-        //deviceFlag = D3D11_CREATE_DEVICE_DEBUG;
+        deviceFlag = D3D11_CREATE_DEVICE_DEBUG;
 #endif
 
         const D3D_FEATURE_LEVEL featureLevels[] = 
