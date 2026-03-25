@@ -43,7 +43,7 @@ void World::Bootstrap()
 void World::InitAllocators()
 {
     m_allocators.archetypes.Init(SparsePageCount * sizeof(Archetype));
-    m_allocators.archetypes.Init(SparsePageCount * sizeof(Query));
+    m_allocators.queries.Init(SparsePageCount * sizeof(Query));
 }
 
 void World::RegisterInternalComponents()
