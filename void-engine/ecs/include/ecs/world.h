@@ -5,7 +5,6 @@
 #include "entity.h"
 #include "internal_component.h"
 #include "query.h"
-#include "system_meta.h"
 #include "type_info.h"
 
 namespace ECS
@@ -164,13 +163,6 @@ public:
     // or rewrite this in a different way basically, I have to introduce sync
     // point
 
-    template <typename... Components, typename... FuncArgs>
-    void System(void (*func)(FuncArgs...));
-
-    template <typename... Components, typename... FuncArgs>
-    void Each(void (*func)(FuncArgs...));
-
-    void Progress(double dt);
 
     void Destroy();
 
@@ -185,7 +177,7 @@ public:
         m_mappedArchetype; // value hold a ref to key, does not change the
                            // value's key ref
     Store<EntityId> m_componentStore;
-    Store<SystemCallback> m_systemStore;
+    //Store<SystemCallback> m_systemStore;
     uint32_t m_q_revalSweep_archetype;
     uint32_t m_nextFreeId;
     bool m_isDefered;

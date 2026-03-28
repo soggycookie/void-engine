@@ -4,8 +4,6 @@
 #include "ecs_utils.h"
 #include "internal_component.h"
 #include "world.h"
-#include <cassert>
-#include <cstddef>
 
 namespace ECS
 {
@@ -65,6 +63,79 @@ void QueryArchetype::Delete(WorldAllocator &wAllocator,
                         hi_entityMask);
     }
 }
+
+void QueryArchetype::AllocateMask(WorldAllocator &wAllocator)
+{
+    uint32_t totalMaskCount =
+        std::ceil(CAST(archetype->count, float) / CAST(EntityPerMask, float));
+
+    uint32_t add = totalMaskCount - maskCapacity;
+
+    if (totalMaskCount > InlineArrayOptimizationCount && add > 0)
+    {
+        uint32_t *hi = wAllocator.Calloc<uint32_t>(
+            totalMaskCount - InlineArrayOptimizationCount);
+
+        if (hi_entityMask)
+        {
+            uint32_t size =
+                (maskCount - InlineArrayOptimizationCount) * sizeof(uint32_t);
+            std::memcpy(hi, hi_entityMask, size);
+            wAllocator.Free((maskCapacity - InlineArrayOptimizationCount) *
+                                sizeof(uint32_t),
+                            hi_entityMask);
+        }
+
+        hi_entityMask = hi;
+        maskCapacity = totalMaskCount;
+    }
+
+    maskCount = totalMaskCount;
+}
+
+uint32_t &QueryArchetype::Mask(uint32_t eIdx)
+{
+    uint32_t maskIdx =
+        std::ceil(CAST(eIdx, float) / CAST(EntityPerMask, float));
+
+    if (maskIdx >= maskCount || eIdx >= archetype->count)
+    {
+        assert(0);
+    }
+
+    if (maskIdx < InlineArrayOptimizationCount)
+    {
+        return lo_entityMask[maskIdx];
+    }
+    else
+    {
+        return hi_entityMask[maskIdx - InlineArrayOptimizationCount];
+    }
+}
+
+void QueryArchetype::SetMask(uint32_t eIdx, bool bit)
+{
+    uint32_t &mask = Mask(eIdx);
+    uint32_t idx = eIdx % EntityPerMask;
+
+    if (bit)
+    {
+        mask |= (1 << idx);
+    }
+    else
+    {
+        mask &= ~(1 << idx);
+    }
+}
+
+bool QueryArchetype::GetMask(uint32_t eIdx)
+{
+    uint32_t &mask = Mask(eIdx);
+    uint32_t idx = eIdx % EntityPerMask;
+
+    return (mask &= (1 << idx)) > 0;
+}
+
 //////////////////////////// QueryResult ////////////////////////////////
 
 void QueryResult::Add(WorldAllocator &wAllocator, QueryArchetype &&matched)
@@ -136,11 +207,42 @@ void QueryResult::Delete(WorldAllocator &wAllocator, uint32_t callbackSigCount)
 
 /////////////////////////////// Query /////////////////////////////////
 
-void Query::Execute() { callback.invoker(this, callback.fn, callback.ctx); }
+void Query::Execute()
+{
+    execCallback.invoker(this, execCallback.fn, execCallback.ctx);
+}
 
-void Query::EntityFilter() {}
+void Query::FilterResultEntity()
+{
+    for (size_t idx = 0; idx < result.count; ++idx)
+    {
+        result[idx].AllocateMask(world->m_wAllocator);
+        for (size_t eIdx = 0; eIdx < result[idx].archetype->count; ++eIdx)
+        {
+            entityFilterCallback.invoker(this, entityFilterCallback.fn,
+                                         result[idx], eIdx,
+                                         entityFilterCallback.ctx);
+        }
+    }
+}
 
-void Query::ArchetypeFilter()
+void Query::FilterEntity(QueryArchetype &qAr)
+{
+    for (size_t eIdx = 0; eIdx < qAr.archetype->count; ++eIdx)
+    {
+        entityFilterCallback.invoker(this, entityFilterCallback.fn, qAr, eIdx,
+                                     entityFilterCallback.ctx);
+    }
+}
+
+void Query::FilterEntity(QueryArchetype &qAr, uint32_t eIdx)
+{
+
+    entityFilterCallback.invoker(this, entityFilterCallback.fn, qAr, eIdx,
+                                 entityFilterCallback.ctx);
+}
+
+void Query::FilterArchetype()
 {
     assert(termCount > 0);
     QueryResult result;
@@ -473,19 +575,24 @@ void Query::Destroy()
     world->m_wAllocator.Free(termCount * sizeof(QueryTerm), terms);
     world->m_wAllocator.Free(termCount * sizeof(uint8_t), sortedTermIdx);
 
-    result.Delete(world->m_wAllocator, callback.sigCount);
+    result.Delete(world->m_wAllocator, execCallback.sigCount);
 }
 
-///////////////////////////////// Query Handle ////////////////////////////////
+///////////////
 
 void QueryHandle::Execute()
 {
     if (m_query)
     {
-        if (m_eId == EcsInvalidId)
+        if (m_query->eId == EcsInvalidId)
         {
             // ad-hoc filter
-            m_query->ArchetypeFilter();
+            m_query->FilterArchetype();
+
+            if (m_query->isEntityFiltered)
+            {
+                m_query->FilterResultEntity();
+            }
         }
 
         m_query->Execute();
@@ -498,9 +605,9 @@ void QueryHandle::Destroy()
     {
         m_query->Destroy();
 
-        if (m_eId != EcsInvalidId)
+        if (m_query->eId != EcsInvalidId)
         {
-            m_query->world->RemoveEntity(m_eId);
+            m_query->world->RemoveEntity(m_query->eId);
         }
 
         m_query->world->m_allocators.queries.Free(m_query);

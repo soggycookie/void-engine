@@ -4,6 +4,7 @@
 #include "entity.h"
 #include "internal_component.h"
 #include "query.h"
+#include <type_traits>
 
 namespace ECS
 {
@@ -32,7 +33,7 @@ void World::Bootstrap()
     m_typeInfos.Init(&m_wAllocator, 8);
     m_mappedArchetype.Init(&m_wAllocator, 8);
 
-    m_systemStore.Init(m_wAllocator);
+    //m_systemStore.Init(m_wAllocator);
     m_componentStore.Init(m_wAllocator);
     m_isDefered = false;
 
@@ -1198,6 +1199,9 @@ void World::MoveArchetype_Remove(EntityId eId, EntityRecord &r,
 
     uint32_t removeRow = r.row;
 
+    RevalidateCachedQuery_EntityFilter(srcArchetype, removeRow,
+                                       EntityRevalidationMode::ON_REMOVED);
+
     if (!destArchetype)
     {
         if (srcArchetype->columnCount == 1 &&
@@ -1282,8 +1286,6 @@ void World::MoveArchetype_Remove(EntityId eId, EntityRecord &r,
         ++destArchetype->count;
     }
 
-    RevalidateCachedQuery_EntityFilter(srcArchetype, removeRow,
-                                       EntityRevalidationMode::ON_REMOVED);
     RevalidateCachedQuery_EntityFilter(
         destArchetype, destArchetype == nullptr ? 0 : destArchetype->count - 1,
         EntityRevalidationMode::ON_ADDED);
@@ -1316,18 +1318,23 @@ void World::RevalidateCachedQuery_EntityFilter(Archetype *archetype,
         case World::EntityRevalidationMode::ON_ADDED:
         {
             // Run entity filter on last entity
-
+            qAr.AllocateMask(m_wAllocator);
+            q.query->FilterEntity(qAr, affectedRow);
             break;
         }
         case World::EntityRevalidationMode::ON_REMOVED:
         {
             // Swap bitmask at count idx and remove idx (count is probably minus
             // 1 at this point)
-
+            qAr.AllocateMask(m_wAllocator);
+            bool bit = qAr.GetMask(qAr.archetype->count - 1);
+            qAr.SetMask(qAr.archetype->count - 1, false);
+            qAr.SetMask(affectedRow, bit);
             break;
         }
         case World::EntityRevalidationMode::ON_MODIFIED:
         {
+            q.query->FilterEntity(qAr, affectedRow);
             break;
         }
         }
@@ -1370,75 +1377,6 @@ void World::RevalidateCachedQuery_ArchetypeFilter(ComponentRecord &cr,
     }
 }
 
-void World::Progress(double dt)
-{
-    if (m_isDefered == false)
-    {
-        m_isDefered = true;
-
-        for (uint32_t idx = 0; idx < m_systemStore.count; idx++)
-        {
-            SystemCallback &sc = m_systemStore.store[idx];
-
-            ArchetypeLinkedList *head = sc.archetypeList;
-
-            void **componentsData = PTR_CAST(
-                m_wAllocator.Init(sizeof(void *) * sc.componentSet.count),
-                void *);
-
-            while (head->archetype)
-            {
-                Archetype *archetype = head->archetype;
-
-                for (uint32_t row = 0; row < archetype->count; row++)
-                {
-                    QueryIterator it;
-                    it.archetype = archetype;
-                    it.world = this;
-                    it.row = row;
-
-                    for (uint32_t idx = 0; idx < sc.componentSet.count; idx++)
-                    {
-                        int32_t cIdx = archetype->componentSet.Search(
-                            sc.componentSet[idx]);
-
-                        if (cIdx == -1)
-                        {
-                            cIdx = archetype->componentSet.SearchRelationship(
-                                sc.componentSet[idx]);
-                        }
-
-                        assert(cIdx != -1);
-
-                        int32_t colIdx = archetype->componentMap[cIdx];
-
-                        if (colIdx == -1)
-                        {
-                            componentsData[idx] = nullptr;
-                        }
-                        else
-                        {
-                            Column &col = archetype->columns[colIdx];
-                            TypeInfo &ti = *col.typeInfo;
-                            void *comData = OFFSET(col.data, ti.size * row);
-                            componentsData[idx] = comData;
-                        }
-                    }
-
-                    // EXECUTE
-                    sc.Execute(&it, componentsData);
-                }
-
-                head = head->next;
-            }
-
-            m_wAllocator.Free(sizeof(void *) * sc.componentSet.count,
-                              componentsData);
-        }
-
-        m_isDefered = false;
-    }
-}
 
 void World::Destroy()
 {
@@ -1491,22 +1429,22 @@ void World::Destroy()
     m_allocators.queries.Destroy();
     m_componentStore.Destroy(m_wAllocator);
 
-    for (uint32_t sIdx = 0; sIdx < m_systemStore.count; sIdx++)
-    {
-        SystemCallback &sc = m_systemStore.store[sIdx];
-        ArchetypeLinkedList *head = sc.archetypeList;
+    //for (uint32_t sIdx = 0; sIdx < m_systemStore.count; sIdx++)
+    //{
+    //    SystemCallback &sc = m_systemStore.store[sIdx];
+    //    ArchetypeLinkedList *head = sc.archetypeList;
 
-        while (head->archetype)
-        {
-            ArchetypeLinkedList *freeNode = head;
-            head = head->next;
+    //    while (head->archetype)
+    //    {
+    //        ArchetypeLinkedList *freeNode = head;
+    //        head = head->next;
 
-            ArchetypeLinkedList::Free(m_wAllocator, freeNode);
-        }
+    //        ArchetypeLinkedList::Free(m_wAllocator, freeNode);
+    //    }
 
-        sc.componentSet.Destroy(m_wAllocator);
-    }
-    m_systemStore.Destroy(m_wAllocator);
+    //    sc.componentSet.Destroy(m_wAllocator);
+    //}
+    //m_systemStore.Destroy(m_wAllocator);
 
     for (uint32_t bIdx = 1; bIdx <= m_wAllocator.m_sparse.GetCount(); bIdx++)
     {

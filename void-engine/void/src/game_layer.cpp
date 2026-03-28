@@ -16,7 +16,7 @@ void GameLayer::OnAttach()
 
 void GameLayer::OnUpdate(double dt)
 {
-    world->Progress(0);
+
     ECS::EcsInputManager &input = world->GetSingleton<ECS::EcsInputManager>();
     input.Set(Input().PrevMask(), Input().CurrMask(),
               Input().GetMousePos().mouseX, Input().GetMousePos().mouseY);
@@ -32,17 +32,6 @@ void GameLayer::OnUpdate(double dt)
 void GameLayer::OnDetach()
 {
     SIMPLE_LOG("detach!");
-
-    world->Each<ECS::EcsName>(
-        +[](ECS::QueryIterator it, const ECS::EcsName &pos)
-        {
-            std::cout << it.GetEntity().GetFullId() << ": " << pos.name
-                      << std::endl;
-            // std::cout << "Count " << it.archetype->count << " of " <<
-            // it.archetype->id << std::endl; std::cout <<
-            // it.GetEntity().GetFullId() << std::endl; std::cout << pos.x << ",
-            // " << pos.y << std::endl;
-        });
 
     ECS::DestroyWorld(world);
 }
@@ -97,25 +86,23 @@ void GameLayer::OnInit()
         // AddPair<ECS::ChildOf>(e.GetFullId()).
         Set<Position>({555, 123123});
 
-    auto q = world->CreateQuery<Position>().Cache().Each(
+    ECS::QueryHandle q = world->CreateQuery<Position>().Cache(0).
+        Filter(+[](const Position&p){ return p.x > 20 && p.y < 300;}, nullptr).
+        Each(
         +[](const ECS::QueryIter &iter, const Position &e)
         {
             std::cout << "Entity x: " << e.x << std::endl;
             std::cout << "Entity y: " << e.y << std::endl;
         },
         nullptr);
+
     q.Execute();
 
-    e.AddComponent<Position>();
+    e.AddComponent<Position>().Set<Position>(Position{21, 200});
     q.Execute();
 
     // q.Destroy();
 
-    world->System<Position, ECS::EcsChildOf>(+[](Position &pos)
-                                             {
-                                                 ++pos.x;
-                                                 ++pos.y;
-                                             });
 }
 
 void GameLayer::OnEvent(InputEvent &e) { Layer::OnEvent(e); }
