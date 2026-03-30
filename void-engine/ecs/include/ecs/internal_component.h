@@ -73,7 +73,7 @@ struct EcsQuery
 
 struct EcsSystem
 {
-    EntityId queryId;
+    Query *query;
 };
 
 //////////////// Input Manager ///////////////

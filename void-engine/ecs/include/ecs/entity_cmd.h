@@ -43,11 +43,5 @@ protected:
     virtual void SetImpl(EntityId id, void *data) = 0;
 };
 
-// template <typename... Components>
-// struct EntityCommand
-// {
-//     EntityDesc desc;
-//     World *world;
-// };
 
 } // namespace ECS

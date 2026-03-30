@@ -4,6 +4,7 @@
 #include "ecs_type.h"
 #include "entity.h"
 #include "internal_component.h"
+#include "pipeline.h"
 #include "query.h"
 #include "type_info.h"
 
@@ -19,7 +20,9 @@ struct Allocators
 class World
 {
 public:
-    World() : m_nextFreeId(200), m_isDefered(false), m_q_revalSweep_archetype(0)
+    World()
+        : m_nextFreeId(200), m_isDefered(false), m_isFirstFrame(false),
+          m_q_revalSweep_archetype(0)
     {
     }
 
@@ -31,7 +34,9 @@ public:
     void InitAllocators();
 
     void RegisterInternalComponents();
+
     void InitDefaultPipelinePhase();
+    void InitBasePhase();
 
     Entity CreateEntity(const char *name = nullptr, EntityId parent = 0);
     Entity CreateEntity(char *name, EntityId parent = 0);
@@ -142,6 +147,9 @@ public:
     template <typename... T>
     QueryBuilder<T...> CreateQuery();
 
+    template <typename... T>
+    SystemBuilder<T...> CreateSystem();
+
     enum class EntityRevalidationMode
     {
         ON_ADDED,
@@ -158,11 +166,11 @@ public:
                                                Archetype *archetype,
                                                bool newArchetype);
 
-    // NOTE: System store list of cache archetypes, but the list can be
-    // invalidated at runtime, so I need to find a new way to re-validate this
-    // or rewrite this in a different way basically, I have to introduce sync
-    // point
+    PhaseDependencyBuilder BootstrapPhase();
 
+    PhaseDependencyBuilder LoopPhase();
+
+    void Tick();
 
     void Destroy();
 
@@ -177,10 +185,11 @@ public:
         m_mappedArchetype; // value hold a ref to key, does not change the
                            // value's key ref
     Store<EntityId> m_componentStore;
-    //Store<SystemCallback> m_systemStore;
+    Pipeline m_loopPipeline;
     uint32_t m_q_revalSweep_archetype;
     uint32_t m_nextFreeId;
     bool m_isDefered;
+    bool m_isFirstFrame;
 };
 } // namespace ECS
 

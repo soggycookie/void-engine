@@ -24,7 +24,7 @@ bool Application::StartUp()
 
     void *gameLayerAddr =
         MemorySystem::GeneralAllocator()->Alloc(sizeof(GameLayer));
-    m_gameLayer = new (gameLayerAddr) GameLayer();
+    m_gameLayer = new (gameLayerAddr) GameLayer(this);
     m_layerStack->PushLayer(m_gameLayer);
 
     // layer should before this because events dispatch to app

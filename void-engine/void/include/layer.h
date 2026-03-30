@@ -5,10 +5,12 @@
 
 namespace VoidEngine
 {
+class Application;
+
 class Layer
 {
 public:
-    Layer() : m_inputManager() {}
+    Layer(Application* app) : m_app(app), m_inputManager() {}
 
     virtual ~Layer() = default;
     virtual void OnInit() = 0;
@@ -23,6 +25,8 @@ public:
 
 private:
     InputManager m_inputManager;
+protected:
+    const Application* m_app;
 };
 
 } // namespace VoidEngine

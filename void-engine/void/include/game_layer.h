@@ -7,7 +7,7 @@ namespace VoidEngine
 {
 struct Position
 {
-    uint32_t x, y;
+    double x, y;
 };
 
 struct Velocity
@@ -27,7 +27,7 @@ struct NPC
 class GameLayer : public Layer
 {
 public:
-    GameLayer() : m_gameTime(0) {}
+    GameLayer(Application* app) : m_gameTime(0), Layer(app) {}
 
     void OnInit() override;
     void OnDetach() override;

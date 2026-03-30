@@ -366,7 +366,7 @@ struct ComponentSet
         for (uint32_t idx = count; idx > 0;)
         {
             --idx;
-            if (hiId == 100)
+            if (hiId == 100 || hiId == 0)
             {
                 if (loId == LO_ENTITY_ID(idArr[idx]))
                 {
@@ -410,7 +410,7 @@ struct ComponentSet
         for (uint32_t idx = count; idx > 0;)
         {
             --idx;
-            if (hiId == 100)
+            if (hiId == 100 || hiId == 0)
             {
                 if (loId == LO_ENTITY_ID(idArr[idx]))
                 {

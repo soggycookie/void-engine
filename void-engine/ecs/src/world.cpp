@@ -33,12 +33,13 @@ void World::Bootstrap()
     m_typeInfos.Init(&m_wAllocator, 8);
     m_mappedArchetype.Init(&m_wAllocator, 8);
 
-    //m_systemStore.Init(m_wAllocator);
+    // m_systemStore.Init(m_wAllocator);
     m_componentStore.Init(m_wAllocator);
     m_isDefered = false;
+    m_loopPipeline.Init(this);
 
     RegisterInternalComponents();
-    InitDefaultPipelinePhase();
+    InitBasePhase();
 }
 
 void World::InitAllocators()
@@ -67,24 +68,36 @@ void World::RegisterInternalComponents()
     Relation<EcsIsA>().Id(EcsIsAId).Register();
 }
 
+void World::InitBasePhase()
+{
+    CreateEntity(EcsOnBootId, EcsOnBoot).AddTag<EcsPhase>();
+    CreateEntity(EcsOnLoopId, EcsOnLoop).AddTag<EcsPhase>();
+}
+
 void World::InitDefaultPipelinePhase()
 {
-    CreateEntity(EcsOnBootId, EcsOnBoot, EcsInvalidId).AddTag<EcsPhase>();
-    CreateEntity(EcsOnStartId, EcsOnStart, EcsOnBootId).AddTag<EcsPhase>();
+    CreateEntity(EcsOnStartId, EcsOnStart)
+        .AddTag<EcsPhase>()
+        .AddRelationship<EcsDependOn>(EcsOnBootId);
 
-    CreateEntity(EcsOnLoopId, EcsOnLoop, EcsInvalidId).AddTag<EcsPhase>();
-    CreateEntity(EcsOnValidationId, EcsOnValidation, EcsOnLoopId)
-        .AddTag<EcsPhase>();
-    CreateEntity(EcsOnStartFrameId, EcsOnStartFrame, EcsOnValidationId)
-        .AddTag<EcsPhase>();
-    CreateEntity(EcsOnPreUpdateId, EcsOnPreUpdate, EcsOnStartFrameId)
-        .AddTag<EcsPhase>();
-    CreateEntity(EcsOnUpdateId, EcsOnUpdate, EcsOnPreUpdateId)
-        .AddTag<EcsPhase>();
-    CreateEntity(EcsOnPostUpdateId, EcsOnPostUpdate, EcsOnUpdateId)
-        .AddTag<EcsPhase>();
-    CreateEntity(EcsOnEndFrameId, EcsOnEndFrame, EcsOnPostUpdateId)
-        .AddTag<EcsPhase>();
+    CreateEntity(EcsOnValidationId, EcsOnValidation)
+        .AddTag<EcsPhase>()
+        .AddRelationship<EcsDependOn>(EcsOnLoopId);
+    CreateEntity(EcsOnStartFrameId, EcsOnStartFrame)
+        .AddTag<EcsPhase>()
+        .AddRelationship<EcsDependOn>(EcsOnValidationId);
+    CreateEntity(EcsOnPreUpdateId, EcsOnPreUpdate)
+        .AddTag<EcsPhase>()
+        .AddRelationship<EcsDependOn>(EcsOnStartFrameId);
+    CreateEntity(EcsOnUpdateId, EcsOnUpdate)
+        .AddTag<EcsPhase>()
+        .AddRelationship<EcsDependOn>(EcsOnPreUpdateId);
+    CreateEntity(EcsOnPostUpdateId, EcsOnPostUpdate)
+        .AddTag<EcsPhase>()
+        .AddRelationship<EcsDependOn>(EcsOnUpdateId);
+    CreateEntity(EcsOnEndFrameId, EcsOnEndFrame)
+        .AddTag<EcsPhase>()
+        .AddRelationship<EcsDependOn>(EcsOnPostUpdateId);
 }
 
 // Register Type
@@ -1377,6 +1390,35 @@ void World::RevalidateCachedQuery_ArchetypeFilter(ComponentRecord &cr,
     }
 }
 
+PhaseDependencyBuilder World::BootstrapPhase()
+{
+    return PhaseDependencyBuilder(this, EcsOnBootId);
+}
+
+PhaseDependencyBuilder World::LoopPhase()
+{
+    return PhaseDependencyBuilder(this, EcsOnLoopId);
+}
+
+void World::Tick()
+{
+    if (!m_isFirstFrame)
+    {
+        Pipeline bootPipeline;
+        bootPipeline.Init(this);
+        bootPipeline.BuildFromBasePhase(EcsOnBootId);
+        bootPipeline.Progress();
+
+        m_loopPipeline.BuildFromBasePhase(EcsOnLoopId);
+        m_isFirstFrame = true;
+
+        bootPipeline.Destroy();
+    }
+    else
+    {
+        m_loopPipeline.Progress();
+    }
+}
 
 void World::Destroy()
 {
@@ -1429,10 +1471,10 @@ void World::Destroy()
     m_allocators.queries.Destroy();
     m_componentStore.Destroy(m_wAllocator);
 
-    //for (uint32_t sIdx = 0; sIdx < m_systemStore.count; sIdx++)
+    // for (uint32_t sIdx = 0; sIdx < m_systemStore.count; sIdx++)
     //{
-    //    SystemCallback &sc = m_systemStore.store[sIdx];
-    //    ArchetypeLinkedList *head = sc.archetypeList;
+    //     SystemCallback &sc = m_systemStore.store[sIdx];
+    //     ArchetypeLinkedList *head = sc.archetypeList;
 
     //    while (head->archetype)
     //    {
@@ -1444,7 +1486,7 @@ void World::Destroy()
 
     //    sc.componentSet.Destroy(m_wAllocator);
     //}
-    //m_systemStore.Destroy(m_wAllocator);
+    // m_systemStore.Destroy(m_wAllocator);
 
     for (uint32_t bIdx = 1; bIdx <= m_wAllocator.m_sparse.GetCount(); bIdx++)
     {

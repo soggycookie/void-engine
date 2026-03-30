@@ -1,4 +1,5 @@
 #include "ecs_type.h"
+#include "query.h"
 #include <type_traits>
 #ifdef __clang__
 #pragma once
@@ -264,7 +265,7 @@ template <typename T>
 void World::Set(EntityId eId, T &&c)
 {
     static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
-    Set(eId, ComponentTypeId<decay_t<T>>::Id(), &c);
+    Set(eId, ComponentTypeId<std::decay_t<T>>::Id(), &c);
 }
 
 template <typename T>
@@ -293,5 +294,10 @@ QueryBuilder<T...> World::CreateQuery()
     return QueryBuilder<T...>(this);
 }
 
+template <typename... T>
+SystemBuilder<T...> World::CreateSystem()
+{
+    return SystemBuilder<T...>(this);
+}
 
 } // namespace ECS

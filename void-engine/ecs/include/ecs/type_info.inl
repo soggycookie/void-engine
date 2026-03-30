@@ -186,6 +186,17 @@ TypeInfoBuilder<T> &TypeInfoBuilder<T>::Relationship(EntityId relationId,
 {
     if constexpr (!std::is_void_v<T>)
     {
+        static_assert(0);
+    }
+    assert(relationId);
+    assert(targetId);
+    if(!world->IsEntityExist(targetId) || !world->IsEntityExist(relationId))
+    {
+        assert(0);
+    }
+
+    if (!world->m_typeInfos.ContainsKey(relationId))
+    {
         assert(0);
     }
 
@@ -195,17 +206,18 @@ TypeInfoBuilder<T> &TypeInfoBuilder<T>::Relationship(EntityId relationId,
     TypeInfo *relationTi = world->m_typeInfos[relationId];
     ti.size = relationTi->size;
     ti.alignment = relationTi->alignment;
+    ti.hook = relationTi->hook;
+    ti.flags |= RELATIONSHIP_TYPE;
 
-    if (world->m_typeInfos.ContainsKey(targetId))
-    {
-        TypeInfo *targetTi = world->m_typeInfos[targetId];
-        assert(!targetTi->IsRelation());
-    }
+    //if (world->m_typeInfos.ContainsKey(targetId))
+    //{
+    //    TypeInfo *targetTi = world->m_typeInfos[targetId];
+    //    assert(!targetTi->IsRelation());
+    //}
 
     assert(relationTi);
     assert(relationTi->IsRelation());
 
-    ti.flags |= RELATIONSHIP_TYPE;
 
     return *this;
 }
@@ -215,24 +227,39 @@ TypeInfoBuilder<T> &TypeInfoBuilder<T>::Relationship(EntityId targetId)
 {
     if constexpr (std::is_void_v<T>)
     {
+        static_assert(0);
+    }
+    static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
+
+    assert(targetId);
+
+    if(!world->IsEntityExist(targetId))
+    {
         assert(0);
     }
 
-    first = ComponentTypeId<T>::Id();
-    TypeInfo *relationTi = world->m_typeInfos[ComponentTypeId<T>::Id()];
-
-    if (world->m_typeInfos.ContainsKey(targetId))
+    if (!world->m_typeInfos.ContainsKey(ComponentTypeId<T>::Id()))
     {
-        TypeInfo *targetTi = world->m_typeInfos[targetId];
-        assert(!targetTi->IsRelation());
+        assert(0);
     }
+
+    this->first = ComponentTypeId<T>::Id();
+    this->second = targetId;
+
+    TypeInfo *relationTi = world->m_typeInfos[ComponentTypeId<T>::Id()];
+    ti.size = relationTi->size;
+    ti.alignment = relationTi->alignment;
+    ti.hook = relationTi->hook;
+    ti.flags |= RELATIONSHIP_TYPE;
+    //if (world->m_typeInfos.ContainsKey(targetId))
+    //{
+    //    TypeInfo *targetTi = world->m_typeInfos[targetId];
+    //    assert(!targetTi->IsRelation());
+    //}
 
     assert(relationTi);
     assert(relationTi->IsRelation());
 
-    this->second = targetId;
-
-    ti.flags |= RELATIONSHIP_TYPE;
 
     return *this;
 }

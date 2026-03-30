@@ -24,6 +24,16 @@ public:
 
     bool IsAppRunning() const { return m_isRunning; }
 
+    double GetDeltaTime() const
+    {
+        return m_window->GetDeltaTime();
+    }
+
+    double GetApplicationTime() const
+    {
+        return m_window->GetWindowTime();
+    }
+
     // void PushLayer(Layer* layer);
     // void PushOverLay(Layer* layer);
 

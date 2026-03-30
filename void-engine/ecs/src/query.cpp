@@ -4,6 +4,7 @@
 #include "ecs_utils.h"
 #include "internal_component.h"
 #include "world.h"
+#include <cassert>
 
 namespace ECS
 {
@@ -348,7 +349,7 @@ MatchedArchetype Query::IsMatch(Archetype *archetype)
     // SELF-matched term
     for (size_t termIdx = 0; termIdx < termCount; ++termIdx)
     {
-        QueryTerm &term = terms[sortedTermIdx[termIdx]];
+        QueryTerm &term = terms[termIdx];
 
         switch (term.travMethod)
         {
@@ -616,6 +617,70 @@ void QueryHandle::Destroy()
     else
     {
         assert(0);
+    }
+}
+
+/////////////////////////// QueryCallbackBuilder /////////////////////////
+
+void QueryCallbackBuilder::CreateCachedEntity()
+{
+    if (m_query->isCached)
+    {
+        Entity e = m_query->world->CreateEntity(m_query->eId);
+        m_query->eId = e.GetFullId();
+        m_query->FilterArchetype();
+
+        if (m_query->isEntityFiltered)
+        {
+            m_query->FilterResultEntity();
+        }
+
+        e.AddComponent<EcsQuery>();
+        e.Set<EcsQuery>(EcsQuery{m_query});
+    }
+}
+
+/////////////////////////// QueryCallbackBuilder /////////////////////////
+
+void SystemCallbackBuilder::CreateCachedEntity()
+{
+    if (m_query->isCached)
+    {
+        Entity e = m_query->world->CreateEntity(m_query->eId);
+        m_query->eId = e.GetFullId();
+        m_query->FilterArchetype();
+
+        if (m_query->isEntityFiltered)
+        {
+            m_query->FilterResultEntity();
+        }
+
+        e.AddComponent<EcsSystem>();
+        e.Set<EcsSystem>(EcsSystem{m_query});
+
+        if (m_dependOnId == EcsInvalidId)
+        {
+            assert(0);
+        }
+        else
+        {
+            bool a = m_query->world->HasComponent(m_dependOnId, EcsPhaseId);
+            bool b = m_query->world->HasRelationship(m_dependOnId, EcsDependOnId);
+
+            if (m_query->world->HasComponent(m_dependOnId, EcsPhaseId) &&
+                m_query->world->HasRelationship(m_dependOnId, EcsDependOnId))
+            {
+                e.AddRelationship<EcsDependOn>(m_dependOnId);
+            }
+            else
+            {
+                assert(0);
+            }
+        }
+    }
+    else
+    {
+        assert(0 && "System must be cached!");
     }
 }
 
