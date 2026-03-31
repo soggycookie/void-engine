@@ -287,7 +287,7 @@ void Query::FilterArchetype()
                     EntityId cId =
                         hiId == EcsAnyId ? LO_ENTITY_ID(term.cId) : term.cId;
                     ComponentRecord &cr = world->m_componentIndex[cId];
-                    cr.cachedQueries.Add(world->m_wAllocator, eId);
+                    cr.trackedQueries.Add(world->m_wAllocator, eId);
                     break;
                 }
                 case UP:
@@ -298,7 +298,7 @@ void Query::FilterArchetype()
                                        : MakeRelationship(term.travRelation,
                                                           term.travTarget);
                     ComponentRecord &cr = world->m_componentIndex[cId];
-                    cr.cachedQueries.Add(world->m_wAllocator, eId);
+                    cr.trackedQueries.Add(world->m_wAllocator, eId);
                     break;
                 }
                 }
@@ -306,9 +306,9 @@ void Query::FilterArchetype()
         }
     }
     // anchor term work as a point to narrow down archetype list
-    for (size_t aIdx = 0; aIdx < anchorCr.archetypeStore.count; ++aIdx)
+    for (size_t aIdx = 0; aIdx < anchorCr.archetypes.count; ++aIdx)
     {
-        Archetype *archetype = anchorCr.archetypeStore[aIdx];
+        Archetype *archetype = anchorCr.archetypes[aIdx];
 
         MatchedArchetype matched = IsMatch(archetype);
 
@@ -665,7 +665,8 @@ void SystemCallbackBuilder::CreateCachedEntity()
         else
         {
             bool a = m_query->world->HasComponent(m_dependOnId, EcsPhaseId);
-            bool b = m_query->world->HasRelationship(m_dependOnId, EcsDependOnId);
+            bool b =
+                m_query->world->HasRelationship(m_dependOnId, EcsDependOnId);
 
             if (m_query->world->HasComponent(m_dependOnId, EcsPhaseId) &&
                 m_query->world->HasRelationship(m_dependOnId, EcsDependOnId))

@@ -21,7 +21,7 @@ class World
 {
 public:
     World()
-        : m_nextFreeId(200), m_isDefered(false), m_isFirstFrame(false),
+        : m_nextFreeId(200), m_isDeferred(false), m_isFirstFrame(false),
           m_q_revalSweep_archetype(0)
     {
     }
@@ -79,9 +79,11 @@ public:
     template <typename T>
     TypeInfoBuilder<T> Relationship(EntityId targetId);
 
-    void Register(const TypeInfo &typeInfo, EntityId relationId,
-                  EntityId targetId, const std::string_view first,
-                  const std::string_view second);
+    void Register(const TypeInfo &typeInfo, EntityId cId,
+                  const std::string_view cName);
+
+    void RegisterRelationship(EntityId relationId, EntityId targetId,
+                              TypeInfo *relationTi);
 
     template <typename T>
     void AddComponent(EntityId eId);
@@ -102,7 +104,15 @@ public:
 
     void AddRelationship(EntityId eId, EntityId relationId, EntityId targetId);
 
+    void AddComponent(EntityId eId, EntityId cId, void *data);
+
+    void AddRelationship(EntityId eId, EntityId relationId, EntityId targetId,
+                         void *data);
+
     void AddTag(EntityId eId, EntityId cId);
+
+    void AddInternal(EntityId eId, EntityId cId, EntityRecord *record,
+                     TypeInfo *ti);
 
     void RemoveComponent(EntityId eId, EntityId cId);
 
@@ -185,10 +195,11 @@ public:
         m_mappedArchetype; // value hold a ref to key, does not change the
                            // value's key ref
     Store<EntityId> m_componentStore;
+    Store<EntityDeferredCommand> m_deferredCmds;
     Pipeline m_loopPipeline;
     uint32_t m_q_revalSweep_archetype;
     uint32_t m_nextFreeId;
-    bool m_isDefered;
+    bool m_isDeferred;
     bool m_isFirstFrame;
 };
 } // namespace ECS

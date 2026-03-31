@@ -2,6 +2,7 @@
 #include "ecs_pch.h"
 #include "ecs_type.h"
 #include "query.h"
+#include "type_info.h"
 
 namespace ECS
 {
@@ -50,6 +51,7 @@ struct EntityDeferredCommand
     AddCommand addCmd;
     RemoveCommand removeCmds;
     CmdMode mode;
+    TypeInfo *typeInfo;
 };
 
 ////////////////////// PhaseDependencyBuilder ///////////////////////
@@ -57,7 +59,7 @@ struct EntityDeferredCommand
 class PhaseDependencyBuilder
 {
 public:
-    PhaseDependencyBuilder(World* world, EntityId baseId);
+    PhaseDependencyBuilder(World *world, EntityId baseId);
 
     PhaseDependencyBuilder &DependedPhase(EntityId eId, const char *name);
 

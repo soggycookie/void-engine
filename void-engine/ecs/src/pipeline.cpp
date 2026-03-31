@@ -28,9 +28,9 @@ void Pipeline::BuildFromBasePhase(EntityId basePhaseId)
 
             PipelineStage stage;
             // SHOULD ONLY HAVE 2 ARCHETYPES HERE
-            for (size_t idx = 0; idx < cr.archetypeStore.count; ++idx)
+            for (size_t idx = 0; idx < cr.archetypes.count; ++idx)
             {
-                Archetype *archetype = cr.archetypeStore[idx];
+                Archetype *archetype = cr.archetypes[idx];
                 int32_t cIdx = archetype->componentSet.Search(EcsSystemId);
 
                 if (cIdx != ComponentSet::NotFoundIdx)

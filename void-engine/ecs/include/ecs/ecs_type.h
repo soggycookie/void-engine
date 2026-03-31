@@ -93,7 +93,7 @@ inline EntityId MakeRelationship(EntityId first, EntityId sec)
 
 class World;
 
-template <typename U>
+template <typename T>
 class TypeInfoBuilder;
 
 struct TypeInfo;
@@ -557,9 +557,9 @@ inline ArchetypeId GetArchetypeId()
 struct ComponentRecord
 {
     EntityId id;
-    Store<Archetype *> archetypeStore;
+    Store<Archetype *> archetypes;
     TypeInfo *typeInfo;
-    Store<EntityId> cachedQueries;
+    Store<EntityId> trackedQueries;
 #ifdef ECS_DEBUG
     char name[32];
 #endif

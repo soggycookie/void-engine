@@ -3,7 +3,11 @@
 #include "ecs_utils.h"
 #include "entity.h"
 #include "internal_component.h"
+#include "pipeline.h"
 #include "query.h"
+#include "type_info.h"
+#include <cassert>
+#include <cstring>
 #include <type_traits>
 
 namespace ECS
@@ -35,7 +39,7 @@ void World::Bootstrap()
 
     // m_systemStore.Init(m_wAllocator);
     m_componentStore.Init(m_wAllocator);
-    m_isDefered = false;
+    m_isDeferred = false;
     m_loopPipeline.Init(this);
 
     RegisterInternalComponents();
@@ -103,84 +107,114 @@ void World::InitDefaultPipelinePhase()
 // Register Type
 // World do this because of letting TypeInfoBuilder do it seem messy
 // return eId to make TypeInfoBuilder map Type -> eId (not work on relationship)
-void World::Register(const TypeInfo &typeInfo, EntityId relationId,
-                     EntityId targetId, const std::string_view first,
-                     const std::string_view second)
+void World::Register(const TypeInfo &typeInfo, EntityId cId,
+                     const std::string_view cName)
 {
     TypeInfo *ti = new (m_wAllocator.Init(sizeof(TypeInfo))) TypeInfo();
     std::memcpy(ti, &typeInfo, sizeof(TypeInfo));
 
-    size_t firstSize = first.size();
-    size_t secondSize = second.size();
+    size_t cNameLen = cName.size();
 
-    // reserve last char for null terminator
-    if (firstSize >= MaxEntityNameLength)
+    if (cNameLen >= MaxEntityNameLength)
     {
-        firstSize = MaxEntityNameLength - 1;
-        secondSize = 0;
-    }
-    else
-    {
-        // minus one for the space between 2 names
-        size_t maxSecondSize = (MaxEntityNameLength - 1) - firstSize - 1;
-
-        if (secondSize > maxSecondSize)
-        {
-            secondSize = maxSecondSize;
-        }
+        cNameLen = MaxEntityNameLength - 1;
     }
 
     char name[MaxEntityNameLength];
-    std::memcpy(name, first.data(), firstSize);
-
-    if (secondSize != 0)
-    {
-        name[firstSize] = ' ';
-        std::memcpy(name + firstSize + 1, second.data(), secondSize);
-        name[firstSize + 1 + secondSize] = '\0';
-    }
-    else
-    {
-        name[firstSize] = '\0';
-    }
+    std::memcpy(name, cName.data(), cNameLen);
+    name[cNameLen] = '\0';
 
     if (m_componentStore.capacity == m_componentStore.count)
     {
         m_componentStore.Grow(m_wAllocator);
     }
 
-    if (ti->IsRelationship())
+    m_componentStore.Add(m_wAllocator, ti->id);
+
+    ComponentRecord cr;
+    cr.id = ti->id;
+    cr.typeInfo = ti;
+
+#ifdef ECS_DEBUG
+    std::memcpy(cr.name, name, std::strlen(name));
+#endif
+
+    m_componentIndex.Insert(ti->id, std::move(cr));
+    m_typeInfos.Insert(ti->id, ti);
+
+    EntityDesc eDesc(ti->id, EcsInvalidId, name);
+
+    if (ti->IsSingleton())
     {
-        ti->cId = MakeRelationship(relationId, targetId);
+        eDesc.Add(m_wAllocator, ti->id, nullptr);
+    }
+
+    ResolveEntityDesc(eDesc);
+}
+
+void World::RegisterRelationship(EntityId relationId, EntityId targetId,
+                                 TypeInfo *relationTi)
+{
+    assert(relationTi);
+    assert(targetId != EcsInvalidId && relationId != EcsInvalidId);
+    assert(IsEntityExist(targetId) && IsEntityExist(relationId));
+
+    EntityId relationshipId = MakeRelationship(relationId, targetId);
+
+    if (m_componentStore.capacity == m_componentStore.count)
+    {
+        m_componentStore.Grow(m_wAllocator);
+    }
+
+    const EcsName &relName = Get<EcsName>(relationId);
+    const EcsName &targetName = Get<EcsName>(targetId);
+
+    size_t relNameSize = std::strlen(relName.name);
+    size_t targetNameSize = std::strlen(targetName.name);
+
+    // reserve last char for null terminator
+    if (relNameSize >= MaxEntityNameLength)
+    {
+        relNameSize = MaxEntityNameLength - 1;
+        targetNameSize = 0;
     }
     else
     {
-        ti->cId = ti->eId;
-        m_componentStore.Add(m_wAllocator, ti->cId);
+        // minus one for the space between 2 names
+        size_t maxSecondSize = (MaxEntityNameLength - 1) - relNameSize - 1;
+
+        if (targetNameSize > maxSecondSize)
+        {
+            targetNameSize = maxSecondSize;
+        }
     }
 
+    char name[MaxEntityNameLength];
+    std::memcpy(name, relName.name, relNameSize);
+
+    if (targetNameSize != 0)
+    {
+        name[relNameSize] = ' ';
+        std::memcpy(name + relNameSize + 1, targetName.name, targetNameSize);
+        name[relNameSize + 1 + targetNameSize] = '\0';
+    }
+    else
+    {
+        name[relNameSize] = '\0';
+    }
+
+    EntityDesc eDesc(EcsInvalidId, 0, name);
+    Entity e = ResolveEntityDesc(eDesc);
+
     ComponentRecord cr;
-    cr.id = ti->eId;
-    cr.typeInfo = ti;
-    cr.archetypeStore.Init(m_wAllocator);
+    cr.id = e.GetFullId();
+    cr.typeInfo = relationTi;
 
 #ifdef ECS_DEBUG
     std::memcpy(cr.name, name, strlen(name));
 #endif
 
-    assert(cr.archetypeStore.store);
-
-    m_componentIndex.Insert(ti->cId, std::move(cr));
-    m_typeInfos.Insert(ti->cId, ti);
-
-    EntityDesc eDesc(ti->eId, 0, name);
-
-    if (ti->IsSingleton())
-    {
-        eDesc.Add(m_wAllocator, ti->cId, nullptr);
-    }
-
-    ResolveEntityDesc(eDesc);
+    m_componentIndex.Insert(relationshipId, std::move(cr));
 }
 
 Entity World::CreateEntity(const char *name, EntityId parent)
@@ -323,11 +357,11 @@ Store<EntityId> World::GetChildren(EntityId eId)
     ComponentRecord &cr = m_componentIndex[relationshipId];
     Store<EntityId> store;
 
-    for (size_t idx = 0; idx < cr.archetypeStore.count; ++idx)
+    for (size_t idx = 0; idx < cr.archetypes.count; ++idx)
     {
-        for (size_t eIdx = 0; eIdx < cr.archetypeStore[idx]->count; ++eIdx)
+        for (size_t eIdx = 0; eIdx < cr.archetypes[idx]->count; ++eIdx)
         {
-            store.Add(m_wAllocator, cr.archetypeStore[idx]->entities[eIdx]);
+            store.Add(m_wAllocator, cr.archetypes[idx]->entities[eIdx]);
         }
     }
 
@@ -375,11 +409,13 @@ Entity World::ResolveEntityDesc(EntityDesc &desc)
     Archetype *destArchetype = r.archetype;
     if (desc.parentId != EcsInvalidId)
     {
+        TypeInfo *childOfTi = m_typeInfos[ComponentTypeId<EcsChildOf>::Id()];
+
         if (!m_componentIndex.ContainsKey(MakeRelationship(
                 ComponentTypeId<EcsChildOf>::Id(), desc.parentId)))
         {
-            TypeInfoBuilder<EcsChildOf> tiBuilder(this);
-            tiBuilder.Relationship(desc.parentId).Register();
+            RegisterRelationship(ComponentTypeId<EcsChildOf>::Id(),
+                                 desc.parentId, childOfTi);
         }
 
         destArchetype = GetOrCreateArchetype_Add(
@@ -529,11 +565,77 @@ void World::AddComponent(EntityId eId, EntityId cId)
     assert(r);
     assert(!(r->archetype->componentSet.Has(cId)));
 
-    Archetype *destArchetype = GetOrCreateArchetype_Add(r->archetype, cId);
+    if (m_isDeferred)
+    {
+        EntityDeferredCommand cmd;
+        cmd.id = eId;
+        cmd.addCmd = AddCommand{cId, nullptr};
+        cmd.mode = AddCmdMode;
+        cmd.typeInfo = ti;
 
-    MoveArchetype_Add(eId, *r, destArchetype);
+        m_deferredCmds.Add(m_wAllocator, cmd);
+    }
+    else
+    {
 
-    ti->hook.onAdd();
+        Archetype *destArchetype = GetOrCreateArchetype_Add(r->archetype, cId);
+
+        MoveArchetype_Add(eId, *r, destArchetype);
+
+        ti->hook.onAdd();
+    }
+}
+
+void World::AddComponent(EntityId eId, EntityId cId, void *data)
+{
+    if (IsEntityVersionOutdated(eId))
+    {
+        assert(0);
+    }
+
+    EntityRecord *r = m_entityIndex.GetPageData(eId);
+    TypeInfo *ti = m_typeInfos[cId];
+
+    assert(ti->IsComponent());
+    assert(!ti->IsSingleton());
+    assert(r);
+    assert(!(r->archetype->componentSet.Has(cId)));
+
+    if (m_isDeferred)
+    {
+        EntityDeferredCommand cmd;
+        cmd.id = eId;
+
+        void *deferredData = m_wAllocator.Alloc(ti->size);
+
+        if (ti->hook.moveCtor)
+        {
+            ti->hook.moveCtor(deferredData, data);
+        }
+        else if (ti->hook.copyCtor)
+        {
+            ti->hook.copyCtor(deferredData, data);
+        }
+        else
+        {
+            std::memcpy(deferredData, data, ti->size);
+        }
+
+        cmd.addCmd = AddCommand{cId, deferredData};
+        cmd.mode = AddCmdMode;
+        cmd.typeInfo = ti;
+
+        m_deferredCmds.Add(m_wAllocator, cmd);
+    }
+    else
+    {
+
+        Archetype *destArchetype = GetOrCreateArchetype_Add(r->archetype, cId);
+
+        MoveArchetype_Add(eId, *r, destArchetype);
+
+        ti->hook.onAdd();
+    }
 }
 
 void World::AddRelationship(EntityId eId, EntityId relationId,
@@ -545,39 +647,29 @@ void World::AddRelationship(EntityId eId, EntityId relationId,
     }
 
     EntityId relationshipId = MakeRelationship(relationId, targetId);
-    TypeInfo *ti = m_typeInfos.GetValue(relationId);
+
+    EntityRecord *r = m_entityIndex.GetPageData(eId);
+    TypeInfo *ti = m_typeInfos[relationId];
 
     assert(ti);
     assert(ti->IsRelation());
-    assert(!ti->IsSingleton());
-
-    if (!m_typeInfos.ContainsKey(relationshipId))
-    {
-        TypeInfoBuilder tiBuilder(this);
-        tiBuilder.Relationship(relationId, targetId).Register();
-    }
-
-    TypeInfo *relationshipTi = m_typeInfos[relationshipId];
-
-    EntityRecord *r = m_entityIndex.GetPageData(eId);
-
     assert(r);
     assert(!r->archetype->componentSet.Has(relationshipId));
+
+    if (!m_componentIndex.ContainsKey(relationshipId))
+    {
+        RegisterRelationship(relationId, targetId, ti);
+    }
 
     if (ti->IsExclusive())
     {
         if (r->archetype->componentSet.HasRelationship(relationId))
         {
-            return;
+            assert(0);
         }
     }
 
-    Archetype *destArchetype =
-        GetOrCreateArchetype_Add(r->archetype, relationshipId);
-
-    MoveArchetype_Add(eId, *r, destArchetype);
-
-    relationshipTi->hook.onAdd();
+    AddInternal(eId, relationshipId, r, ti);
 }
 
 void World::AddTag(EntityId eId, EntityId cId)
@@ -590,9 +682,17 @@ void World::AddTag(EntityId eId, EntityId cId)
     EntityRecord *r = m_entityIndex.GetPageData(eId);
     TypeInfo *ti = m_typeInfos[cId];
 
-    assert(ti->IsTag());
     assert(r);
+    assert(ti);
+    assert(ti->IsTag());
     assert(!r->archetype->componentSet.Has(cId));
+
+    AddInternal(eId, cId, r, ti);
+}
+
+void World::AddInternal(EntityId eId, EntityId cId, EntityRecord *r,
+                        TypeInfo *ti)
+{
     assert(!ti->IsSingleton());
 
     Archetype *destArchetype = GetOrCreateArchetype_Add(r->archetype, cId);
@@ -936,29 +1036,29 @@ Archetype *World::CreateArchetype(ComponentSet &&componentSet)
         RevalidateCachedQuery_ArchetypeFilter(cr, rArchetype, true);
 
         // union pair
-        if (cr.typeInfo->IsRelationship())
+        if (cr.typeInfo->IsRelation())
         {
             ComponentRecord &pCr =
                 m_componentIndex[LO_ENTITY_ID(componentSet[idx])];
 
             RevalidateCachedQuery_ArchetypeFilter(pCr, rArchetype, true);
 
-            if (pCr.archetypeStore.count == pCr.archetypeStore.capacity)
+            if (pCr.archetypes.count == pCr.archetypes.capacity)
             {
-                pCr.archetypeStore.Grow(m_wAllocator);
+                pCr.archetypes.Grow(m_wAllocator);
             }
 
-            pCr.archetypeStore.store[pCr.archetypeStore.count] = rArchetype;
-            ++pCr.archetypeStore.count;
+            pCr.archetypes.store[pCr.archetypes.count] = rArchetype;
+            ++pCr.archetypes.count;
         }
 
-        if (cr.archetypeStore.count == cr.archetypeStore.capacity)
+        if (cr.archetypes.count == cr.archetypes.capacity)
         {
-            cr.archetypeStore.Grow(m_wAllocator);
+            cr.archetypes.Grow(m_wAllocator);
         }
 
-        cr.archetypeStore.store[cr.archetypeStore.count] = rArchetype;
-        ++cr.archetypeStore.count;
+        cr.archetypes.store[cr.archetypes.count] = rArchetype;
+        ++cr.archetypes.count;
     }
 
     m_mappedArchetype.Insert(std::move(componentSet), rArchetype);
@@ -1360,9 +1460,9 @@ void World::RevalidateCachedQuery_ArchetypeFilter(ComponentRecord &cr,
 {
     if (isNewArchetype)
     {
-        for (size_t qIdx = 0; qIdx < cr.cachedQueries.count; ++qIdx)
+        for (size_t qIdx = 0; qIdx < cr.trackedQueries.count; ++qIdx)
         {
-            EcsQuery &q = Get<EcsQuery>(cr.cachedQueries[qIdx]);
+            EcsQuery &q = Get<EcsQuery>(cr.trackedQueries[qIdx]);
             if (q.query->lastSweep_archetype == m_q_revalSweep_archetype)
             {
                 continue;
@@ -1402,6 +1502,8 @@ PhaseDependencyBuilder World::LoopPhase()
 
 void World::Tick()
 {
+    m_isDeferred = true;
+
     if (!m_isFirstFrame)
     {
         Pipeline bootPipeline;
@@ -1418,6 +1520,8 @@ void World::Tick()
     {
         m_loopPipeline.Progress();
     }
+
+    m_isDeferred = false;
 }
 
 void World::Destroy()

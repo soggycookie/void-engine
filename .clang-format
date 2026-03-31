@@ -3,3 +3,4 @@ IndentWidth: 4
 BreakBeforeBraces: Allman
 AlwaysBreakTemplateDeclarations: Yes
 AccessModifierOffset: -4
+AlignConsecutiveMacros: true
