@@ -80,10 +80,10 @@ void GameLayer::OnInit()
     // world->RemoveEntity(e0.GetFullId());
 
     ECS::Entity e = world->CreateEntity("First", e0.GetFullId());
-    e.AddComponent<Position>().Set<Position>({1, 1});
+    world->AssignComponent<Position>(e.GetFullId(), Position{100, 100});
 
     ECS::Entity e1 = world->CreateEntity("Second ", e0.GetFullId());
-    e1.AddComponent<Position>().Set<Position>({555, 123});
+    
 
 
      //ECS::QueryHandle q = world->CreateQuery<ECS::EcsName, ECS::EcsPhase>().

@@ -88,6 +88,18 @@ public:
     template <typename T>
     void AddComponent(EntityId eId);
 
+    template <typename T>
+    void AssignComponent(EntityId eId, T &&data);
+
+    template <typename T>
+    void AssignComponent(EntityId eId, const T &data);
+
+    template <typename T>
+    void AssignRelationship(EntityId eId, EntityId targetId, T &&data);
+
+    template <typename T>
+    void AssignRelationship(EntityId eId, EntityId targetId, const T &data);
+
     template <typename Component>
     void RemoveComponent(EntityId eId);
 
@@ -104,10 +116,15 @@ public:
 
     void AddRelationship(EntityId eId, EntityId relationId, EntityId targetId);
 
-    void AddComponent(EntityId eId, EntityId cId, void *data);
+    void AssignComponent(EntityId eId, EntityId cId, void *data);
 
-    void AddRelationship(EntityId eId, EntityId relationId, EntityId targetId,
-                         void *data);
+    void AssignRelationship(EntityId eId, EntityId relationId,
+                            EntityId targetId, void *data);
+
+    void AssignComponent(EntityId eId, EntityId cId, const void *data);
+
+    void AssignRelationship(EntityId eId, EntityId relationId,
+                            EntityId targetId, const void *data);
 
     void AddTag(EntityId eId, EntityId cId);
 
@@ -149,6 +166,11 @@ public:
 
     void MoveArchetype_Add(EntityId eId, EntityRecord &r,
                            Archetype *destArchetype);
+    void MoveArchetype_Set(EntityId eId, EntityRecord &r,
+                           Archetype *destArchetype, void *data = nullptr);
+    void MoveArchetype_Set(EntityId eId, EntityRecord &r,
+                           Archetype *destArchetype,
+                           const void *data = nullptr);
     void MoveArchetype_Remove(EntityId eId, EntityRecord &r,
                               Archetype *destArchetype);
 

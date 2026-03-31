@@ -58,7 +58,7 @@ TypeInfoBuilder<T> World::Component()
         });
 
     tiBuilder.SetEvent(
-        [](void *dest)
+        [](const void *dest)
         {
             std::cout << "Set component " << GetComponentName<T>() << std::endl;
         });
@@ -145,7 +145,7 @@ TypeInfoBuilder<T> World::Relation()
         });
 
     tiBuilder.SetEvent(
-        [](void *dest)
+        [](const void *dest)
         {
             std::cout << "Set relation " << GetComponentName<T>() << std::endl;
         });
@@ -231,6 +231,34 @@ void World::AddComponent(EntityId eId)
 {
     static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
     AddComponent(eId, ComponentTypeId<T>::Id());
+}
+
+template <typename T>
+void World::AssignComponent(EntityId eId, T &&data)
+{
+    static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
+    AssignComponent(eId, ComponentTypeId<T>::Id(), &data);
+}
+
+template <typename T>
+void World::AssignComponent(EntityId eId, const T &data)
+{
+    static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
+    AssignComponent(eId, ComponentTypeId<T>::Id(), &data);
+}
+
+template <typename T>
+void World::AssignRelationship(EntityId eId, EntityId targetId, T &&data)
+{
+    static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
+    AssignRelationship(eId, ComponentTypeId<T>::Id(), targetId, &data);
+}
+
+template <typename T>
+void World::AssignRelationship(EntityId eId, EntityId targetId, const T &data)
+{
+    static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
+    AssignRelationship(eId, ComponentTypeId<T>::Id(), targetId, &data);
 }
 
 template <typename T>

@@ -13,7 +13,7 @@ using DtorHook = void (*)(void *src);
 
 using AddEventHook = void (*)();
 using RemoveEventHook = void (*)();
-using SetEventHook = void (*)(void *dest);
+using SetEventHook = void (*)(const void *dest);
 
 struct TypeHook
 {
@@ -24,7 +24,7 @@ struct TypeHook
 
     void (*onAdd)();
     void (*onRemove)();
-    void (*onSet)(void *dest);
+    void (*onSet)(const void *dest);
 };
 
 #define COMPONENT_TYPE     (1 << 0)
