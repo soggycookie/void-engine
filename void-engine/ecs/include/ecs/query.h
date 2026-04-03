@@ -373,6 +373,8 @@ struct Query
 
     void FilterEntity(QueryArchetype &qAr, uint32_t eIdx);
 
+    void DeleteResult();
+
     MatchedArchetype IsMatch(Archetype *archeytype);
 
     template <typename... CallbackArgs, size_t... I>
@@ -599,7 +601,7 @@ class SystemCallbackBuilder
 public:
     SystemCallbackBuilder &DependOn(EntityId eId)
     {
-        m_dependOnId = eId;
+        m_phaseId = eId;
 
         return *this;
     }
@@ -617,14 +619,14 @@ private:
     friend class QueryBuilderBase;
 
     SystemCallbackBuilder(Query *query)
-        : m_dependOnId(EcsInvalidId),
+        : m_phaseId(EcsInvalidId),
           QueryCallBackBuilderBase<SystemCallbackBuilder, SystemHandle>(query)
     {
         assert(query);
         query->isCached = true;
     }
 
-    EntityId m_dependOnId;
+    EntityId m_phaseId;
 };
 
 /////////////////////////////// QueryBuilder ///////////////////////////////

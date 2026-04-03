@@ -53,14 +53,8 @@ void QueryArchetype::Delete(WorldAllocator &wAllocator,
 
     if (hi_entityMask)
     {
-        constexpr const uint32_t numBitOfUint32 = 32;
-        int32_t count = std::ceil(CAST(archetype->count, float) /
-                                  CAST(numBitOfUint32, float));
-
-        assert(count > InlineArrayOptimizationCount);
-
         wAllocator.Free(sizeof(uint32_t) *
-                            (count - InlineArrayOptimizationCount),
+                            (maskCapacity - InlineArrayOptimizationCount),
                         hi_entityMask);
     }
 }
@@ -268,7 +262,8 @@ void Query::FilterArchetype()
             anchorTerm.travTarget == EcsAnyId ? 0 : anchorTerm.travTarget);
     }
 
-    const ComponentRecord &anchorCr = world->m_componentIndex[anchorTermId];
+    const ComponentRecord &anchorCr =
+        world->m_componentRecordIndex[anchorTermId];
 
     if (eId != EcsInvalidId)
     {
@@ -286,7 +281,7 @@ void Query::FilterArchetype()
                     EntityId hiId = HI_ENTITY_ID(term.cId);
                     EntityId cId =
                         hiId == EcsAnyId ? LO_ENTITY_ID(term.cId) : term.cId;
-                    ComponentRecord &cr = world->m_componentIndex[cId];
+                    ComponentRecord &cr = world->m_componentRecordIndex[cId];
                     cr.trackedQueries.Add(world->m_wAllocator, eId);
                     break;
                 }
@@ -297,7 +292,7 @@ void Query::FilterArchetype()
                                        ? term.travRelation
                                        : MakeRelationship(term.travRelation,
                                                           term.travTarget);
-                    ComponentRecord &cr = world->m_componentIndex[cId];
+                    ComponentRecord &cr = world->m_componentRecordIndex[cId];
                     cr.trackedQueries.Add(world->m_wAllocator, eId);
                     break;
                 }
@@ -364,7 +359,7 @@ MatchedArchetype Query::IsMatch(Archetype *archetype)
                 }
                 else
                 {
-                    matchedColumns[termIdx] = archetype->componentMap[cIdx];
+                    matchedColumns[termIdx] = archetype->columnMap[cIdx];
                 }
             }
             else if (term.op == NOT)
@@ -419,8 +414,7 @@ MatchedArchetype Query::IsMatch(Archetype *archetype)
                 else
                 {
                     term.validTravTarget = target;
-                    matchedColumns[termIdx] =
-                        targetArchetype->componentMap[cIdx];
+                    matchedColumns[termIdx] = targetArchetype->columnMap[cIdx];
                 }
             }
             else if (term.op == NOT)
@@ -502,7 +496,7 @@ MatchedArchetype Query::IsMatch(Archetype *archetype)
                     {
                         term.validTravTarget = target;
                         matchedColumns[termIdx] =
-                            targetArchetype->componentMap[cIdx];
+                            targetArchetype->columnMap[cIdx];
                         // valid
                         break;
                     }
@@ -568,6 +562,11 @@ MatchedArchetype Query::IsMatch(Archetype *archetype)
     return MatchedArchetype{matchedColumns, isValid};
 }
 
+void Query::DeleteResult()
+{
+    result.Delete(world->m_wAllocator, execCallback.sigCount);
+}
+
 void Query::Destroy()
 {
     assert(world);
@@ -576,7 +575,7 @@ void Query::Destroy()
     world->m_wAllocator.Free(termCount * sizeof(QueryTerm), terms);
     world->m_wAllocator.Free(termCount * sizeof(uint8_t), sortedTermIdx);
 
-    result.Delete(world->m_wAllocator, execCallback.sigCount);
+    DeleteResult();
 }
 
 ///////////////
@@ -587,6 +586,7 @@ void QueryHandle::Execute()
     {
         if (m_query->eId == EcsInvalidId)
         {
+            m_query->DeleteResult();
             // ad-hoc filter
             m_query->FilterArchetype();
 
@@ -635,8 +635,7 @@ void QueryCallbackBuilder::CreateCachedEntity()
             m_query->FilterResultEntity();
         }
 
-        e.AddComponent<EcsQuery>();
-        e.Set<EcsQuery>(EcsQuery{m_query});
+        e.AssignComponent<EcsQuery>(EcsQuery{m_query});
     }
 }
 
@@ -655,23 +654,21 @@ void SystemCallbackBuilder::CreateCachedEntity()
             m_query->FilterResultEntity();
         }
 
-        e.AddComponent<EcsSystem>();
-        e.Set<EcsSystem>(EcsSystem{m_query});
+        e.AssignComponent<EcsSystem>(EcsSystem{m_query});
 
-        if (m_dependOnId == EcsInvalidId)
+        if (m_phaseId == EcsInvalidId)
         {
             assert(0);
         }
         else
         {
-            bool a = m_query->world->HasComponent(m_dependOnId, EcsPhaseId);
-            bool b =
-                m_query->world->HasRelationship(m_dependOnId, EcsDependOnId);
+            bool a = m_query->world->HasComponent(m_phaseId, EcsPhaseId);
+            bool b = m_query->world->HasRelationship(m_phaseId, EcsDependOnId);
 
-            if (m_query->world->HasComponent(m_dependOnId, EcsPhaseId) &&
-                m_query->world->HasRelationship(m_dependOnId, EcsDependOnId))
+            if (m_query->world->HasComponent(m_phaseId, EcsPhaseId) &&
+                m_query->world->HasRelationship(m_phaseId, EcsDependOnId))
             {
-                e.AddRelationship<EcsDependOn>(m_dependOnId);
+                e.AddRelationship<EcsDependOn>(m_phaseId);
             }
             else
             {

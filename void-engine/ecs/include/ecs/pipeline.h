@@ -30,30 +30,6 @@ struct Pipeline
     World *world;
 };
 
-struct AddCommand
-{
-    EntityId cId;
-    void *data;
-};
-
-struct RemoveCommand
-{
-    EntityId cId;
-};
-
-using CmdMode = uint32_t;
-constexpr const uint32_t AddCmdMode = 1;
-constexpr const uint32_t RemoveCmdMode = 0;
-
-struct EntityDeferredCommand
-{
-    EntityId id;
-    AddCommand addCmd;
-    RemoveCommand removeCmds;
-    CmdMode mode;
-    TypeInfo *typeInfo;
-};
-
 ////////////////////// PhaseDependencyBuilder ///////////////////////
 
 class PhaseDependencyBuilder

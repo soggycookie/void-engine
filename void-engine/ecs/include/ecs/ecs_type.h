@@ -58,7 +58,7 @@ constexpr const std::string_view GetComponentName()
     return std::string_view(nullptr, 0);
 }
 
-#define ENTITY_ID_MASK 0xFFFFFFFFULL
+#define ENTITY_ID_MASK  0xFFFFFFFFULL
 #define ENTITY_GEN_MASK 0xFFFFULL
 
 #define LO_ENTITY_ID(x) ((uint32_t)((x) & ENTITY_ID_MASK))
@@ -493,7 +493,7 @@ struct Archetype
     Column *columns;
     EntityId *entities;
     ComponentSet componentSet;
-    int32_t *componentMap;
+    int32_t *columnMap;
     HashMap<EntityId, Archetype *> addEdges;
     HashMap<EntityId, Archetype *> removeEdges;
     Store<TrackedQuery> trackedQueries;
@@ -502,7 +502,7 @@ struct Archetype
     Archetype()
         : id(0), count(0), capacity(0), flags(0), columns(nullptr),
           entities(nullptr), componentSet(), addEdges(), removeEdges(),
-          trackedQueries(), columnCount(0), componentMap()
+          trackedQueries(), columnCount(0), columnMap()
     {
     }
 
@@ -515,7 +515,7 @@ struct Archetype
         columnCount = other.columnCount;
         columns = other.columns;
         entities = other.entities;
-        componentMap = other.componentMap;
+        columnMap = other.columnMap;
         componentSet = std::move(other.componentSet);
         addEdges = std::move(other.addEdges);
         removeEdges = std::move(other.removeEdges);
@@ -534,7 +534,7 @@ struct Archetype
         columnCount = other.columnCount;
         columns = other.columns;
         entities = other.entities;
-        componentMap = other.componentMap;
+        columnMap = other.columnMap;
         componentSet = std::move(other.componentSet);
         addEdges = std::move(other.addEdges);
         removeEdges = std::move(other.removeEdges);

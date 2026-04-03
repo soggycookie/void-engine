@@ -121,7 +121,7 @@ PhaseDependencyBuilder &PhaseDependencyBuilder::DependedPhase(EntityId eId,
                                                               const char *name)
 {
     Entity e = m_world->CreateEntity(eId, name);
-    e.AddTag<EcsPhase>().AddRelationship<EcsDependOn>(m_activePhaseId);
+    e.Patch().AddTag<EcsPhase>().AddRelationship<EcsDependOn>(m_activePhaseId).Flush();
     m_activePhaseId = e.GetFullId();
 
     return *this;

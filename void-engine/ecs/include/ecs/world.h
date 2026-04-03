@@ -43,7 +43,12 @@ public:
     Entity CreateEntity(EntityId id, const char *name = nullptr,
                         EntityId parent = 0);
 
+    EntityBuilder CreateEntityBuilder();
+
     void RemoveEntity(EntityId eId);
+
+    void PatchEntity(EntityPatch &patch);
+    Entity ResolveEntityDesc(EntityDesc &desc);
 
     EntityId GetNewId();
     EntityId GetReusedId();
@@ -62,8 +67,6 @@ public:
     EntityId Parent(EntityId eId);
 
     Store<EntityId> GetChildren(EntityId eId);
-
-    Entity ResolveEntityDesc(EntityDesc &desc);
 
     Archetype *GetEntityArchetype(EntityId eId);
 
@@ -100,7 +103,7 @@ public:
     template <typename T>
     void AssignRelationship(EntityId eId, EntityId targetId, const T &data);
 
-    template <typename Component>
+    template <typename T>
     void RemoveComponent(EntityId eId);
 
     template <typename T>
@@ -182,6 +185,8 @@ public:
     template <typename... T>
     SystemBuilder<T...> CreateSystem();
 
+    void ClearCachedQuery();
+
     enum class EntityRevalidationMode
     {
         ON_ADDED,
@@ -202,6 +207,9 @@ public:
 
     PhaseDependencyBuilder LoopPhase();
 
+    void StartDefer() { m_isDeferred = true; }
+    void EndDefer() { m_isDeferred = false; }
+
     void Tick();
 
     void Destroy();
@@ -211,10 +219,10 @@ public:
     Allocators m_allocators;
     SparseSet<EntityRecord> m_entityIndex;
     SparseSet<Archetype> m_archetypes;
-    HashMap<EntityId, ComponentRecord> m_componentIndex;
+    HashMap<EntityId, ComponentRecord> m_componentRecordIndex;
     HashMap<EntityId, TypeInfo *> m_typeInfos;
     HashMap<ComponentSet, Archetype *>
-        m_mappedArchetype; // value hold a ref to key, does not change the
+        m_setToArchetypes; // value hold a ref to key, does not change the
                            // value's key ref
     Store<EntityId> m_componentStore;
     Store<EntityDeferredCommand> m_deferredCmds;
@@ -226,7 +234,7 @@ public:
 };
 } // namespace ECS
 
-#include "entity_cmd.inl"
+#include "entity.inl"
 #include "query.inl"
 #include "type_info.inl"
 #include "world.inl"
