@@ -437,7 +437,7 @@ struct ComponentSet
 
     void Init(WorldAllocator &wAllocator, uint32_t count)
     {
-        idArr = PTR_CAST(wAllocator.Init(count * sizeof(EntityId)), EntityId);
+        idArr = PTR_CAST(wAllocator.Alloc(count * sizeof(EntityId)), EntityId);
         this->count = count;
     }
 

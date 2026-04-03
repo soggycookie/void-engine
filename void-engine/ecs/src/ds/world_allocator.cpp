@@ -8,17 +8,10 @@ void WorldAllocator::Init()
     m_sparse.Init(nullptr, &m_chunks, WorldAllocDefaultDense, false);
 }
 
-void *WorldAllocator::Init(uint32_t size)
-{
-    uint32_t alignedSize = RoundMinPowerOf2(size, 16);
-
-    BlockAllocator *block = GetOrCreateBalloc(alignedSize);
-
-    return block->Init();
-}
 
 void *WorldAllocator::Calloc(uint32_t size)
 {
+    assert(size != 0);
     uint32_t alignedSize = RoundMinPowerOf2(size, 16);
 
     BlockAllocator *block = GetOrCreateBalloc(alignedSize);
@@ -28,6 +21,7 @@ void *WorldAllocator::Calloc(uint32_t size)
 
 void *WorldAllocator::Alloc(uint32_t size)
 {
+    assert(size != 0);
     uint32_t alignedSize = RoundMinPowerOf2(size, 16);
 
     BlockAllocator *block = GetOrCreateBalloc(alignedSize);
@@ -37,6 +31,7 @@ void *WorldAllocator::Alloc(uint32_t size)
 
 void WorldAllocator::Free(uint32_t size, void *addr)
 {
+    assert(size != 0);
     uint32_t alignedSize = RoundMinPowerOf2(size, 16);
 
     BlockAllocator *block = GetOrCreateBalloc(alignedSize);
@@ -46,8 +41,7 @@ void WorldAllocator::Free(uint32_t size, void *addr)
 
 BlockAllocator *WorldAllocator::GetOrCreateBalloc(uint32_t size)
 {
-    // pack the size into closer
-    //  1 2 3 5
+    assert(size != 0);
     uint64_t id = size / 16;
     id = id / 2 + 1;
 
@@ -88,7 +82,7 @@ void *WorldAllocator::AllocN(uint32_t elementSize, uint32_t capacity,
     //     << block->m_chunkSize << ", chunk count: " << block->m_chunkCount <<
     //     std::endl;
 
-    return block->Init();
+    return block->Alloc();
 }
 
 void *WorldAllocator::CallocN(uint32_t elementSize, uint32_t capacity,
@@ -108,6 +102,23 @@ void *WorldAllocator::CallocN(uint32_t elementSize, uint32_t capacity,
     //     std::endl;
 
     return block->Calloc();
+}
+
+void WorldAllocator::Destroy()
+{
+    for (uint32_t bIdx = 0; bIdx <= m_sparse.GetCount(); bIdx++)
+    {
+        BlockAllocator *ba = m_sparse.GetPageData(
+            m_sparse.GetId(bIdx));
+        
+        if(ba)
+        {
+            ba->Destroy();
+        }
+    }
+
+    m_sparse.Destroy();
+    m_chunks.Destroy();
 }
 
 } // namespace ECS

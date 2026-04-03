@@ -148,14 +148,14 @@ void SparseSet<T>::AllocPageData(SparsePage<T> *page)
 
     if (m_pageAllocator)
     {
-        page->data = PTR_CAST(m_pageAllocator->Init(), T);
+        page->data = PTR_CAST(m_pageAllocator->Alloc(), T);
     }
     else
     {
         if (m_allocator)
         {
             page->data =
-                PTR_CAST(m_allocator->Init(sizeof(T) * SparsePageCount), T);
+                PTR_CAST(m_allocator->Alloc(sizeof(T) * SparsePageCount), T);
         }
         else
         {

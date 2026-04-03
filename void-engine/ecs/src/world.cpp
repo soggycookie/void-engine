@@ -144,7 +144,7 @@ void World::InitDefaultPipelinePhase()
 void World::Register(const TypeInfo &typeInfo, EntityId cId,
                      const std::string_view cName)
 {
-    TypeInfo *ti = new (m_wAllocator.Init(sizeof(TypeInfo))) TypeInfo();
+    TypeInfo *ti = new (m_wAllocator.Alloc(sizeof(TypeInfo))) TypeInfo();
     std::memcpy(ti, &typeInfo, sizeof(TypeInfo));
 
     size_t cNameLen = cName.size();
@@ -1392,7 +1392,7 @@ void World::GrowArchetype(Archetype &archetype)
 
     // grow entities
     EntityId *newEntities =
-        PTR_CAST(m_wAllocator.Init(sizeof(EntityId) * newCapacity), EntityId);
+        PTR_CAST(m_wAllocator.Alloc(sizeof(EntityId) * newCapacity), EntityId);
 
     std::memcpy(newEntities, archetype.entities,
                 sizeof(EntityId) * archetype.capacity);
@@ -1406,7 +1406,7 @@ void World::GrowArchetype(Archetype &archetype)
     {
         Column &col = archetype.columns[idx];
         TypeInfo *ti = col.typeInfo;
-        void *newColData = m_wAllocator.Init(ti->size * newCapacity);
+        void *newColData = m_wAllocator.Alloc(ti->size * newCapacity);
 
         if (ti->hook.moveCtor || ti->hook.copyCtor)
         {
@@ -1471,7 +1471,7 @@ void World::SwapBack(EntityRecord &r)
         void *swap = OFFSET(col.data, ti.size * r.row);
         void *back = OFFSET(col.data, ti.size * (archetype.count - 1));
 
-        void *temp = m_wAllocator.Init(ti.size);
+        void *temp = m_wAllocator.Alloc(ti.size);
 
         if (ti.hook.moveCtor)
         {
@@ -1519,9 +1519,9 @@ Archetype *World::CreateArchetype(ComponentSet &&componentSet)
     archetype.removeEdges.Init(&m_wAllocator, DefaultArchetypeCapacity);
 
     archetype.columns = PTR_CAST(
-        m_wAllocator.Init(sizeof(Column) * componentSet.count), Column);
+        m_wAllocator.Alloc(sizeof(Column) * componentSet.count), Column);
     archetype.entities =
-        PTR_CAST(m_wAllocator.Init(sizeof(EntityId) * DefaultArchetypeCapacity),
+        PTR_CAST(m_wAllocator.Alloc(sizeof(EntityId) * DefaultArchetypeCapacity),
                  EntityId);
     archetype.columnMap = PTR_CAST(
         m_wAllocator.Calloc(sizeof(int32_t) * componentSet.count * 2), int32_t);
@@ -1536,7 +1536,7 @@ Archetype *World::CreateArchetype(ComponentSet &&componentSet)
         {
             archetype.columns[dataColCounter].typeInfo = ti;
             archetype.columns[dataColCounter].data =
-                m_wAllocator.Init(ti->size * DefaultArchetypeCapacity);
+                m_wAllocator.Alloc(ti->size * DefaultArchetypeCapacity);
 
             archetype.columnMap[idx] = dataColCounter;
             archetype.columnMap[componentSet.count + dataColCounter] = idx;
@@ -2334,6 +2334,13 @@ void World::Destroy()
 
         for (size_t cIdx = 0; cIdx < archetype->columnCount; cIdx++)
         {
+            int32_t colIdx = archetype->columnMap[cIdx];
+
+            if(colIdx == ComponentSet::NotFoundIdx)
+            {
+                continue;
+            }
+
             Column &col = archetype->columns[cIdx];
             TypeInfo &ti = *col.typeInfo;
 
@@ -2363,8 +2370,6 @@ void World::Destroy()
     m_archetypes.Destroy();
     m_entityIndex.Destroy();
 
-    // NOTE: should clear the data if keeping metadata between world is
-    // favorable
     m_componentRecordIndex.Destroy();
 
     m_setToArchetypes.Destroy();
@@ -2373,23 +2378,6 @@ void World::Destroy()
     m_allocators.archetypes.Destroy();
     m_allocators.queries.Destroy();
     m_componentStore.Destroy(m_wAllocator);
-
-    // for (uint32_t sIdx = 0; sIdx < m_systemStore.count; sIdx++)
-    //{
-    //     SystemCallback &sc = m_systemStore.store[sIdx];
-    //     ArchetypeLinkedList *head = sc.archetypeList;
-
-    //    while (head->archetype)
-    //    {
-    //        ArchetypeLinkedList *freeNode = head;
-    //        head = head->next;
-
-    //        ArchetypeLinkedList::Free(m_wAllocator, freeNode);
-    //    }
-
-    //    sc.componentSet.Destroy(m_wAllocator);
-    //}
-    // m_systemStore.Destroy(m_wAllocator);
 
     for (uint32_t bIdx = 1; bIdx <= m_wAllocator.m_sparse.GetCount(); bIdx++)
     {

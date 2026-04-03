@@ -18,7 +18,6 @@ class WorldAllocator
 public:
     void Init();
 
-    void *Init(uint32_t totalSize);
     void *AllocN(uint32_t elementSize, uint32_t capacity,
                  uint32_t &expandedCapacity);
     void *CallocN(uint32_t elementSize, uint32_t capacity,
@@ -53,6 +52,8 @@ public:
     void Free(uint32_t size, void *addr);
 
     BlockAllocator *GetOrCreateBalloc(uint32_t size);
+
+    void Destroy();
 
 public:
     BlockAllocator m_chunks;

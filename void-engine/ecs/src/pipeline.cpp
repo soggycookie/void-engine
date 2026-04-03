@@ -21,10 +21,10 @@ void Pipeline::BuildFromBasePhase(EntityId basePhaseId)
         EntityId id = basePhaseId;
         EntityId rel = MakeRelationship(EcsDependOnId, id);
         bool loop = true;
-        while (world->m_componentIndex.ContainsKey(rel) && loop)
+        while (world->m_componentRecordIndex.ContainsKey(rel) && loop)
         {
             loop = false;
-            ComponentRecord &cr = world->m_componentIndex[rel];
+            ComponentRecord &cr = world->m_componentRecordIndex[rel];
 
             PipelineStage stage;
             // SHOULD ONLY HAVE 2 ARCHETYPES HERE
@@ -35,7 +35,7 @@ void Pipeline::BuildFromBasePhase(EntityId basePhaseId)
 
                 if (cIdx != ComponentSet::NotFoundIdx)
                 {
-                    int32_t colIdx = archetype->componentMap[cIdx];
+                    int32_t colIdx = archetype->columnMap[cIdx];
 
                     assert(colIdx != ComponentSet::NotFoundIdx);
 

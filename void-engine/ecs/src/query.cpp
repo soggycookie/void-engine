@@ -9,7 +9,7 @@
 namespace ECS
 {
 
-///////////////////////// Matched Archetype ////////////////////////////
+///////////////////////// QueryArchetype ////////////////////////////
 
 void QueryArchetype::SetMatchedColumnIdx(WorldAllocator &wAllocator,
                                          int32_t *mappedCols, uint32_t count)
@@ -578,13 +578,13 @@ void Query::Destroy()
     DeleteResult();
 }
 
-///////////////
+///////////////////////// QueryHandle /////////////////////////
 
 void QueryHandle::Execute()
 {
     if (m_query)
     {
-        if (m_query->eId == EcsInvalidId)
+        if (!m_query->isCached)
         {
             m_query->DeleteResult();
             // ad-hoc filter
@@ -606,7 +606,7 @@ void QueryHandle::Destroy()
     {
         m_query->Destroy();
 
-        if (m_query->eId != EcsInvalidId)
+        if (m_query->isCached)
         {
             m_query->world->RemoveEntity(m_query->eId);
         }

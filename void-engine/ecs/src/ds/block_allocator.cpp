@@ -12,26 +12,6 @@ void BlockAllocator::Init(uint32_t size)
     m_chunkHead = nullptr;
 }
 
-void *BlockAllocator::Init()
-{
-    if (m_chunkCount <= MinChunkCount)
-    {
-        return std::malloc(m_chunkSize);
-    }
-
-    if (!m_chunkHead)
-    {
-        m_chunkHead = CreateBlock();
-        assert(m_chunkHead && "Chunk Head is null!");
-    }
-
-    auto chunk = m_chunkHead;
-    m_chunkHead = m_chunkHead->next;
-    ++m_allocCount;
-
-    return chunk;
-}
-
 void *BlockAllocator::Calloc()
 {
     if (m_chunkCount <= MinChunkCount)
