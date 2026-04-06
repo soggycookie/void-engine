@@ -71,8 +71,6 @@ void Pipeline::BuildFromBasePhase(EntityId basePhaseId)
 
                 stages.Add(world->m_wAllocator, stage);
             }
-
-
         }
     }
     else
@@ -107,7 +105,7 @@ void Pipeline::Destroy()
 
 ///////////////// PhaseDependencyBuilder //////////////////
 
-PhaseDependencyBuilder::PhaseDependencyBuilder(World* world, EntityId baseId)
+PhaseDependencyBuilder::PhaseDependencyBuilder(World *world, EntityId baseId)
     : m_baseId(baseId), m_activePhaseId(baseId), m_world(world)
 {
     if (!m_world->HasComponent(m_baseId, EcsPhaseId) ||
@@ -120,8 +118,10 @@ PhaseDependencyBuilder::PhaseDependencyBuilder(World* world, EntityId baseId)
 PhaseDependencyBuilder &PhaseDependencyBuilder::DependedPhase(EntityId eId,
                                                               const char *name)
 {
-    Entity e = m_world->CreateEntity(eId, name);
-    e.Patch().AddTag<EcsPhase>().AddRelationship<EcsDependOn>(m_activePhaseId).Flush();
+    Entity e = m_world->CreateEntity(eId, name)
+                   .AddTag<EcsPhase>()
+                   .AddRelationship<EcsDependOn>(m_activePhaseId)
+                   .Build();
     m_activePhaseId = e.GetFullId();
 
     return *this;

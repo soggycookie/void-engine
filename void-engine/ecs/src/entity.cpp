@@ -22,8 +22,6 @@ EntityBuilder &EntityBuilder::Name(const char *name)
         return *this;
     }
 
-    m_setName = true;
-
     ComponentRecord &cr = m_world->m_componentRecordIndex[EcsNameId];
     TypeInfo *ti = cr.typeInfo;
 
@@ -73,20 +71,6 @@ EntityBuilder &EntityBuilder::ChildOf(EntityId parentId)
 
 Entity EntityBuilder::Build()
 {
-    m_patch.eId = m_world->CreateBaseEntity(m_patch.eId).GetFullId();
-
-    if (!m_setName)
-    {
-
-        EcsName eName;
-        std::snprintf(eName.name, MaxEntityNameLength, DefaultEntityName,
-                      LO_ENTITY_ID(m_patch.eId));
-
-        m_patch.Assign(m_world, EcsNameId, &eName);
-    }
-
-    m_patch.AddCmdsSort();
-    m_patch.RemoveCmdsSort();
     m_world->ResolveEntityCommand(m_patch);
     m_patch.addCmds.Destroy(m_world->m_wAllocator);
     m_patch.removeCmds.Destroy(m_world->m_wAllocator);
@@ -183,14 +167,14 @@ void EntityCommand::Remove(World *world, EntityId cId)
 
 void EntityCommand::AddCmdsSort()
 {
-    std::sort(addCmds.store, addCmds.store + addCmds.count,
+    std::sort(addCmds.data, addCmds.data + addCmds.count,
               [](const AddCommand &a, const AddCommand &b)
               { return a.cId < b.cId; });
 }
 
 void EntityCommand::RemoveCmdsSort()
 {
-    std::sort(removeCmds.store, removeCmds.store + removeCmds.count,
+    std::sort(removeCmds.data, removeCmds.data + removeCmds.count,
               [](const RemoveCommand &a, const RemoveCommand &b)
               { return a.cId < b.cId; });
 }
@@ -200,8 +184,6 @@ void EntityCommand::Id(EntityId id) { eId = id; }
 
 void EntityPatcher::Flush()
 {
-    m_patch.AddCmdsSort();
-    m_patch.RemoveCmdsSort();
     m_world->ResolveEntityCommand(m_patch);
     m_patch.addCmds.Destroy(m_world->m_wAllocator);
     m_patch.removeCmds.Destroy(m_world->m_wAllocator);

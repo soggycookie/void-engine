@@ -18,13 +18,20 @@ void GameLayer::OnAttach()
 void GameLayer::OnUpdate(double dt)
 {
 
-    ECS::EcsInputManager &input = world->GetSingleton<ECS::EcsInputManager>();
+    EcsInputManager &input = world->GetSingleton<EcsInputManager>();
     input.Set(Input().PrevMask(), Input().CurrMask(),
               Input().GetMousePos().mouseX, Input().GetMousePos().mouseY);
     
+    if(input.IsBtnReleased(KeyCode::SPACE))
+    {
+        std::cout << "SPACE RELEASED" << std::endl;
+    }
+
     ECS::EcsTime &time = world->GetSingleton<ECS::EcsTime>();
     time.deltaTime = m_app->GetDeltaTime();
     time.applicationTime = m_app->GetApplicationTime();
+
+    //std::cout << "--------------- Frame " << frameCount << " -----------------" << std::endl;
 
     world->Tick();
     // std::cout << "Mouse Pos ECS: " << input.GetMousePos().mouseX <<
@@ -33,6 +40,9 @@ void GameLayer::OnUpdate(double dt)
     Renderer::NewFrame();
     Renderer::Draw(mesh, material);
     Renderer::EndFrame();
+
+    frameCount++;
+
 }
 
 void GameLayer::OnDetach()
@@ -63,26 +73,27 @@ void GameLayer::OnInit()
         L"asset//shader//square_demo.hlsl");
     material = ResourceSystem::Create<MaterialResource>(
         ResourceSystem::GenerateGUID(), shader->GetGUID());
-
+     
 
     world = ECS::CreateWorld();
+    world->Component<EcsInputManager>().Singleton().Register();
     world->Component<Position>().Register();
     world->Component<Velocity>().Register();
     world->Tag<NPC>().Register();
+    world->InitDefaultPipelinePhase();
+    //world->BootstrapPhase().DependedPhase(300, "OnStart");
+    //world->LoopPhase().DependedPhase(301, "OnUpdate").DependedPhase(302, "OnPostUpdate");
 
-    world->BootstrapPhase().DependedPhase(300, "OnStart");
-    world->LoopPhase().DependedPhase(301, "OnUpdate").DependedPhase(302, "OnPostUpdate");
-
-    ECS::Entity e0 = world->CreateEntity("Test subject", 0);
+    ECS::Entity e0 = world->CreateEntity("Test subject", 0).Build();
     // e0.AddComponent<Velocity>().Set<Velocity>(Velocity{0.5f, 0.5f});
     //  std::cout << e0.GetLowId() << std::endl;
 
     // world->RemoveEntity(e0.GetFullId());
 
-    ECS::Entity e = world->CreateEntity("First", e0.GetFullId());
+    ECS::Entity e = world->CreateEntity("First", e0.GetFullId()).Build();
     world->AssignComponent<Position>(e.GetFullId(), Position{100, 100});
 
-    ECS::Entity e1 = world->CreateEntity("Second ", e0.GetFullId());
+    ECS::Entity e1 = world->CreateEntity("Second ", e0.GetFullId()).Build();
     
 
 
@@ -97,7 +108,7 @@ void GameLayer::OnInit()
      //q.Execute();
 
     world->CreateSystem<Position>().
-        DependOn(301).
+        DependOn(ECS::EcsOnUpdateId).
         Each(+[](const ECS::QueryIter& iter ,Position& pos)
              {
                 ECS::EcsTime& time = iter.world->GetSingleton<ECS::EcsTime>();
@@ -105,12 +116,22 @@ void GameLayer::OnInit()
                 pos.y -= time.deltaTime;
              });
 
-    world->CreateSystem<Position>().
-        DependOn(302).
-        Each(+[](const Position& pos)
+    world->CreateSystem<ECS::EcsName, Position>().
+        DependOn(ECS::EcsOnPostUpdateId).
+        Each(+[](const ECS::QueryIter& iter , const ECS::EcsName& name,const Position& pos)
              {
-                std::cout << "Position: x = " << pos.x << ", y = " << pos.y << std::endl; 
+                static uint32_t i = 0;
+                std::cout << name.name << " has position: x = " << pos.x << ", y = " << pos.y << std::endl; 
+                auto& im = iter.world->GetSingleton<EcsInputManager>();
+
+                if(im.IsBtnReleased(KeyCode::SPACE))
+                {
+                    char n[32];
+                     std::snprintf(n, 32, "Deferred Entity %u", i++);
+                    iter.world->CreateEntity(n).AssignComponent<Position>(Position{1000, 1000}).Build();
+                }
              });
+
 
     //ECS::QueryHandle q = world->CreateQuery<Position>().Cache(0).
     //    Filter(+[](const Position&p){ return p.x > 20 && p.y < 300;}, nullptr).

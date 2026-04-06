@@ -143,16 +143,18 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     //////////////////////////////////////////////////////////////
     //                 KEYBOARD EVENT
     //////////////////////////////////////////////////////////////
+    case WM_SYSKEYDOWN:
     case WM_KEYDOWN:
     {
-        VoidKeyButton button = MapVkToVoidKey(wParam);
+        KeyCode button = Win32VKToKeyCode(wParam, lParam);
         InputEvent e(InputEventType::KEY_PRESSED, button);
         window->DispatchInputEvent(e);
         break;
     }
+    case WM_SYSKEYUP:
     case WM_KEYUP:
     {
-        VoidKeyButton button = MapVkToVoidKey(wParam);
+        KeyCode button = Win32VKToKeyCode(wParam, lParam);
         InputEvent e(InputEventType::KEY_RELEASED, button);
         window->DispatchInputEvent(e);
         break;
@@ -168,14 +170,14 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
         int32_t x = LOWORD(lParam);
         int32_t y = HIWORD(lParam);
 
-        InputEvent e(InputEventType::MOUSE_MOVE, VoidKeyButton::NONE, x, y);
+        InputEvent e(InputEventType::MOUSE_MOVE, KeyCode::NONE, x, y);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_LBUTTONDOWN:
     {
-        InputEvent e(InputEventType::MOUSE_PRESSED, VoidKeyButton::LEFT_BTN, 0,
+        InputEvent e(InputEventType::MOUSE_PRESSED, KeyCode::MOUSE_LEFT, 0,
                      0);
         window->DispatchInputEvent(e);
 
@@ -183,7 +185,7 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     }
     case WM_MBUTTONDOWN:
     {
-        InputEvent e(InputEventType::MOUSE_PRESSED, VoidKeyButton::MIDDLE_BTN,
+        InputEvent e(InputEventType::MOUSE_PRESSED, KeyCode::MOUSE_MIDDLE,
                      0, 0);
         window->DispatchInputEvent(e);
 
@@ -191,7 +193,7 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     }
     case WM_RBUTTONDOWN:
     {
-        InputEvent e(InputEventType::MOUSE_PRESSED, VoidKeyButton::RIGHT_BTN, 0,
+        InputEvent e(InputEventType::MOUSE_PRESSED, KeyCode::MOUSE_RIGHT, 0,
                      0);
         window->DispatchInputEvent(e);
 
@@ -199,7 +201,7 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     }
     case WM_LBUTTONUP:
     {
-        InputEvent e(InputEventType::MOUSE_RELEASED, VoidKeyButton::LEFT_BTN, 0,
+        InputEvent e(InputEventType::MOUSE_RELEASED, KeyCode::MOUSE_LEFT, 0,
                      0);
         window->DispatchInputEvent(e);
 
@@ -207,7 +209,7 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     }
     case WM_MBUTTONUP:
     {
-        InputEvent e(InputEventType::MOUSE_RELEASED, VoidKeyButton::MIDDLE_BTN,
+        InputEvent e(InputEventType::MOUSE_RELEASED, KeyCode::MOUSE_MIDDLE,
                      0, 0);
         window->DispatchInputEvent(e);
 
@@ -215,7 +217,7 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     }
     case WM_RBUTTONUP:
     {
-        InputEvent e(InputEventType::MOUSE_RELEASED, VoidKeyButton::RIGHT_BTN,
+        InputEvent e(InputEventType::MOUSE_RELEASED, KeyCode::MOUSE_RIGHT,
                      0, 0);
         window->DispatchInputEvent(e);
 
@@ -234,16 +236,16 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     case WM_XBUTTONDOWN:
     {
         int16_t btn = HIWORD(wParam);
-        VoidKeyButton voidBtn;
+        KeyCode voidBtn;
 
         if (btn == XBUTTON1)
         {
-            voidBtn = VoidKeyButton::X_BUTTON_1;
+            voidBtn = KeyCode::MOUSE_X1;
             std::cout << "x button 1" << std::endl;
         }
         else
         {
-            voidBtn = VoidKeyButton::X_BUTTON_2;
+            voidBtn = KeyCode::MOUSE_X2;
             std::cout << "x button 2" << std::endl;
         }
 
@@ -255,15 +257,15 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     case WM_XBUTTONUP:
     {
         int16_t btn = HIWORD(wParam);
-        VoidKeyButton voidBtn;
+        KeyCode voidBtn;
 
         if (btn == XBUTTON1)
         {
-            voidBtn = VoidKeyButton::X_BUTTON_1;
+            voidBtn = KeyCode::MOUSE_X1;
         }
         else
         {
-            voidBtn = VoidKeyButton::X_BUTTON_2;
+            voidBtn = KeyCode::MOUSE_X2;
         }
 
         InputEvent e(InputEventType::MOUSE_RELEASED, voidBtn, 0, 0);

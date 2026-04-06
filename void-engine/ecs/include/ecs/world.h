@@ -36,9 +36,9 @@ public:
 
     Entity CreateBaseEntity(EntityId eId);
 
-    Entity CreateEntity(const char *name = nullptr, EntityId parent = 0);
-    Entity CreateEntity(char *name, EntityId parent = 0);
-    Entity CreateEntity(EntityId id, const char *name = nullptr,
+    EntityBuilder CreateEntity(const char *name = nullptr, EntityId parent = 0);
+    EntityBuilder CreateEntity(char *name, EntityId parent = 0);
+    EntityBuilder CreateEntity(EntityId id, const char *name = nullptr,
                         EntityId parent = 0);
 
     EntityBuilder CreateEntityBuilder();
@@ -200,9 +200,10 @@ public:
     PhaseDependencyBuilder LoopPhase();
 
     void StartDefer() { m_isDeferred = true; }
-    void EndDefer() { m_isDeferred = false; }
+    void EndDefer() { m_isDeferred = false; FlushDeferredCmd();}
 
     void Tick();
+    void FlushDeferredCmd();
 
     void Destroy();
 

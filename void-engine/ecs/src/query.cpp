@@ -641,7 +641,12 @@ void QueryCallbackBuilder::CreateCachedEntity()
 {
     if (m_query->isCached)
     {
-        Entity e = m_query->world->CreateEntity(m_query->eId);
+        Entity e = m_query->world->CreateEntityBuilder()
+            .Id(m_query->eId)
+            .AssignComponent<EcsQuery>(EcsQuery{m_query})
+            .Build();
+        m_query->AddRef();
+
         m_query->eId = e.GetFullId();
         m_query->FindMatchArchetype();
 
@@ -649,9 +654,6 @@ void QueryCallbackBuilder::CreateCachedEntity()
         {
             m_query->FilterResult();
         }
-
-        e.AssignComponent<EcsQuery>(EcsQuery{m_query});
-        m_query->AddRef();
     }
 }
 
@@ -661,7 +663,12 @@ void SystemCallbackBuilder::CreateCachedEntity()
 {
     if (m_query->isCached)
     {
-        Entity e = m_query->world->CreateEntity(m_query->eId);
+        Entity e = m_query->world->CreateEntityBuilder()
+            .Id(m_query->eId)
+            .AssignComponent<EcsSystem>(EcsSystem{m_query})
+            .Build();
+        m_query->AddRef();
+
         m_query->eId = e.GetFullId();
         m_query->FindMatchArchetype();
 
@@ -669,9 +676,6 @@ void SystemCallbackBuilder::CreateCachedEntity()
         {
             m_query->FilterResult();
         }
-
-        e.AssignComponent<EcsSystem>(EcsSystem{m_query});
-        m_query->AddRef();
 
         if (m_phaseId == EcsInvalidId)
         {

@@ -8,49 +8,27 @@
 namespace VoidEngine
 {
 
-bool InputManager::IsBtnPressed(VoidKeyButton btn)
+bool InputManager::IsBtnPressed(KeyCode btn) const
 {
-    assert(btn != VoidKeyButton::NONE);
+    assert(btn != KeyCode::NONE);
     return m_prevInputState[static_cast<uint16_t>(btn)] == 0 &&
            m_currInputState[static_cast<uint16_t>(btn)] == 1;
 }
 
-bool InputManager::IsBtnReleased(VoidKeyButton btn)
+bool InputManager::IsBtnReleased(KeyCode btn) const
 {
-    assert(btn != VoidKeyButton::NONE);
+    assert(btn != KeyCode::NONE);
     return m_prevInputState[static_cast<uint16_t>(btn)] == 1 &&
            m_currInputState[static_cast<uint16_t>(btn)] == 0;
 }
 
-bool InputManager::IsBtnHeld(VoidKeyButton btn)
+bool InputManager::IsBtnHeld(KeyCode btn) const
 {
-    assert(btn != VoidKeyButton::NONE);
+    assert(btn != KeyCode::NONE);
     return m_prevInputState[static_cast<uint16_t>(btn)] == 1 &&
            m_currInputState[static_cast<uint16_t>(btn)] == 1;
 }
 
-bool InputManager::IsBtnPressed(char c)
-{
-    VoidKeyButton btn = VoidKeyButton::NONE;
-    switch (c)
-    {
-    default:
-        break;
-    }
-
-    return IsBtnPressed(btn);
-}
-bool InputManager::IsBtnReleased(char c)
-{
-    VoidKeyButton btn = VoidKeyButton::NONE;
-    switch (c)
-    {
-    default:
-        break;
-    }
-
-    return IsBtnReleased(btn);
-}
 
 void InputManager::AddEvent(const InputEvent &e)
 {
@@ -74,7 +52,19 @@ void InputManager::AddEvent(const InputEvent &e)
     }
     case InputEventCategory::KEYBOARD:
     {
-        m_currInputState.set(static_cast<uint16_t>(e.KeyBtn()));
+        switch(e.Type())
+        {
+            case InputEventType::KEY_PRESSED:
+            {
+                m_currInputState.set(static_cast<uint16_t>(e.KeyBtn()));
+                break;   
+            }
+            case InputEventType::KEY_RELEASED:
+            {
+                m_currInputState.reset(static_cast<uint16_t>(e.KeyBtn()));
+                break;               
+            }
+        }
 
         break;
     }
@@ -87,6 +77,5 @@ void InputManager::Clear()
     m_frameInputCount = 0;
 
     m_prevInputState = m_currInputState;
-    m_currInputState.reset();
 }
 } // namespace VoidEngine

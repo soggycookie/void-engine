@@ -19,7 +19,6 @@ constexpr EntityId EcsDisabledId = 11;
 constexpr EntityId EcsInheritId = 12;
 constexpr EntityId EcsIsAId = 13;
 
-constexpr EntityId EcsInputManagerId = 100;
 constexpr EntityId EcsTimeId = 101;
 
 // Entity id support component

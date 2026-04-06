@@ -117,31 +117,31 @@ EntityId ComponentTypeId<T>::id = 0;
 template <typename T>
 struct Store
 {
-    T *store;
+    T *data;
     uint32_t count;
     uint32_t capacity;
 
-    Store() : store(nullptr), count(0), capacity(0)
+    Store() : data(nullptr), count(0), capacity(0)
     {
         static_assert(std::is_destructible_v<T>);
     }
 
     Store(Store &&other) noexcept
     {
-        store = other.store;
+        data = other.data;
         count = other.count;
         capacity = other.capacity;
 
-        other.store = nullptr;
+        other.data = nullptr;
     }
 
     Store &operator=(Store &&other) noexcept
     {
-        store = other.store;
+        data = other.data;
         count = other.count;
         capacity = other.capacity;
 
-        other.store = nullptr;
+        other.data = nullptr;
 
         return *this;
     }
@@ -150,7 +150,7 @@ struct Store
     {
         uint32_t storeCapacity = capacity;
         count = 0;
-        store = PTR_CAST(
+        data = PTR_CAST(
             wAllocator.AllocN(sizeof(T), storeCapacity, storeCapacity), T);
         this->capacity = storeCapacity;
     }
@@ -172,26 +172,26 @@ struct Store
         {
             for (size_t idx = 0; idx < count; idx++)
             {
-                new (&newStore[idx]) T(std::move(store[idx]));
-                store[idx].~T();
+                new (&newStore[idx]) T(std::move(data[idx]));
+                data[idx].~T();
             }
         }
         else if (std::is_copy_constructible_v<T>)
         {
             for (size_t idx = 0; idx < count; idx++)
             {
-                new (&newStore[idx]) T(store[idx]);
-                store[idx].~T();
+                new (&newStore[idx]) T(data[idx]);
+                data[idx].~T();
             }
         }
         else
         {
-            std::memcpy(newStore, store, sizeof(T) * count);
+            std::memcpy(newStore, data, sizeof(T) * count);
         }
 
-        wAllocator.Free(sizeof(T) * capacity, store);
+        wAllocator.Free(sizeof(T) * capacity, data);
 
-        store = newStore;
+        data = newStore;
         capacity = newStoreCapacity;
     }
 
@@ -206,15 +206,24 @@ struct Store
             Grow(wAllocator);
         }
 
-        new (&store[count]) T(std::move(element));
+        new (&data[count]) T(std::move(element));
         ++count;
+    }
+
+    void Clear()
+    {
+        for (size_t idx = 0; idx < count; ++idx)
+        {
+            data[idx].~T();
+        }
+        count = 0;
     }
 
     void Destroy(WorldAllocator &wAllocator)
     {
-        if (store)
+        if (data)
         {
-            wAllocator.Free(sizeof(T) * capacity, store);
+            wAllocator.Free(sizeof(T) * capacity, data);
         }
     }
 
@@ -222,7 +231,7 @@ struct Store
     {
         if (idx < count)
         {
-            return store[idx];
+            return data[idx];
         }
         assert(0 && "Index out of bound!");
     }
@@ -231,7 +240,7 @@ struct Store
     {
         if (idx < count)
         {
-            return store[idx];
+            return data[idx];
         }
         assert(0 && "Index out of bound!");
     }

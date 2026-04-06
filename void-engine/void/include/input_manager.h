@@ -18,12 +18,12 @@ public:
         m_prevInputState.reset();
     }
 
-    bool IsBtnPressed(VoidKeyButton btn);
-    bool IsBtnReleased(VoidKeyButton btn);
-    bool IsBtnHeld(VoidKeyButton btn);
+    bool IsBtnPressed(KeyCode btn) const;
+    bool IsBtnReleased(KeyCode btn) const;
+    bool IsBtnHeld(KeyCode btn) const;
 
-    bool IsBtnPressed(char c);
-    bool IsBtnReleased(char c);
+    //bool IsBtnPressed(char c);
+    //bool IsBtnReleased(char c);
 
     const std::bitset<256> &PrevMask() const { return m_prevInputState; }
     const std::bitset<256> &CurrMask() const { return m_currInputState; }

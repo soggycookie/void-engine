@@ -33,12 +33,31 @@ enum class EntityCommandMode
 
 struct EntityCommand
 {
+    EntityCommand() = default;
+
+    EntityCommand(EntityCommand &&other)
+    {
+        eId = other.eId;
+        addCmds = std::move(other.addCmds);
+        removeCmds = std::move(other.removeCmds);
+        mode = other.mode;
+    }
+
+    EntityCommand &operator=(EntityCommand &&other)
+    {
+        eId = other.eId;
+        addCmds = std::move(other.addCmds);
+        removeCmds = std::move(other.removeCmds);
+        mode = other.mode;
+
+        return *this;
+    }
+
     void Add(World *world, EntityId cId);
 
     void Assign(World *world, EntityId cId, void *data);
 
     void Assign(World *world, EntityId cId, const void *data);
-
     void Remove(World *world, EntityId cId);
 
     void AddCmdsSort();
@@ -56,14 +75,14 @@ template <typename Derived>
 class EntityMutator
 {
 public:
-    EntityMutator(World* world) : m_world(world){}
+    EntityMutator(World *world) : m_world(world) {}
 
     template <typename T>
     Derived &AddComponent()
     {
         static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
         m_patch.Add(m_world, ComponentTypeId<T>::Id());
-        return Self();    
+        return Self();
     }
 
     template <typename T>
@@ -71,7 +90,7 @@ public:
     {
         static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
         m_patch.Add(m_world, ComponentTypeId<T>::Id());
-        return Self();        
+        return Self();
     }
 
     template <typename T>
@@ -79,8 +98,8 @@ public:
     {
         static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
         m_patch.Add(m_world,
-            MakeRelationship(ComponentTypeId<T>::Id(), targetId));
-        return Self();    
+                    MakeRelationship(ComponentTypeId<T>::Id(), targetId));
+        return Self();
     }
 
     template <typename T>
@@ -88,7 +107,7 @@ public:
     {
         static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
         m_patch.Assign(m_world, ComponentTypeId<T>::Id(), &data);
-        return Self();           
+        return Self();
     }
 
     template <typename T>
@@ -96,42 +115,42 @@ public:
     {
         static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
         m_patch.Assign(m_world, ComponentTypeId<T>::Id(), &data);
-        return Self();      
+        return Self();
     }
 
     Derived &AddComponent(EntityId cId)
     {
         m_patch.Add(m_world, cId);
-        return Self();      
+        return Self();
     }
 
     Derived &AddTag(EntityId cId)
     {
         m_patch.Add(m_world, cId);
-        return Self();      
+        return Self();
     }
 
     Derived &AddRelationship(EntityId cId, EntityId targetId)
     {
-        m_patch.Add(m_world,
-            MakeRelationship(cId, targetId));
-        return Self();        
+        m_patch.Add(m_world, MakeRelationship(cId, targetId));
+        return Self();
     }
 
     Derived &AssignComponent(EntityId cId, void *data)
     {
         m_patch.Assign(m_world, cId, &data);
-        return Self();       
+        return Self();
     }
 
-    Derived &AssignComponent(EntityId cId, const void *data)    
+    Derived &AssignComponent(EntityId cId, const void *data)
     {
         m_patch.Assign(m_world, cId, &data);
-        return Self();       
-    }    
+        return Self();
+    }
 
 private:
     Derived &Self() { return *PTR_CAST(this, Derived); }
+
 protected:
     EntityCommand m_patch;
     World *m_world;
@@ -140,7 +159,8 @@ protected:
 class EntityPatcher : public EntityMutator<EntityPatcher>
 {
 public:
-    EntityPatcher(World *world, EntityId eId) : EntityMutator<EntityPatcher>(world) 
+    EntityPatcher(World *world, EntityId eId)
+        : EntityMutator<EntityPatcher>(world)
     {
         m_patch.Id(eId);
         m_patch.mode = EntityCommandMode::PATCH;
@@ -163,19 +183,17 @@ public:
     {
         static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
         m_patch.Remove(m_world,
-            MakeRelationship(ComponentTypeId<T>::Id(), targetId));
+                       MakeRelationship(ComponentTypeId<T>::Id(), targetId));
         return *this;
     }
 
     void Flush();
-
-
 };
 
 class Entity
 {
 public:
-    explicit Entity( World *world, EntityId id) : m_id(id), m_world(world) {}
+    explicit Entity(World *world, EntityId id) : m_id(id), m_world(world) {}
 
     virtual ~Entity() = default;
 
@@ -240,7 +258,7 @@ private:
 class EntityBuilder : public EntityMutator<EntityBuilder>
 {
 public:
-    EntityBuilder(World *world) : EntityMutator<EntityBuilder>(world), m_setName(false) 
+    EntityBuilder(World *world) : EntityMutator<EntityBuilder>(world)
     {
         m_patch.mode = EntityCommandMode::SPAWN;
     }
@@ -254,8 +272,6 @@ public:
     EntityBuilder &ChildOf(EntityId parentId);
 
     Entity Build();
-private:
-    bool m_setName;
 };
 
 } // namespace ECS
