@@ -62,6 +62,11 @@ TypeInfoBuilder<T> &TypeInfoBuilder<T>::RemoveEvent(RemoveEventHook e)
 template <typename T>
 TypeInfoBuilder<T> &TypeInfoBuilder<T>::SetEvent(SetEventHook e)
 {
+    if (ti.IsTag())
+    {
+        assert(0);
+    }
+
     ti.hook.onSet = e;
 
     return *this;

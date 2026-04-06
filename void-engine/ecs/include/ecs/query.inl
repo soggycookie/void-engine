@@ -151,7 +151,7 @@ CallbackArg Query::GetFilterCallbackArg(const QueryIter &iter,
 }
 
 template <typename... CallbackArgs>
-void Query::ExecutionCallback(void (*cb)(CallbackArgs...), void *ctx)
+void Query::SetExecutionCallback(void (*cb)(CallbackArgs...), void *ctx)
 {
     // no const or ref or both on entity and query iter
     // static_assert(at_most_one_entity<CallbackArgs...>);
@@ -261,7 +261,7 @@ void Query::ExecutionCallback(void (*cb)(CallbackArgs...), void *ctx)
 }
 
 template <typename... CallbackArgs>
-void Query::FilterCallback(bool (*cb)(CallbackArgs...), void *ctx)
+void Query::SetFilterCallback(bool (*cb)(CallbackArgs...), void *ctx)
 {
     isEntityFiltered = true;
 
@@ -659,7 +659,7 @@ QueryCallBackBuilderBase<Derived, Handle> &
 QueryCallBackBuilderBase<Derived, Handle>::Filter(bool (*cb)(CallbackArgs...),
                                                   void *ctx)
 {
-    m_query->FilterCallback(cb, ctx);
+    m_query->SetFilterCallback(cb, ctx);
 
     return *this;
 }
@@ -670,7 +670,7 @@ Handle
 QueryCallBackBuilderBase<Derived, Handle>::Each(void (*cb)(CallbackArgs...),
                                                 void *ctx)
 {
-    m_query->ExecutionCallback(cb, ctx);
+    m_query->SetExecutionCallback(cb, ctx);
 
     Derived &self = *PTR_CAST(this, Derived);
     self.CreateCachedEntity();

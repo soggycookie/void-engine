@@ -1,148 +1,102 @@
 #include "entity.h"
 #include "ecs_type.h"
+#include "internal_component.h"
+#include "internal_component_id.h"
 #include "world.h"
 #include <algorithm>
 
 namespace ECS
 {
-//////////////////////////////// Entity Desc //////////////////////////////////
-
-void EntityDesc::Assign(World *world, EntityId cId, void *data)
-{
-    // USE LOW ENTITY ID BECAUSE RELATIONSHIP CRECORD MIGHT NOT BE AVAILABLE AT
-    // THAT POINT YET
-
-    assert(world);
-    ComponentRecord &cr = world->m_componentRecordIndex[LO_ENTITY_ID(cId)];
-    TypeInfo *ti = cr.typeInfo;
-
-    void *temp = world->m_wAllocator.Alloc(ti->size);
-
-    if (ti->hook.moveCtor)
-    {
-        ti->hook.moveCtor(temp, data);
-    }
-    else if (ti->hook.copyCtor)
-    {
-        ti->hook.copyCtor(temp, data);
-    }
-    else
-    {
-        std::memcpy(temp, data, ti->size);
-    }
-
-    AddCommand cmd;
-    cmd.cId = cId;
-    cmd.data = temp;
-    cmd.type = AddCmdTypeData::ASSIGN_MUT_TYPE;
-    cmd.typeInfo = ti;
-
-    descComponents.Add(world->m_wAllocator, std::move(cmd));
-}
-
-void EntityDesc::Assign(World *world, EntityId cId, const void *data)
-{
-    // USE LOW ENTITY ID BECAUSE RELATIONSHIP CRECORD MIGHT NOT BE AVAILABLE AT
-    // THAT POINT YET
-    assert(world);
-    ComponentRecord &cr = world->m_componentRecordIndex[LO_ENTITY_ID(cId)];
-    TypeInfo *ti = cr.typeInfo;
-
-    void *temp = world->m_wAllocator.Alloc(ti->size);
-
-    if (ti->hook.copyCtor)
-    {
-        ti->hook.copyCtor(temp, data);
-    }
-    else
-    {
-        std::memcpy(temp, data, ti->size);
-    }
-
-    AddCommand cmd;
-    cmd.cId = cId;
-    cmd.data = temp;
-    cmd.type = AddCmdTypeData::ASSIGN_CONST_TYPE;
-    cmd.typeInfo = ti;
-
-    descComponents.Add(world->m_wAllocator, std::move(cmd));
-}
-
-void EntityDesc::Add(World *world, EntityId cId)
-{
-    // USE LOW ENTITY ID BECAUSE RELATIONSHIP CRECORD MIGHT NOT BE AVAILABLE AT
-    // THAT POINT YET
-
-    assert(world);
-    ComponentRecord &cr = world->m_componentRecordIndex[LO_ENTITY_ID(cId)];
-    TypeInfo *ti = cr.typeInfo;
-
-    AddCommand cmd;
-    cmd.cId = cId;
-    cmd.data = nullptr;
-    cmd.type = AddCmdTypeData::ADD_TYPE;
-    cmd.typeInfo = ti;
-
-    descComponents.Add(world->m_wAllocator, std::move(cmd));
-}
-
-void EntityDesc::Sort()
-{
-    std::sort(descComponents.store, descComponents.store + descComponents.count,
-              [](const AddCommand &a, const AddCommand &b)
-              { return a.cId < b.cId; });
-}
 /////////////////////////////// Entity Builder ////////////////////////////////
 
 EntityBuilder &EntityBuilder::Id(EntityId eId)
 {
-    m_desc.eId = eId;
+    m_patch.Id(eId);
     return *this;
 }
+
 EntityBuilder &EntityBuilder::Name(const char *name)
 {
-    m_desc.name = name;
+    if (!name)
+    {
+        return *this;
+    }
+
+    m_setName = true;
+
+    ComponentRecord &cr = m_world->m_componentRecordIndex[EcsNameId];
+    TypeInfo *ti = cr.typeInfo;
+
+    AddCommand cmd;
+
+    size_t nameLen = std::strlen(name);
+    if (std::strlen(name) >= EcsNameLength)
+    {
+        nameLen = EcsNameLength - 1;
+    }
+
+    void *temp = m_world->m_wAllocator.Alloc(ti->size);
+
+    EcsName eName;
+    std::memcpy(eName.name, name, nameLen);
+    eName.name[nameLen] = '\0';
+
+    if (ti->hook.moveCtor)
+    {
+        ti->hook.moveCtor(temp, &eName);
+    }
+    else if (ti->hook.copyCtor)
+    {
+        ti->hook.copyCtor(temp, &eName);
+    }
+    else
+    {
+        std::memcpy(temp, &eName, ti->size);
+    }
+
+    cmd.data = temp;
+    cmd.type = ComponentAddMode::ASSIGN_MUT_TYPE;
+
+    cmd.cId = EcsNameId;
+    cmd.typeInfo = ti;
+
+    m_patch.addCmds.Add(m_world->m_wAllocator, std::move(cmd));
+
     return *this;
 }
+
 EntityBuilder &EntityBuilder::ChildOf(EntityId parentId)
 {
-    m_desc.parentId = parentId;
+    m_patch.Add(m_world, MakeRelationship(EcsChildOfId, parentId));
     return *this;
 }
 
-Entity EntityBuilder::Build() { return m_world->ResolveEntityDesc(m_desc); }
+Entity EntityBuilder::Build()
+{
+    m_patch.eId = m_world->CreateBaseEntity(m_patch.eId).GetFullId();
 
-EntityBuilder &EntityBuilder::AddComponentImpl(EntityId cId)
-{
-    m_desc.Add(m_world, cId);
-    return *this;
-}
-EntityBuilder &EntityBuilder::AddTagImpl(EntityId cId)
-{
-    m_desc.Add(m_world, cId);
-    return *this;
-}
-EntityBuilder &EntityBuilder::AddRelationshipImpl(EntityId relationId,
-                                                  EntityId targetId)
-{
-    m_desc.Add(m_world, MakeRelationship(relationId, targetId));
-    return *this;
-}
-EntityBuilder &EntityBuilder::AssignComponentImpl(EntityId cId, void *data)
-{
-    m_desc.Assign(m_world, cId, data);
-    return *this;
-}
-EntityBuilder &EntityBuilder::AssignComponentImpl(EntityId cId,
-                                                  const void *data)
-{
-    m_desc.Assign(m_world, cId, data);
-    return *this;
+    if (!m_setName)
+    {
+
+        EcsName eName;
+        std::snprintf(eName.name, MaxEntityNameLength, DefaultEntityName,
+                      LO_ENTITY_ID(m_patch.eId));
+
+        m_patch.Assign(m_world, EcsNameId, &eName);
+    }
+
+    m_patch.AddCmdsSort();
+    m_patch.RemoveCmdsSort();
+    m_world->ResolveEntityCommand(m_patch);
+    m_patch.addCmds.Destroy(m_world->m_wAllocator);
+    m_patch.removeCmds.Destroy(m_world->m_wAllocator);
+
+    return Entity(m_world, m_patch.eId);
 }
 
-///////////////////////////////// EntityPatch ////////////////////////////////
+///////////////////////////////// EntityCommand ////////////////////////////////
 
-void EntityPatch::Add(World *world, EntityId cId)
+void EntityCommand::Add(World *world, EntityId cId)
 {
     // USE LOW ENTITY ID BECAUSE RELATIONSHIP CRECORD MIGHT NOT BE AVAILABLE AT
     // THAT POINT YET
@@ -153,13 +107,13 @@ void EntityPatch::Add(World *world, EntityId cId)
     AddCommand cmd;
     cmd.cId = cId;
     cmd.data = nullptr;
-    cmd.type = AddCmdTypeData::ADD_TYPE;
+    cmd.type = ComponentAddMode::ADD_TYPE;
     cmd.typeInfo = ti;
 
     addCmds.Add(world->m_wAllocator, std::move(cmd));
 }
 
-void EntityPatch::Assign(World *world, EntityId cId, void *data)
+void EntityCommand::Assign(World *world, EntityId cId, void *data)
 {
     // USE LOW ENTITY ID BECAUSE RELATIONSHIP CRECORD MIGHT NOT BE AVAILABLE AT
     // THAT POINT YET
@@ -185,13 +139,13 @@ void EntityPatch::Assign(World *world, EntityId cId, void *data)
     AddCommand cmd;
     cmd.cId = cId;
     cmd.data = temp;
-    cmd.type = AddCmdTypeData::ASSIGN_MUT_TYPE;
+    cmd.type = ComponentAddMode::ASSIGN_MUT_TYPE;
     cmd.typeInfo = ti;
 
     addCmds.Add(world->m_wAllocator, std::move(cmd));
 }
 
-void EntityPatch::Assign(World *world, EntityId cId, const void *data)
+void EntityCommand::Assign(World *world, EntityId cId, const void *data)
 {
     // USE LOW ENTITY ID BECAUSE RELATIONSHIP CRECORD MIGHT NOT BE AVAILABLE AT
     // THAT POINT YET
@@ -213,13 +167,13 @@ void EntityPatch::Assign(World *world, EntityId cId, const void *data)
     AddCommand cmd;
     cmd.cId = cId;
     cmd.data = temp;
-    cmd.type = AddCmdTypeData::ASSIGN_CONST_TYPE;
+    cmd.type = ComponentAddMode::ASSIGN_CONST_TYPE;
     cmd.typeInfo = ti;
 
     addCmds.Add(world->m_wAllocator, std::move(cmd));
 }
 
-void EntityPatch::Remove(World *world, EntityId cId)
+void EntityCommand::Remove(World *world, EntityId cId)
 {
     RemoveCommand cmd;
     cmd.cId = cId;
@@ -227,59 +181,30 @@ void EntityPatch::Remove(World *world, EntityId cId)
     removeCmds.Add(world->m_wAllocator, std::move(cmd));
 }
 
-void EntityPatch::AddCmdsSort()
+void EntityCommand::AddCmdsSort()
 {
     std::sort(addCmds.store, addCmds.store + addCmds.count,
               [](const AddCommand &a, const AddCommand &b)
               { return a.cId < b.cId; });
 }
 
-void EntityPatch::RemoveCmdsSort()
+void EntityCommand::RemoveCmdsSort()
 {
     std::sort(removeCmds.store, removeCmds.store + removeCmds.count,
               [](const RemoveCommand &a, const RemoveCommand &b)
               { return a.cId < b.cId; });
 }
+
+void EntityCommand::Id(EntityId id) { eId = id; }
 //////////////////////////////// EntityPatcher //////////////////////////////
 
 void EntityPatcher::Flush()
 {
-    m_world->PatchEntity(m_patch);
+    m_patch.AddCmdsSort();
+    m_patch.RemoveCmdsSort();
+    m_world->ResolveEntityCommand(m_patch);
     m_patch.addCmds.Destroy(m_world->m_wAllocator);
     m_patch.removeCmds.Destroy(m_world->m_wAllocator);
 }
 
-EntityPatcher &EntityPatcher::AddComponentImpl(EntityId cId)
-{
-    m_patch.Add(m_world, cId);
-    return *this;
-}
-EntityPatcher &EntityPatcher::AddTagImpl(EntityId cId)
-{
-    m_patch.Add(m_world, cId);
-    return *this;
-}
-EntityPatcher &EntityPatcher::AddRelationshipImpl(EntityId relationId,
-                                                  EntityId targetId)
-{
-    m_patch.Add(m_world, MakeRelationship(relationId, targetId));
-    return *this;
-}
-EntityPatcher &EntityPatcher::AssignComponentImpl(EntityId cId, void *data)
-{
-    m_patch.Assign(m_world, cId, data);
-    return *this;
-}
-EntityPatcher &EntityPatcher::AssignComponentImpl(EntityId cId,
-                                                  const void *data)
-{
-    m_patch.Assign(m_world, cId, data);
-    return *this;
-}
-
-EntityPatcher &EntityPatcher::RemoveComponentImpl(EntityId cId)
-{
-    m_patch.Remove(m_world, cId);
-    return *this;
-}
 } // namespace ECS

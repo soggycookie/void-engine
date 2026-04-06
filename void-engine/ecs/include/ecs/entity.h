@@ -1,12 +1,11 @@
 #pragma once
 #include "ecs_type.h"
-#include "id.h"
 
 namespace ECS
 {
 class World;
 
-enum class AddCmdTypeData
+enum class ComponentAddMode
 {
     ASSIGN_CONST_TYPE,
     ASSIGN_MUT_TYPE,
@@ -17,7 +16,7 @@ struct AddCommand
 {
     EntityId cId;
     void *data;
-    AddCmdTypeData type;
+    ComponentAddMode type;
     TypeInfo *typeInfo;
 };
 
@@ -26,71 +25,14 @@ struct RemoveCommand
     EntityId cId;
 };
 
-enum class CmdMode
+enum class EntityCommandMode
 {
-    ADD_CMD_MODE,
-    REMOVE_CMD_MODE,
+    SPAWN,
+    PATCH
 };
 
-struct EntityDeferredCommand
+struct EntityCommand
 {
-    EntityId id;
-    AddCommand addCmd;
-    RemoveCommand removeCmds;
-    CmdMode mode;
-    TypeInfo *typeInfo;
-};
-
-struct EntityDesc
-{
-    EntityDesc() : eId(0), parentId(0), name(nullptr), descComponents() {}
-
-    EntityDesc(EntityId eId, EntityId parentId, const char *name)
-        : eId(eId), parentId(parentId), name(name), descComponents()
-    {
-    }
-
-    void Add(World *world, EntityId cId);
-
-    void Assign(World *world, EntityId cId, void *data);
-
-    void Assign(World *world, EntityId cId, const void *data);
-
-    void Sort();
-
-    EntityId eId;
-    EntityId parentId;
-    const char *name;
-    Store<AddCommand> descComponents;
-};
-
-template <typename Derived>
-class EntityCommand
-{
-public:
-    template <typename T>
-    Derived &AddComponent();
-
-    template <typename T>
-    Derived &AddTag();
-
-    template <typename T>
-    Derived &AddRelationship(EntityId targetId);
-
-    template <typename T>
-    Derived &AssignComponent(T &&data);
-
-    template <typename T>
-    Derived &AssignComponent(const T &data);
-
-private:
-    Derived &Self() { return *PTR_CAST(this, Derived); }
-};
-
-struct EntityPatch
-{
-    EntityPatch(EntityId eId) : eId(eId) {}
-
     void Add(World *world, EntityId cId);
 
     void Assign(World *world, EntityId cId, void *data);
@@ -102,19 +44,107 @@ struct EntityPatch
     void AddCmdsSort();
     void RemoveCmdsSort();
 
+    void Id(EntityId id);
+
     EntityId eId;
     Store<AddCommand> addCmds;
     Store<RemoveCommand> removeCmds;
+    EntityCommandMode mode;
 };
 
-///////////////////////////////////////////////////////////////////////
-////////////// DO NOT STORE ENTITY PATCHER AS VARIABLE ////////////////
-///////////////////////////////////////////////////////////////////////
-
-class EntityPatcher : public EntityCommand<EntityPatcher>
+template <typename Derived>
+class EntityMutator
 {
 public:
-    EntityPatcher(World *world, EntityId eId) : m_world(world), m_patch(eId) {}
+    EntityMutator(World* world) : m_world(world){}
+
+    template <typename T>
+    Derived &AddComponent()
+    {
+        static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
+        m_patch.Add(m_world, ComponentTypeId<T>::Id());
+        return Self();    
+    }
+
+    template <typename T>
+    Derived &AddTag()
+    {
+        static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
+        m_patch.Add(m_world, ComponentTypeId<T>::Id());
+        return Self();        
+    }
+
+    template <typename T>
+    Derived &AddRelationship(EntityId targetId)
+    {
+        static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
+        m_patch.Add(m_world,
+            MakeRelationship(ComponentTypeId<T>::Id(), targetId));
+        return Self();    
+    }
+
+    template <typename T>
+    Derived &AssignComponent(T &&data)
+    {
+        static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
+        m_patch.Assign(m_world, ComponentTypeId<T>::Id(), &data);
+        return Self();           
+    }
+
+    template <typename T>
+    Derived &AssignComponent(const T &data)
+    {
+        static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
+        m_patch.Assign(m_world, ComponentTypeId<T>::Id(), &data);
+        return Self();      
+    }
+
+    Derived &AddComponent(EntityId cId)
+    {
+        m_patch.Add(m_world, cId);
+        return Self();      
+    }
+
+    Derived &AddTag(EntityId cId)
+    {
+        m_patch.Add(m_world, cId);
+        return Self();      
+    }
+
+    Derived &AddRelationship(EntityId cId, EntityId targetId)
+    {
+        m_patch.Add(m_world,
+            MakeRelationship(cId, targetId));
+        return Self();        
+    }
+
+    Derived &AssignComponent(EntityId cId, void *data)
+    {
+        m_patch.Assign(m_world, cId, &data);
+        return Self();       
+    }
+
+    Derived &AssignComponent(EntityId cId, const void *data)    
+    {
+        m_patch.Assign(m_world, cId, &data);
+        return Self();       
+    }    
+
+private:
+    Derived &Self() { return *PTR_CAST(this, Derived); }
+protected:
+    EntityCommand m_patch;
+    World *m_world;
+};
+
+class EntityPatcher : public EntityMutator<EntityPatcher>
+{
+public:
+    EntityPatcher(World *world, EntityId eId) : EntityMutator<EntityPatcher>(world) 
+    {
+        m_patch.Id(eId);
+        m_patch.mode = EntityCommandMode::PATCH;
+    }
 
     EntityPatcher(EntityPatcher &&other) = default;
 
@@ -124,39 +154,28 @@ public:
     EntityPatcher &RemoveComponent()
     {
         static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
-        return RemoveComponentImpl(ComponentTypeId<T>::Id());
+        m_patch.Remove(m_world, ComponentTypeId<T>::Id());
+        return *this;
     }
 
     template <typename T>
     EntityPatcher &RemoveRelationship(EntityId targetId)
     {
         static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
-        return RemoveComponentImpl(
+        m_patch.Remove(m_world,
             MakeRelationship(ComponentTypeId<T>::Id(), targetId));
+        return *this;
     }
 
     void Flush();
 
-private:
-    template <typename Derived>
-    friend class EntityCommand;
 
-    EntityPatcher &AddComponentImpl(EntityId cId);
-    EntityPatcher &AddTagImpl(EntityId cId);
-    EntityPatcher &AddRelationshipImpl(EntityId relationId, EntityId targetId);
-    EntityPatcher &AssignComponentImpl(EntityId cId, void *data);
-    EntityPatcher &AssignComponentImpl(EntityId cId, const void *data);
-    EntityPatcher &RemoveComponentImpl(EntityId cId);
-
-private:
-    EntityPatch m_patch;
-    World *m_world;
 };
 
 class Entity
 {
 public:
-    explicit Entity(EntityId id, World *world) : m_id(id), m_world(world) {}
+    explicit Entity( World *world, EntityId id) : m_id(id), m_world(world) {}
 
     virtual ~Entity() = default;
 
@@ -218,10 +237,13 @@ private:
     These ecs operations will apply immediately
 */
 
-class EntityBuilder : public EntityCommand<EntityBuilder>
+class EntityBuilder : public EntityMutator<EntityBuilder>
 {
 public:
-    EntityBuilder(World *world) : m_world(world) {}
+    EntityBuilder(World *world) : EntityMutator<EntityBuilder>(world), m_setName(false) 
+    {
+        m_patch.mode = EntityCommandMode::SPAWN;
+    }
 
     EntityBuilder(EntityBuilder &&other) = default;
 
@@ -232,20 +254,8 @@ public:
     EntityBuilder &ChildOf(EntityId parentId);
 
     Entity Build();
-
 private:
-    template <typename Derived>
-    friend class EntityCommand;
-
-    EntityBuilder &AddComponentImpl(EntityId cId);
-    EntityBuilder &AddTagImpl(EntityId cId);
-    EntityBuilder &AddRelationshipImpl(EntityId relationId, EntityId targetId);
-    EntityBuilder &AssignComponentImpl(EntityId cId, void *data);
-    EntityBuilder &AssignComponentImpl(EntityId cId, const void *data);
-
-private:
-    EntityDesc m_desc;
-    World *m_world;
+    bool m_setName;
 };
 
 } // namespace ECS

@@ -2,7 +2,7 @@
 #include "ds/hash_map.h"
 #include "ds/world_allocator.h"
 #include "ecs_pch.h"
-#include <cassert>
+#include "internal_component_id.h"
 
 namespace ECS
 {
@@ -74,7 +74,6 @@ constexpr const std::string_view GetComponentName()
 #define INCRE_GEN_COUNT(x)                                                     \
     MAKE_ENTITY_ID(LO_ENTITY_ID(x), (uint16_t)(ENTITY_GEN_COUNT(x) + 1))
 
-using EntityId = uint64_t;
 using LoEntityId = uint32_t;
 using HiEntityId = uint32_t;
 using GenCount = uint16_t;
@@ -570,6 +569,19 @@ struct EntityRecord
     Archetype *archetype;
     uint32_t row;
     uint32_t dense;
+};
+
+// Intrusive ref
+
+class IntrusiveRefCount
+{
+public:
+    virtual void Release() = 0;
+
+    virtual void AddRef() { ++m_refCount; }
+
+protected:
+    uint32_t m_refCount = 0;
 };
 
 } // namespace ECS

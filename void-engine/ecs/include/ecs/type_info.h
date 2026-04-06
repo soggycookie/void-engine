@@ -11,9 +11,9 @@ using CopyCtorHook = void (*)(void *dest, const void *src);
 using MoveCtorHook = void (*)(void *dest, void *src);
 using DtorHook = void (*)(void *src);
 
-using AddEventHook = void (*)();
-using RemoveEventHook = void (*)();
-using SetEventHook = void (*)(const void *dest);
+using AddEventHook = void (*)(const void *src, const World *world);
+using RemoveEventHook = void (*)(const void *src, const World *world);
+using SetEventHook = void (*)(const void *dest, const World *world);
 
 struct TypeHook
 {
@@ -22,9 +22,9 @@ struct TypeHook
     void (*moveCtor)(void *dest, void *src);
     void (*dtor)(void *src);
 
-    void (*onAdd)();
-    void (*onRemove)();
-    void (*onSet)(const void *dest);
+    void (*onAdd)(const void *src, const World *world);
+    void (*onRemove)(const void *src, const World *world);
+    void (*onSet)(const void *dest, const World *world);
 };
 
 #define COMPONENT_TYPE     (1 << 0)

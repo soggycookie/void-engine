@@ -3,7 +3,6 @@
 #include "ds/world_allocator.h"
 #include "ecs_type.h"
 #include "entity.h"
-#include "internal_component.h"
 #include "pipeline.h"
 #include "query.h"
 #include "type_info.h"
@@ -22,12 +21,9 @@ class World
 public:
     World()
         : m_nextFreeId(200), m_isDeferred(false), m_isFirstFrame(false),
-          m_q_revalSweep_archetype(0)
+          m_q_revalSweep_archetype(0), m_isDestroying(false)
     {
     }
-
-    static constexpr const char *DefaultEntityName = "Entity %u";
-    static constexpr const size_t MaxEntityNameLength = 32;
 
     void Bootstrap();
 
@@ -38,6 +34,8 @@ public:
     void InitDefaultPipelinePhase();
     void InitBasePhase();
 
+    Entity CreateBaseEntity(EntityId eId);
+
     Entity CreateEntity(const char *name = nullptr, EntityId parent = 0);
     Entity CreateEntity(char *name, EntityId parent = 0);
     Entity CreateEntity(EntityId id, const char *name = nullptr,
@@ -47,8 +45,8 @@ public:
 
     void RemoveEntity(EntityId eId);
 
-    void PatchEntity(EntityPatch &patch);
-    Entity ResolveEntityDesc(EntityDesc &desc);
+    void ResolveEntityCommand(EntityCommand &patch);
+    // Entity ResolveEntityDesc(EntityDesc &desc);
 
     EntityId GetNewId();
     EntityId GetReusedId();
@@ -78,9 +76,6 @@ public:
 
     template <typename T>
     TypeInfoBuilder<T> Relation();
-
-    template <typename T>
-    TypeInfoBuilder<T> Relationship(EntityId targetId);
 
     void Register(const TypeInfo &typeInfo, EntityId cId,
                   const std::string_view cName);
@@ -159,7 +154,7 @@ public:
 
     void GrowArchetype(Archetype &archetype);
 
-    void SwapBack(EntityRecord &r);
+    void SwapBackEntity(EntityRecord &r);
 
     Archetype *CreateArchetype(ComponentSet &&componentSet);
     Archetype *GetArchetype(const ComponentSet &componentSet);
@@ -184,8 +179,6 @@ public:
 
     template <typename... T>
     SystemBuilder<T...> CreateSystem();
-
-    void ClearCachedQuery();
 
     enum class EntityRevalidationMode
     {
@@ -225,12 +218,13 @@ public:
         m_setToArchetypes; // value hold a ref to key, does not change the
                            // value's key ref
     Store<EntityId> m_componentStore;
-    Store<EntityDeferredCommand> m_deferredCmds;
+    Store<EntityCommand> m_deferredCmds;
     Pipeline m_loopPipeline;
     uint32_t m_q_revalSweep_archetype;
     uint32_t m_nextFreeId;
     bool m_isDeferred;
     bool m_isFirstFrame;
+    bool m_isDestroying;
 };
 } // namespace ECS
 

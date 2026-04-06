@@ -198,16 +198,28 @@ void QueryResult::Delete(WorldAllocator &wAllocator, uint32_t callbackSigCount)
 
         wAllocator.Free(sizeof(QueryArchetype) * capacity, hi_queryArchetypes);
     }
+    count = 0;
+    capacity = 0;
 }
 
 /////////////////////////////// Query /////////////////////////////////
 
 void Query::Execute()
 {
+    if (!isCached)
+    {
+        DeleteResult();
+        FindMatchArchetype();
+
+        if (isEntityFiltered)
+        {
+            FilterResult();
+        }
+    }
     execCallback.invoker(this, execCallback.fn, execCallback.ctx);
 }
 
-void Query::FilterResultEntity()
+void Query::FilterResult()
 {
     for (size_t idx = 0; idx < result.count; ++idx)
     {
@@ -221,7 +233,7 @@ void Query::FilterResultEntity()
     }
 }
 
-void Query::FilterEntity(QueryArchetype &qAr)
+void Query::FilterArchetype(QueryArchetype &qAr)
 {
     for (size_t eIdx = 0; eIdx < qAr.archetype->count; ++eIdx)
     {
@@ -237,7 +249,7 @@ void Query::FilterEntity(QueryArchetype &qAr, uint32_t eIdx)
                                  entityFilterCallback.ctx);
 }
 
-void Query::FilterArchetype()
+void Query::FindMatchArchetype()
 {
     assert(termCount > 0);
     QueryResult result;
@@ -578,24 +590,27 @@ void Query::Destroy()
     DeleteResult();
 }
 
+void Query::Release()
+{
+    if (--m_refCount == 0)
+    {
+        Destroy();
+
+        if (isCached)
+        {
+            world->RemoveEntity(eId);
+            this->~Query();
+            world->m_allocators.queries.Free(this);
+        }
+    }
+}
+
 ///////////////////////// QueryHandle /////////////////////////
 
 void QueryHandle::Execute()
 {
     if (m_query)
     {
-        if (!m_query->isCached)
-        {
-            m_query->DeleteResult();
-            // ad-hoc filter
-            m_query->FilterArchetype();
-
-            if (m_query->isEntityFiltered)
-            {
-                m_query->FilterResultEntity();
-            }
-        }
-
         m_query->Execute();
     }
 }
@@ -628,14 +643,15 @@ void QueryCallbackBuilder::CreateCachedEntity()
     {
         Entity e = m_query->world->CreateEntity(m_query->eId);
         m_query->eId = e.GetFullId();
-        m_query->FilterArchetype();
+        m_query->FindMatchArchetype();
 
         if (m_query->isEntityFiltered)
         {
-            m_query->FilterResultEntity();
+            m_query->FilterResult();
         }
 
         e.AssignComponent<EcsQuery>(EcsQuery{m_query});
+        m_query->AddRef();
     }
 }
 
@@ -647,14 +663,15 @@ void SystemCallbackBuilder::CreateCachedEntity()
     {
         Entity e = m_query->world->CreateEntity(m_query->eId);
         m_query->eId = e.GetFullId();
-        m_query->FilterArchetype();
+        m_query->FindMatchArchetype();
 
         if (m_query->isEntityFiltered)
         {
-            m_query->FilterResultEntity();
+            m_query->FilterResult();
         }
 
         e.AssignComponent<EcsSystem>(EcsSystem{m_query});
+        m_query->AddRef();
 
         if (m_phaseId == EcsInvalidId)
         {

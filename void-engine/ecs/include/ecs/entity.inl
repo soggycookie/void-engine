@@ -8,61 +8,6 @@
 
 namespace ECS
 {
-/*
-    Definition for entity command base interface's public funcs
-*/
-
-template <typename Derived>
-template <typename T>
-Derived &EntityCommand<Derived>::AddComponent()
-{
-    return Self().AddComponentImpl(ComponentTypeId<T>::Id());
-}
-
-template <typename Derived>
-template <typename T>
-Derived &EntityCommand<Derived>::AddTag()
-{
-    return Self().AddTagImpl(ComponentTypeId<T>::Id());
-}
-
-template <typename Derived>
-template <typename T>
-Derived &EntityCommand<Derived>::AddRelationship(EntityId targetId)
-{
-    return Self().AddRelationshipImpl(ComponentTypeId<T>::Id(), targetId);
-}
-
-template <typename Derived>
-template <typename T>
-Derived &EntityCommand<Derived>::AssignComponent(T &&data)
-{
-    return Self().AssignComponentImpl(ComponentTypeId<T>::Id(), &data);
-}
-
-template <typename Derived>
-template <typename T>
-Derived &EntityCommand<Derived>::AssignComponent(const T &data)
-{
-    return Self().AssignComponentImpl(ComponentTypeId<T>::Id(), &data);
-}
-
-// template <typename Derived>
-// template <typename T>
-// Derived &IEntityCommand<Derived>::RemoveComponent()
-// {
-//     return Self().RemoveComponentImpl(ComponentTypeId<T>::Id());
-// }
-
-// template <typename Derived>
-// template <typename Component>
-// IEntityCommand &IEntityCommand<Derived>::Set(Component &&c)
-// {
-//     SetImpl(ComponentTypeId<Component>::Id(), &c);
-//
-//     return *this;
-// }
-
 template <typename T>
 void Entity::SetComponent(T &&data)
 {

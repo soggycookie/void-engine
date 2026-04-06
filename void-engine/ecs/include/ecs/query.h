@@ -2,7 +2,6 @@
 #include "ds/world_allocator.h"
 #include "ecs_type.h"
 #include "entity.h"
-#include "internal_component.h"
 #include "type_info.h"
 #include <cstdint>
 #include <type_traits>
@@ -29,6 +28,8 @@ enum TermBehavior : uint16_t
     READ_WRITE,
     STRUCTURE_CHANGE
 };
+
+class Query;
 
 //////////////////////////// QueryTerm /////////////////////////////
 
@@ -230,7 +231,7 @@ struct QueryIter
     EntityId eId;
     double deltaTime;
 
-    Entity GetEntity() { return Entity(eId, world); }
+    Entity GetEntity() { return Entity( world, eId); }
 };
 
 template <typename... CallbackArgs>
@@ -308,7 +309,7 @@ struct MatchedArchetype
 
 //////////////////////////////// Query /////////////////////////////////////////
 
-struct Query
+struct Query : public IntrusiveRefCount
 {
     Query(World *world, EntityId eId = 0)
         : world(world), eId(eId), terms(nullptr), sortedTermIdx(nullptr),
@@ -355,21 +356,23 @@ struct Query
         return *this;
     }
 
-    template <typename... CallbackArgs>
-    void ExecutionCallback(void (*)(CallbackArgs...), void *ctx = nullptr);
+    void Release() override;
 
     template <typename... CallbackArgs>
-    void FilterCallback(bool (*)(CallbackArgs...), void *ctx = nullptr);
+    void SetExecutionCallback(void (*)(CallbackArgs...), void *ctx = nullptr);
+
+    template <typename... CallbackArgs>
+    void SetFilterCallback(bool (*)(CallbackArgs...), void *ctx = nullptr);
 
     void Execute();
 
     void Destroy();
 
-    void FilterArchetype();
+    void FindMatchArchetype();
 
-    void FilterResultEntity();
+    void FilterResult();
 
-    void FilterEntity(QueryArchetype &qAr);
+    void FilterArchetype(QueryArchetype &qAr);
 
     void FilterEntity(QueryArchetype &qAr, uint32_t eIdx);
 
@@ -415,13 +418,7 @@ struct Query
 class QueryHandle
 {
 public:
-    ~QueryHandle()
-    {
-        if (m_query->eId == EcsInvalidId)
-        {
-            Destroy();
-        }
-    }
+    ~QueryHandle() { m_query->Release(); }
 
     QueryHandle(QueryHandle &&other) noexcept
     {
@@ -439,16 +436,33 @@ public:
         return *this;
     }
 
-    void Execute();
+    QueryHandle(const QueryHandle &other)
+    {
+        m_query = other.m_query;
 
-    // No need to call this manually unless you use cache query
-    // Ad-hoc query handle will call this when go out of scope (RAII)
-    void Destroy();
+        m_query->AddRef();
+    }
+
+    QueryHandle &operator=(const QueryHandle &other)
+    {
+        m_query = other.m_query;
+
+        m_query->AddRef();
+        return *this;
+    }
+
+    void Execute();
 
 private:
     template <typename Derived, typename Handle>
     friend class QueryCallBackBuilderBase;
-    QueryHandle(Query *query) : m_query(query) { assert(m_query); }
+    QueryHandle(Query *query) : m_query(query)
+    {
+        assert(m_query);
+        m_query->AddRef();
+    }
+
+    void Destroy();
 
 private:
     Query *m_query;

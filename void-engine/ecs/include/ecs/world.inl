@@ -45,20 +45,20 @@ TypeInfoBuilder<T> World::Component()
 
 #ifdef ECS_DEBUG
     tiBuilder.AddEvent(
-        []()
+        [](const void *src, const World *world)
         {
             std::cout << "Add component " << GetComponentName<T>() << std::endl;
         });
 
     tiBuilder.RemoveEvent(
-        []()
+        [](const void *src, const World *world)
         {
             std::cout << "Remove component " << GetComponentName<T>()
                       << std::endl;
         });
 
     tiBuilder.SetEvent(
-        [](const void *dest)
+        [](const void *src, const World *world)
         {
             std::cout << "Set component " << GetComponentName<T>() << std::endl;
         });
@@ -83,11 +83,11 @@ TypeInfoBuilder<T> World::Tag()
 
 #ifdef ECS_DEBUG
     tiBuilder.AddEvent(
-        []()
+        [](const void *src, const World *world)
         { std::cout << "Add tag " << GetComponentName<T>() << std::endl; });
 
     tiBuilder.RemoveEvent(
-        []()
+        [](const void *src, const World *world)
         { std::cout << "Remove tag " << GetComponentName<T>() << std::endl; });
 #endif // ECS_DEBUG
     return tiBuilder;
@@ -132,95 +132,22 @@ TypeInfoBuilder<T> World::Relation()
     }
 #ifdef ECS_DEBUG
     tiBuilder.AddEvent(
-        []()
+        [](const void *src, const World *world)
         {
             std::cout << "Add relation " << GetComponentName<T>() << std::endl;
         });
 
     tiBuilder.RemoveEvent(
-        []()
+        [](const void *src, const World *world)
         {
             std::cout << "Remove relation " << GetComponentName<T>()
                       << std::endl;
         });
 
     tiBuilder.SetEvent(
-        [](const void *dest)
+        [](const void *src, const World *world)
         {
             std::cout << "Set relation " << GetComponentName<T>() << std::endl;
-        });
-#endif // ECS_DEBUG
-    return tiBuilder;
-}
-
-template <typename T>
-TypeInfoBuilder<T> World::Relationship(EntityId targetId)
-{
-    static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
-
-    if (targetId == 0 || !m_entityIndex.IsExisting(targetId) ||
-        !m_entityIndex.IsExisting(ComponentTypeId<T>::Id()))
-    {
-        assert(0);
-    }
-
-    assert(std::is_destructible_v<T>);
-    assert(std::is_trivially_constructible_v<T>);
-
-    TypeInfoBuilder<T> tiBuilder(this);
-
-    tiBuilder.ti.size = sizeof(T);
-    tiBuilder.ti.alignment = alignof(T);
-    tiBuilder.ti.eId = 0;
-
-    tiBuilder.Relationship(targetId);
-
-    if (tiBuilder.ti.size > 1)
-    {
-        tiBuilder.Ctor([](void *dest) { new (dest) T(); });
-
-        if constexpr (std::is_move_constructible_v<T>)
-        {
-            tiBuilder.MoveCtor([](void *dest, void *src)
-                               { new (dest) T(std::move(*PTR_CAST(src, T))); });
-        }
-        else if constexpr (!std::is_trivially_constructible_v<T>)
-        {
-            tiBuilder.CopyCtor([](void *dest, const void *src)
-                               { new (dest) T(*PTR_CAST(src, T)); });
-        }
-
-        if constexpr (!std::is_trivially_destructible_v<T>)
-        {
-            tiBuilder.Dtor(
-                [](void *src)
-                {
-                    T *c = PTR_CAST(src, T);
-                    c->~T();
-                });
-        }
-    }
-
-#ifdef ECS_DEBUG
-    tiBuilder.AddEvent(
-        []()
-        {
-            std::cout << "Add relationship " << GetComponentName<T>()
-                      << std::endl;
-        });
-
-    tiBuilder.RemoveEvent(
-        []()
-        {
-            std::cout << "Remove relationship" << GetComponentName<T>()
-                      << std::endl;
-        });
-
-    tiBuilder.SetEvent(
-        [](void *dest)
-        {
-            std::cout << "Set relationship" << GetComponentName<T>()
-                      << std::endl;
         });
 #endif // ECS_DEBUG
     return tiBuilder;

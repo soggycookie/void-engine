@@ -1,23 +1,23 @@
 #pragma once
 
+#include <algorithm>
+#include <bitset>
+#include <cassert>
 #include <cstdint>
-#include <type_traits>
+#include <cstdlib>
+#include <functional>
 #include <iostream>
+#include <memory>
+#include <queue>
+#include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
-#include <sstream>
-#include <functional>
-#include <algorithm>
-#include <utility>
-#include <memory>
-#include <vector>
-#include <unordered_map>
-#include <queue>
-#include <cassert>
-#include <cstdlib>
-#include <set>
-#include <unordered_set>
+#include <type_traits>
 #include <typeinfo>
-#include <string_view>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "ecs_utils.h"
