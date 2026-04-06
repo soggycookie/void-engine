@@ -46,7 +46,6 @@ public:
     void RemoveEntity(EntityId eId);
 
     void ResolveEntityCommand(EntityCommand &patch);
-    // Entity ResolveEntityDesc(EntityDesc &desc);
 
     EntityId GetNewId();
     EntityId GetReusedId();

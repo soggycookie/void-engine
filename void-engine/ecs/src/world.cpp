@@ -462,197 +462,6 @@ Store<EntityId> World::GetChildren(EntityId eId)
     return store;
 }
 
-// Entity World::ResolveEntityDesc(EntityDesc &desc)
-// {
-//     bool newId = false;
-//     if (!m_entityIndex.IsExisting(desc.eId))
-//     {
-//         newId = true;
-//     }
-//     else
-//     {
-//         auto pair = GetResuedOrNewId();
-//         desc.eId = pair.second;
-//         newId = pair.first;
-//     }
-//
-//     uint32_t dense = m_entityIndex.PushBack(desc.eId, EntityRecord{}, newId);
-//     EntityRecord &r = *m_entityIndex.GetPageData(desc.eId);
-//     r.dense = dense;
-//
-//     char entityName[EcsNameLength];
-//     if (!desc.name)
-//     {
-//         std::snprintf(entityName, MaxEntityNameLength, DefaultEntityName,
-//                       LO_ENTITY_ID(desc.eId));
-//     }
-//     else
-//     {
-//         size_t len = std::strlen(desc.name);
-//         if (len >= MaxEntityNameLength)
-//         {
-//             len = MaxEntityNameLength - 1;
-//             // NOTE:
-//             // WANRING
-//         }
-//
-//         std::memcpy(entityName, desc.name, len);
-//         entityName[len] = '\0';
-//     }
-//
-//     Archetype *destArchetype = r.archetype;
-//     if (desc.parentId != EcsInvalidId)
-//     {
-//         TypeInfo *childOfTi = m_typeInfos[ComponentTypeId<EcsChildOf>::Id()];
-//
-//         if (!m_componentRecordIndex.ContainsKey(MakeRelationship(
-//                 ComponentTypeId<EcsChildOf>::Id(), desc.parentId)))
-//         {
-//             RegisterRelationship(ComponentTypeId<EcsChildOf>::Id(),
-//                                  desc.parentId, childOfTi);
-//         }
-//
-//         destArchetype = GetOrCreateArchetype_Add(
-//             destArchetype,
-//             MakeRelationship(ComponentTypeId<EcsChildOf>::Id(),
-//             desc.parentId));
-//     }
-//
-//     // if(desc.id != ComponentTypeId<EcsName>::Id())
-//     //{
-//     destArchetype =
-//         GetOrCreateArchetype_Add(destArchetype,
-//         ComponentTypeId<EcsName>::Id());
-//     //}
-//
-//     for (uint32_t idx = 0; idx < desc.descComponents.count; ++idx)
-//     {
-//         destArchetype = GetOrCreateArchetype_Add(destArchetype,
-//                                                  desc.descComponents[idx].cId);
-//     }
-//
-//     //////////// sort the cId //////////////
-//     desc.Sort();
-//
-//     // TODO: Rewrite this
-//     size_t dataIncre = 0;
-//     if (destArchetype)
-//     {
-//         if (destArchetype->count == destArchetype->capacity)
-//         {
-//             GrowArchetype(*destArchetype);
-//         }
-//
-//         for (size_t idx = 0; idx < destArchetype->componentSet.count; idx++)
-//         {
-//             // skip no data tag and pair
-//             int32_t destColIdx = destArchetype->columnMap[idx];
-//
-//             if (destColIdx == -1)
-//             {
-//                 continue;
-//             }
-//
-//             Column &destCol = destArchetype->columns[destColIdx];
-//             TypeInfo &ti = *destCol.typeInfo;
-//
-//             void *dest = OFFSET(destCol.data, ti.size *
-//             destArchetype->count);
-//
-//             if (destArchetype->componentSet[idx] ==
-//                 ComponentTypeId<EcsName>::Id())
-//             {
-//                 EcsName ecsName;
-//                 std::memcpy(ecsName.name, entityName, EcsNameLength);
-//                 ti.hook.moveCtor(dest, &ecsName);
-//             }
-//             else
-//             {
-//                 AddCommand &cmd = desc.descComponents[dataIncre++];
-//
-//                 if (cmd.typeInfo->IsRelation())
-//                 {
-//                     if (!m_componentRecordIndex.ContainsKey(cmd.cId))
-//                     {
-//                         RegisterRelationship(LO_ENTITY_ID(cmd.cId),
-//                                              HI_ENTITY_ID(cmd.cId),
-//                                              cmd.typeInfo);
-//                     }
-//                 }
-//
-//                 if (cmd.cId != destArchetype->componentSet[idx])
-//                 {
-//                     assert(0);
-//                 }
-//
-//                 switch (cmd.type)
-//                 {
-//                 case ComponentAddMode::ADD_TYPE:
-//                 {
-//                     assert(!cmd.data);
-//                     if (ti.hook.ctor)
-//                     {
-//                         ti.hook.ctor(dest);
-//                     }
-//                     break;
-//                 }
-//                 case ComponentAddMode::ASSIGN_MUT_TYPE:
-//                 {
-//                     if (ti.hook.moveCtor)
-//                     {
-//                         ti.hook.moveCtor(dest, cmd.data);
-//                     }
-//                     else if (ti.hook.copyCtor)
-//                     {
-//                         ti.hook.copyCtor(dest, cmd.data);
-//                     }
-//                     else
-//                     {
-//                         std::memcpy(dest, cmd.data, ti.size);
-//                     }
-//                     break;
-//                 }
-//                 case ComponentAddMode::ASSIGN_CONST_TYPE:
-//                 {
-//                     if (ti.hook.copyCtor)
-//                     {
-//                         ti.hook.copyCtor(dest, cmd.data);
-//                     }
-//                     else
-//                     {
-//                         std::memcpy(dest, cmd.data, ti.size);
-//                     }
-//                     break;
-//                 }
-//                 default:
-//                 {
-//                     assert(0);
-//                 }
-//                 }
-//
-//                 // Free add cmd temp data
-//                 if (cmd.data)
-//                 {
-//                     if (ti.hook.dtor)
-//                     {
-//                         ti.hook.dtor(cmd.data);
-//                     }
-//                     m_wAllocator.Free(ti.size, cmd.data);
-//                 }
-//             }
-//
-//             destArchetype->entities[destArchetype->count] = desc.eId;
-//             r.archetype = destArchetype;
-//             r.row = destArchetype->count;
-//             ++destArchetype->count;
-//         }
-//     }
-//
-//     desc.descComponents.Destroy(m_wAllocator);
-//
-//     return Entity(desc.eId, this);
-// }
-
 Archetype *World::GetEntityArchetype(EntityId eId)
 {
     EntityRecord *r = m_entityIndex.GetPageData(eId);
@@ -960,14 +769,14 @@ void World::ResolveEntityCommand(EntityCommand &patch)
 
     if (srcArchetype)
     {
-        --srcArchetype->count;
+        RevalidateCachedQuery_EntityFilter(srcArchetype, --srcArchetype->count, EntityRevalidationMode::ON_REMOVED);
     }
 
     if (destArchetype)
     {
         destArchetype->entities[destArchetype->count] = patch.eId;
         r.row = destArchetype->count;
-        ++destArchetype->count;
+        RevalidateCachedQuery_EntityFilter(destArchetype, destArchetype->count++, EntityRevalidationMode::ON_ADDED);
     }
 }
 
