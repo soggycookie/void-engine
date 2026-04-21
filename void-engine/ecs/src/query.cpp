@@ -609,12 +609,13 @@ void QueryHandle::Destroy()
 
 /////////////////////////// QueryCallbackBuilder /////////////////////////
 
-void QueryCallbackBuilder::CreateCachedEntity()
+void QueryCallbackBuilder::CreateCachedEntity(const char *name)
 {
     if (m_query->isCached)
     {
         Entity e = m_query->world->CreateEntityBuilder()
                        .Id(m_query->eId)
+                       .Name(name)
                        .AssignComponent<EcsQuery>(EcsQuery{m_query})
                        .Build();
         m_query->AddRef();
@@ -673,12 +674,13 @@ void QueryCallbackBuilder::CreateCachedEntity()
 
 /////////////////////////// QueryCallbackBuilder /////////////////////////
 
-void SystemCallbackBuilder::CreateCachedEntity()
+void SystemCallbackBuilder::CreateCachedEntity(const char *name)
 {
     if (m_query->isCached)
     {
         Entity e = m_query->world->CreateEntityBuilder()
                        .Id(m_query->eId)
+                       .Name(name)
                        .AssignComponent<EcsSystem>(EcsSystem{m_query})
                        .Build();
         m_query->AddRef();

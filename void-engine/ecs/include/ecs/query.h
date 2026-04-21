@@ -614,7 +614,8 @@ public:
 
     Derived &Without(EntityId cId);
 
-    Derived &With(EntityId relation, EntityId target, TermBehavior behavior = TermBehavior::READ);
+    Derived &With(EntityId relation, EntityId target,
+                  TermBehavior behavior = TermBehavior::READ);
 
     Derived &Without(EntityId relation, EntityId target);
 
@@ -624,9 +625,11 @@ public:
     template <typename U>
     Derived &Cascade(TermBehavior behavior = TermBehavior::READ);
 
-    Derived &Up(EntityId relation, EntityId target, TermBehavior behavior = TermBehavior::READ);
+    Derived &Up(EntityId relation, EntityId target,
+                TermBehavior behavior = TermBehavior::READ);
 
-    Derived &Cascade(EntityId relation, EntityId target, TermBehavior behavior = TermBehavior::READ);
+    Derived &Cascade(EntityId relation, EntityId target,
+                     TermBehavior behavior = TermBehavior::READ);
 
     template <typename U>
     Derived &Modify();
@@ -635,7 +638,8 @@ public:
     CallbackBuilder Filter(bool (*)(CallbackArgs...), void *ctx = nullptr);
 
     template <typename... CallbackArgs>
-    Handle Each(void (*)(CallbackArgs...), void *ctx = nullptr);
+    Handle Each(void (*)(CallbackArgs...), const char *name = nullptr,
+                void *ctx = nullptr);
 
 protected:
     Derived &Self() { return *PTR_CAST(this, Derived); }
@@ -691,7 +695,7 @@ public:
                                                       void *ctx = nullptr);
 
     template <typename... CallbackArgs>
-    Handle Each(void (*)(CallbackArgs...), void *ctx = nullptr);
+    Handle Each(void (*)(CallbackArgs...), const char *name = nullptr, void *ctx = nullptr);
 
 protected:
     QueryCallBackBuilderBase(Query *query) : m_query(query) { assert(m_query); }
@@ -719,7 +723,7 @@ public:
 protected:
     template <typename Derived, typename Handle>
     friend class QueryCallBackBuilderBase;
-    void CreateCachedEntity();
+    void CreateCachedEntity(const char *name);
 
 private:
     template <typename... T>
@@ -745,7 +749,7 @@ class SystemCallbackBuilder
     : public QueryCallBackBuilderBase<SystemCallbackBuilder, SystemHandle>
 {
 public:
-    SystemCallbackBuilder &DependOn(EntityId eId)
+    SystemCallbackBuilder &Phase(EntityId eId)
     {
         m_phaseId = eId;
 
@@ -755,7 +759,7 @@ public:
 protected:
     template <typename Derived, typename Handle>
     friend class QueryCallBackBuilderBase;
-    void CreateCachedEntity();
+    void CreateCachedEntity(const char *name);
 
 private:
     template <typename... T>
@@ -794,7 +798,8 @@ public:
     QueryCallbackBuilder Cache(EntityId eId);
 
     QueryBuilder(World *world)
-        : ECS::QueryBuilderBase<QueryHandle, QueryBuilder<T...>, QueryCallbackBuilder, T...>(world)
+        : ECS::QueryBuilderBase<QueryHandle, QueryBuilder<T...>,
+                                QueryCallbackBuilder, T...>(world)
     {
     }
 };
@@ -814,11 +819,11 @@ class SystemBuilder : public QueryBuilderBase<SystemHandle, SystemBuilder<T...>,
                                               SystemCallbackBuilder, T...>
 {
 public:
-    SystemCallbackBuilder DependOn(EntityId eId);
+    SystemCallbackBuilder Phase(EntityId eId);
 
     SystemBuilder(World *world)
-        : ECS::QueryBuilderBase<SystemHandle, SystemBuilder<T...>, SystemCallbackBuilder, T...>(
-              world)
+        : ECS::QueryBuilderBase<SystemHandle, SystemBuilder<T...>,
+                                SystemCallbackBuilder, T...>(world)
     {
     }
 };

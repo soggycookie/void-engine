@@ -158,7 +158,7 @@ void Query::SetExecutionCallback(void (*cb)(CallbackArgs...), void *ctx)
     static_assert(sizeof...(CallbackArgs) >= 1 && sizeof...(CallbackArgs) <= 32,
                   "Callback signatures size must equal or greater than 1");
     static_assert(((sizeof(CallbackArgs) > 1) && ...),
-                  "All types must have size > 1");
+                  "All types must not be a tag!");
 
     if constexpr (has_one_query_iter_v<CallbackArgs...>)
     {
@@ -342,7 +342,8 @@ void Query::SetFilterCallback(bool (*cb)(CallbackArgs...), void *ctx)
 
 ////////////////////////// QueryBuilderBase //////////////////////////////
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
 Derived &
 QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Term(EntityId cId)
 {
@@ -363,10 +364,10 @@ QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Term(EntityId cId)
     return Self();
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-Derived &
-QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Term(EntityId relation,
-                                                      EntityId target)
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Term(
+    EntityId relation, EntityId target)
 {
     if (!m_firstTerm)
     {
@@ -385,17 +386,18 @@ QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Term(EntityId relation
     return Self();
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
 template <typename U>
-Derived &
-QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Term()
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Term()
 {
     return Term(ComponentTypeId<U>::Id());
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-Derived &
-QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Behavior(TermBehavior behavior)
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Behavior(
+    TermBehavior behavior)
 {
     assert(behavior != TermBehavior::STRUCTURE_CHANGE);
     m_currTerm.behavior = behavior;
@@ -403,139 +405,154 @@ QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Behavior(TermBehavior 
     return Self();
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-Derived &
-QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Through(TraverseMethod method)
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Through(
+    TraverseMethod method)
 {
     m_currTerm.travMethod = method;
     return Self();
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-Derived &
-QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Traverse(EntityId relation,
-                                                          EntityId target)
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Traverse(
+    EntityId relation, EntityId target)
 {
     m_currTerm.travRelation = relation;
     m_currTerm.travTarget = target;
     return Self();
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-Derived &
-QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::TraverseAny(EntityId relation)
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::TraverseAny(
+    EntityId relation)
 {
     return Traverse(relation, EcsAnyId);
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-template<typename U>
-Derived &
-QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Traverse(EntityId target)
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+template <typename U>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Traverse(
+    EntityId target)
 {
     static_assert(!std::is_reference_v<U> && !std::is_const_v<U>);
 
     return Traverse(ComponentTypeId<U>::Id(), target);
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-template<typename U>
-Derived &
-QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::TraverseAny()
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+template <typename U>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::TraverseAny()
 {
     static_assert(!std::is_reference_v<U> && !std::is_const_v<U>);
 
     return TraverseAny(ComponentTypeId<U>::Id());
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-Derived &
-QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Op(TermOp op)
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Op(TermOp op)
 {
     m_currTerm.op = op;
     return Self();
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-template<typename U>
-Derived &
-QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::With(TermBehavior behavior)
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+template <typename U>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::With(
+    TermBehavior behavior)
 {
     return Term<U>().Op(HAS).Behavior(behavior);
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-template<typename U>
-Derived &
-QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Without()
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+template <typename U>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Without()
 {
     return Term<U>().Op(NOT);
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-    Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::With(EntityId cId, TermBehavior behavior)
-    {
-        return Term(cId).Op(HAS).Behavior(behavior);
-    }
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::With(
+    EntityId cId, TermBehavior behavior)
+{
+    return Term(cId).Op(HAS).Behavior(behavior);
+}
 
-    template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-    Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Without(EntityId cId)
-    {
-        return Term(cId).Op(NOT);    
-    }
-
-    template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-    Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::With(EntityId relation, EntityId target, TermBehavior behavior)
-    {
-        return Term(relation, target).Op(HAS).Behavior(behavior)
-    }
-
-    template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-    Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Without(EntityId relation, EntityId target)
-    {
-        return Term(relation, target).Op(NOT); 
-    }
-
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-template<typename U>
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
 Derived &
-QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Up(EntityId target, TermBehavior behavior)
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Without(EntityId cId)
+{
+    return Term(cId).Op(NOT);
+}
+
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::With(
+    EntityId relation, EntityId target, TermBehavior behavior)
+{
+    return Term(relation, target).Op(HAS).Behavior(behavior);
+}
+
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Without(
+    EntityId relation, EntityId target)
+{
+    return Term(relation, target).Op(NOT);
+}
+
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+template <typename U>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Up(
+    EntityId target, TermBehavior behavior)
 {
     static_assert(!std::is_reference_v<U> && !std::is_const_v<U>);
 
     return Up(ComponentTypeId<U>::Id(), target).Behavior(behavior);
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-template<typename U>
-Derived &
-QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Cascade(TermBehavior behavior)
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+template <typename U>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Cascade(
+    TermBehavior behavior)
 {
     static_assert(!std::is_reference_v<U> && !std::is_const_v<U>);
 
     return Cascade(ComponentTypeId<U>::Id()).Behavior(behavior);
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-Derived &
-QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Up(EntityId relation,
-                                                    EntityId target, TermBehavior behavior)
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Up(
+    EntityId relation, EntityId target, TermBehavior behavior)
 {
     m_currTerm.validTravTarget = target;
     return Through(UP).Traverse(relation, target).Behavior(behavior);
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-Derived &
-QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Cascade(EntityId relation, EntityId target, TermBehavior behavior)
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Cascade(
+    EntityId relation, EntityId target, TermBehavior behavior)
 {
     return Through(CASCADE).Traverse(relation, target).Behavior(behavior);
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
-template<typename U>
-Derived &
-QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Modify()
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
+template <typename U>
+Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Modify()
 {
     Term<U>();
     m_currTerm.behavior = STRUCTURE_CHANGE;
@@ -544,9 +561,11 @@ QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Modify()
     return Self();
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
 template <typename... CallbackArgs>
-CallbackBuilder QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Filter(
+CallbackBuilder
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Filter(
     bool (*cb)(CallbackArgs...), void *ctx)
 {
     Query *q = BuildQuery();
@@ -554,17 +573,19 @@ CallbackBuilder QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Filter
     return CallbackBuilder(q).Filter(cb, ctx);
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
 template <typename... CallbackArgs>
 Handle QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Each(
-    void (*cb)(CallbackArgs...), void *ctx)
+    void (*cb)(CallbackArgs...), const char *name, void *ctx)
 {
     Query *q = BuildQuery();
 
     return CallbackBuilder(q).Each(cb, ctx);
 }
 
-template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
 Query *QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::BuildQuery()
 {
     m_desc.terms[m_currTermIdx] = m_currTerm;
@@ -596,7 +617,7 @@ Query *QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::BuildQuery()
 
             if (t.op == NOT)
             {
-                //This might fighting with EcsName
+                // This might fighting with EcsName
                 return EcsInvalidId + 1;
             }
 
@@ -639,11 +660,11 @@ QueryCallbackBuilder QueryBuilder<T...>::Cache(EntityId eId)
 ////////////////////////// SystemBuilder /////////////////////////////
 
 template <typename... T>
-SystemCallbackBuilder SystemBuilder<T...>::DependOn(EntityId eId)
+SystemCallbackBuilder SystemBuilder<T...>::Phase(EntityId eId)
 {
     Query *q = BuildQuery();
 
-    return SystemCallbackBuilder(q).DependOn(eId);
+    return SystemCallbackBuilder(q).Phase(eId);
 }
 
 //////////////////// QueryCallbackBuilderBase ///////////////////////
@@ -663,12 +684,12 @@ template <typename Derived, typename Handle>
 template <typename... CallbackArgs>
 Handle
 QueryCallBackBuilderBase<Derived, Handle>::Each(void (*cb)(CallbackArgs...),
-                                                void *ctx)
+                                                const char *name, void *ctx)
 {
     m_query->SetExecutionCallback(cb, ctx);
 
     Derived &self = *PTR_CAST(this, Derived);
-    self.CreateCachedEntity();
+    self.CreateCachedEntity(name);
 
     return Handle(m_query);
 }
