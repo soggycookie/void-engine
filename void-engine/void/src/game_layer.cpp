@@ -95,18 +95,6 @@ void GameLayer::OnInit()
 
     ECS::Entity e1 = world->CreateEntity("Second ", e0.GetFullId()).Build();
     
-
-
-     //ECS::QueryHandle q = world->CreateQuery<ECS::EcsName, ECS::EcsPhase>().
-     //   Each(
-     //   +[](const ECS::QueryIter &iter, const ECS::EcsName& name)
-     //   {
-     //       std::cout << "Name: " << name.name << std::endl;
-
-     //   },
-     //   nullptr);   
-     //q.Execute();
-
     world->CreateSystem<Position>().
         DependOn(ECS::EcsOnUpdateId).
         Each(+[](const ECS::QueryIter& iter ,Position& pos)
@@ -116,42 +104,12 @@ void GameLayer::OnInit()
                 pos.y -= time.deltaTime;
              });
 
-    world->CreateSystem<ECS::EcsName, Position>().
-        DependOn(ECS::EcsOnPostUpdateId).
-        Each(+[](const ECS::QueryIter& iter , const ECS::EcsName& name,const Position& pos)
+    world->CreateSystem<>().With<Velocity>(ECS::TermBehavior::READ).Modify<Position>().
+        DependOn(ECS::EcsOnUpdateId).
+        Each(+[](const ECS::QueryIter& iter , Position& pos)
              {
-                static uint32_t i = 0;
-                std::cout << name.name << " has position: x = " << pos.x << ", y = " << pos.y << std::endl; 
-                auto& im = iter.world->GetSingleton<EcsInputManager>();
 
-                if(im.IsBtnReleased(KeyCode::SPACE))
-                {
-                    char n[32];
-                     std::snprintf(n, 32, "Deferred Entity %u", i++);
-                    iter.world->CreateEntity(n).AssignComponent<Position>(Position{1000, 1000}).Build();
-                }
              });
-
-
-    //ECS::QueryHandle q = world->CreateQuery<Position>().Cache(0).
-    //    Filter(+[](const Position&p){ return p.x > 20 && p.y < 300;}, nullptr).
-    //    Each(
-    //    +[](const ECS::QueryIter &iter, const Position &e)
-    //    {
-    //        std::cout << "Entity x: " << e.x << std::endl;
-    //        std::cout << "Entity y: " << e.y << std::endl;
-    //    },
-    //    nullptr);
-
-    //q.Execute();
-
-    //e.AddComponent<Position>().Set<Position>(Position{21, 200});
-    //q.Execute();
-
-
-
-    // q.Destroy();
-
 }
 
 void GameLayer::OnEvent(InputEvent &e) { Layer::OnEvent(e); }

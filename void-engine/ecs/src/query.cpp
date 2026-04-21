@@ -256,10 +256,10 @@ void Query::FindMatchArchetype()
 
     const QueryTerm &anchorTerm = terms[sortedTermIdx[0]];
 
-    if (anchorTerm.op == NOT)
-    {
-        assert(0 && "Query should not rely on only NOT operations!");
-    }
+    // if (anchorTerm.op == NOT)
+    // {
+    //     assert(0 && "Query should not rely on only NOT operations!");
+    // }
 
     EntityId anchorTermId = EcsInvalidId;
 
@@ -277,41 +277,6 @@ void Query::FindMatchArchetype()
     const ComponentRecord &anchorCr =
         world->m_componentRecordIndex[anchorTermId];
 
-    if (eId != EcsInvalidId)
-    {
-        // ComponentRecord which has its cId is used as term cid will keep track
-        // of the cached query
-        for (size_t idx = 0; idx < termCount; ++idx)
-        {
-            const QueryTerm &term = terms[idx];
-            if (term.op == HAS)
-            {
-                switch (term.travMethod)
-                {
-                case SELF:
-                {
-                    EntityId hiId = HI_ENTITY_ID(term.cId);
-                    EntityId cId =
-                        hiId == EcsAnyId ? LO_ENTITY_ID(term.cId) : term.cId;
-                    ComponentRecord &cr = world->m_componentRecordIndex[cId];
-                    cr.trackedQueries.Add(world->m_wAllocator, eId);
-                    break;
-                }
-                case UP:
-                case CASCADE:
-                {
-                    EntityId cId = term.travTarget == EcsAnyId
-                                       ? term.travRelation
-                                       : MakeRelationship(term.travRelation,
-                                                          term.travTarget);
-                    ComponentRecord &cr = world->m_componentRecordIndex[cId];
-                    cr.trackedQueries.Add(world->m_wAllocator, eId);
-                    break;
-                }
-                }
-            }
-        }
-    }
     // anchor term work as a point to narrow down archetype list
     for (size_t aIdx = 0; aIdx < anchorCr.archetypes.count; ++aIdx)
     {
@@ -351,12 +316,15 @@ MatchedArchetype Query::IsMatch(Archetype *archetype)
         matchedColumns = world->m_wAllocator.Alloc<int32_t>(termCount);
     }
 
-    // termIdx start at 0 not 1 because the first term maybe a traversal
-    // term and it need to be validated carefully 1 only work with
-    // SELF-matched term
-    for (size_t termIdx = 0; termIdx < termCount; ++termIdx)
+    for (size_t termIdx = 0; termIdx < termCount - structureChangeCount;
+         ++termIdx)
     {
-        QueryTerm &term = terms[termIdx];
+        QueryTerm &term = terms[sortedTermIdx[termIdx]];
+
+        if (term.behavior == STRUCTURE_CHANGE)
+        {
+            assert(0);
+        }
 
         switch (term.travMethod)
         {
@@ -371,7 +339,8 @@ MatchedArchetype Query::IsMatch(Archetype *archetype)
                 }
                 else
                 {
-                    matchedColumns[termIdx] = archetype->columnMap[cIdx];
+                    matchedColumns[sortedTermIdx[termIdx]] =
+                        archetype->columnMap[cIdx];
                 }
             }
             else if (term.op == NOT)
@@ -382,7 +351,8 @@ MatchedArchetype Query::IsMatch(Archetype *archetype)
                 }
                 else
                 {
-                    matchedColumns[termIdx] = ComponentSet::NotFoundIdx;
+                    matchedColumns[sortedTermIdx[termIdx]] =
+                        ComponentSet::NotFoundIdx;
                 }
             }
             else
@@ -426,7 +396,8 @@ MatchedArchetype Query::IsMatch(Archetype *archetype)
                 else
                 {
                     term.validTravTarget = target;
-                    matchedColumns[termIdx] = targetArchetype->columnMap[cIdx];
+                    matchedColumns[sortedTermIdx[termIdx]] =
+                        targetArchetype->columnMap[cIdx];
                 }
             }
             else if (term.op == NOT)
@@ -438,7 +409,8 @@ MatchedArchetype Query::IsMatch(Archetype *archetype)
                 }
                 else
                 {
-                    matchedColumns[termIdx] = ComponentSet::NotFoundIdx;
+                    matchedColumns[sortedTermIdx[termIdx]] =
+                        ComponentSet::NotFoundIdx;
                 }
             }
             else
@@ -507,7 +479,7 @@ MatchedArchetype Query::IsMatch(Archetype *archetype)
                     else
                     {
                         term.validTravTarget = target;
-                        matchedColumns[termIdx] =
+                        matchedColumns[sortedTermIdx[termIdx]] =
                             targetArchetype->columnMap[cIdx];
                         // valid
                         break;
@@ -642,12 +614,54 @@ void QueryCallbackBuilder::CreateCachedEntity()
     if (m_query->isCached)
     {
         Entity e = m_query->world->CreateEntityBuilder()
-            .Id(m_query->eId)
-            .AssignComponent<EcsQuery>(EcsQuery{m_query})
-            .Build();
+                       .Id(m_query->eId)
+                       .AssignComponent<EcsQuery>(EcsQuery{m_query})
+                       .Build();
         m_query->AddRef();
 
         m_query->eId = e.GetFullId();
+
+        // ComponentRecord which has its cId is used as term cid will keep
+        // track of the cached query
+        for (size_t idx = 0; idx < m_query->termCount; ++idx)
+        {
+            const QueryTerm &term = m_query->terms[idx];
+            if (term.op == HAS)
+            {
+                switch (term.travMethod)
+                {
+                case SELF:
+                {
+                    EntityId hiId = HI_ENTITY_ID(term.cId);
+                    EntityId cId =
+                        hiId == EcsAnyId ? LO_ENTITY_ID(term.cId) : term.cId;
+                    ComponentRecord &cr =
+                        m_query->world->m_componentRecordIndex[cId];
+                    cr.trackedQueries.Add(m_query->world->m_wAllocator,
+                                          m_query->eId);
+                    break;
+                }
+                case UP:
+                case CASCADE:
+                {
+                    EntityId cId = term.travTarget == EcsAnyId
+                                       ? term.travRelation
+                                       : MakeRelationship(term.travRelation,
+                                                          term.travTarget);
+                    ComponentRecord &cr =
+                        m_query->world->m_componentRecordIndex[cId];
+                    cr.trackedQueries.Add(m_query->world->m_wAllocator,
+                                          m_query->eId);
+                    break;
+                }
+                default:
+                {
+                    assert(0);
+                }
+                }
+            }
+        }
+
         m_query->FindMatchArchetype();
 
         if (m_query->isEntityFiltered)
@@ -664,36 +678,68 @@ void SystemCallbackBuilder::CreateCachedEntity()
     if (m_query->isCached)
     {
         Entity e = m_query->world->CreateEntityBuilder()
-            .Id(m_query->eId)
-            .AssignComponent<EcsSystem>(EcsSystem{m_query})
-            .Build();
+                       .Id(m_query->eId)
+                       .AssignComponent<EcsSystem>(EcsSystem{m_query})
+                       .Build();
         m_query->AddRef();
 
         m_query->eId = e.GetFullId();
-        m_query->FindMatchArchetype();
 
-        if (m_query->isEntityFiltered)
-        {
-            m_query->FilterResult();
-        }
+        bool a = m_query->world->HasComponent(m_phaseId, EcsPhaseId);
+        bool b = m_query->world->HasRelationship(m_phaseId, EcsDependOnId);
 
-        if (m_phaseId == EcsInvalidId)
+        if (m_query->world->HasComponent(m_phaseId, EcsPhaseId) &&
+            m_query->world->HasRelationship(m_phaseId, EcsDependOnId))
         {
-            assert(0);
+            e.AddRelationship<EcsDependOn>(m_phaseId);
         }
         else
         {
-            bool a = m_query->world->HasComponent(m_phaseId, EcsPhaseId);
-            bool b = m_query->world->HasRelationship(m_phaseId, EcsDependOnId);
+            assert(0);
+        }
 
-            if (m_query->world->HasComponent(m_phaseId, EcsPhaseId) &&
-                m_query->world->HasRelationship(m_phaseId, EcsDependOnId))
+        for (size_t idx = 0; idx < m_query->termCount; ++idx)
+        {
+            const QueryTerm &term = m_query->terms[idx];
+            if (term.op == HAS)
             {
-                e.AddRelationship<EcsDependOn>(m_phaseId);
+                switch (term.travMethod)
+                {
+                case SELF:
+                {
+                    EntityId hiId = HI_ENTITY_ID(term.cId);
+                    EntityId cId =
+                        hiId == EcsAnyId ? LO_ENTITY_ID(term.cId) : term.cId;
+                    ComponentRecord &cr =
+                        m_query->world->m_componentRecordIndex[cId];
+                    cr.trackedQueries.Add(m_query->world->m_wAllocator,
+                                          m_query->eId);
+                    break;
+                }
+                case UP:
+                case CASCADE:
+                {
+                    EntityId cId = term.travTarget == EcsAnyId
+                                       ? term.travRelation
+                                       : MakeRelationship(term.travRelation,
+                                                          term.travTarget);
+                    ComponentRecord &cr =
+                        m_query->world->m_componentRecordIndex[cId];
+                    cr.trackedQueries.Add(m_query->world->m_wAllocator,
+                                          m_query->eId);
+                    break;
+                }
+                default:
+                {
+                    assert(0);
+                }
+                }
             }
-            else
+            m_query->FindMatchArchetype();
+
+            if (m_query->isEntityFiltered)
             {
-                assert(0);
+                m_query->FilterResult();
             }
         }
     }

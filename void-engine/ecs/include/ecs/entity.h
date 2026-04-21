@@ -12,6 +12,12 @@ enum class ComponentAddMode
     ADD_TYPE
 };
 
+enum class EntityCommandMode
+{
+    SPAWN,
+    PATCH
+};
+
 struct AddCommand
 {
     EntityId cId;
@@ -25,11 +31,16 @@ struct RemoveCommand
     EntityId cId;
 };
 
-enum class EntityCommandMode
-{
-    SPAWN,
-    PATCH
-};
+// =========================================================
+//
+//                    ** EntityCommand **
+//
+//  A structure stores building or updating steps
+//  of an entity.
+//
+//  Mainly use to avoid multiple archetype move operations
+//
+// =========================================================
 
 struct EntityCommand
 {
@@ -71,6 +82,13 @@ struct EntityCommand
     EntityCommandMode mode;
 };
 
+// =========================================================
+//
+//                    ** EntityMutator **
+//
+// Common interface for EntityBuilder and EntityPatcher
+//
+// =========================================================
 template <typename Derived>
 class EntityMutator
 {
@@ -156,6 +174,14 @@ protected:
     World *m_world;
 };
 
+// =========================================================
+//
+//                   ** EntityPatcher **
+//
+//  Lazily update entity instead of multiple single steps
+//
+// =========================================================
+
 class EntityPatcher : public EntityMutator<EntityPatcher>
 {
 public:
@@ -189,6 +215,17 @@ public:
 
     void Flush();
 };
+
+// =========================================================
+//
+//                       ** Entity **
+//
+// A class wrap around EntityId and world pointer.
+//
+// Serve as a convenient way to interact with entity without
+// having to operate through world directly.
+//
+// =========================================================
 
 class Entity
 {
@@ -250,10 +287,13 @@ private:
     World *m_world;
 };
 
-/*
-    Entity Builder declaration
-    These ecs operations will apply immediately
-*/
+// =========================================================
+//
+//                    ** EntityBuilder **
+//
+// Spawn entity lazily until all the components are defined
+//
+// =========================================================
 
 class EntityBuilder : public EntityMutator<EntityBuilder>
 {

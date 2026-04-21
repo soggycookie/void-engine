@@ -193,14 +193,9 @@ void Query::SetExecutionCallback(void (*cb)(CallbackArgs...), void *ctx)
         for (size_t queryTermIdx = 0; queryTermIdx < termCount; ++queryTermIdx)
         {
             const QueryTerm &term = terms[queryTermIdx];
-
-            if (term.op == NOT)
-            {
-                continue;
-            }
-
             bool isMasked = (termBitmask & (1 << queryTermIdx)) != 0;
-            if (isMasked)
+
+            if (term.op == NOT || term.behavior == STRUCTURE_CHANGE || isMasked)
             {
                 continue;
             }
@@ -306,14 +301,9 @@ void Query::SetFilterCallback(bool (*cb)(CallbackArgs...), void *ctx)
         for (size_t queryTermIdx = 0; queryTermIdx < termCount; ++queryTermIdx)
         {
             const QueryTerm &term = terms[queryTermIdx];
-
-            if (term.op == NOT)
-            {
-                continue;
-            }
-
             bool isMasked = (termBitmask & (1 << queryTermIdx)) != 0;
-            if (isMasked)
+
+            if (term.op == NOT || term.behavior == STRUCTURE_CHANGE || isMasked)
             {
                 continue;
             }
@@ -352,9 +342,9 @@ void Query::SetFilterCallback(bool (*cb)(CallbackArgs...), void *ctx)
 
 ////////////////////////// QueryBuilderBase //////////////////////////////
 
-template <typename Handle, typename CallbackBuilder, typename... T>
-QueryBuilderBase<Handle, CallbackBuilder, T...> &
-QueryBuilderBase<Handle, CallbackBuilder, T...>::Term(EntityId cId)
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Term(EntityId cId)
 {
     if (!m_firstTerm)
     {
@@ -370,13 +360,13 @@ QueryBuilderBase<Handle, CallbackBuilder, T...>::Term(EntityId cId)
 
     m_currTerm.cId = cId;
 
-    return *this;
+    return Self();
 }
 
-template <typename Handle, typename CallbackBuilder, typename... T>
-QueryBuilderBase<Handle, CallbackBuilder, T...> &
-QueryBuilderBase<Handle, CallbackBuilder, T...>::Term(EntityId first,
-                                                      EntityId second)
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Term(EntityId relation,
+                                                      EntityId target)
 {
     if (!m_firstTerm)
     {
@@ -390,172 +380,173 @@ QueryBuilderBase<Handle, CallbackBuilder, T...>::Term(EntityId first,
         m_firstTerm = false;
     }
 
-    m_currTerm.cId = MakeRelationship(first, second);
+    m_currTerm.cId = MakeRelationship(relation, target);
 
-    return *this;
+    return Self();
 }
 
-template <typename Handle, typename CallbackBuilder, typename... T>
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
 template <typename U>
-QueryBuilderBase<Handle, CallbackBuilder, T...> &
-QueryBuilderBase<Handle, CallbackBuilder, T...>::Term()
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Term()
 {
     return Term(ComponentTypeId<U>::Id());
 }
 
-template <typename Handle, typename CallbackBuilder, typename... T>
-QueryBuilderBase<Handle, CallbackBuilder, T...> &
-QueryBuilderBase<Handle, CallbackBuilder, T...>::Through(TraverseMethod method)
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Behavior(TermBehavior behavior)
 {
-    m_currTerm.travMethod = method;
-    return *this;
+    assert(behavior != TermBehavior::STRUCTURE_CHANGE);
+    m_currTerm.behavior = behavior;
+
+    return Self();
 }
 
-// template <typename... T>
-// QueryBuilder<T...> &QueryBuilder<T...>::TraveseTarget(EntityId targetId)
-// {
-//     m_currTerm.travTarget = targetId;
-//     return *this;
-// }
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Through(TraverseMethod method)
+{
+    m_currTerm.travMethod = method;
+    return Self();
+}
 
-template <typename Handle, typename CallbackBuilder, typename... T>
-QueryBuilderBase<Handle, CallbackBuilder, T...> &
-QueryBuilderBase<Handle, CallbackBuilder, T...>::Traverse(EntityId relation,
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Traverse(EntityId relation,
                                                           EntityId target)
 {
     m_currTerm.travRelation = relation;
     m_currTerm.travTarget = target;
-    return *this;
+    return Self();
 }
 
-template <typename Handle, typename CallbackBuilder, typename... T>
-QueryBuilderBase<Handle, CallbackBuilder, T...> &
-QueryBuilderBase<Handle, CallbackBuilder, T...>::TraverseAny(EntityId relation)
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::TraverseAny(EntityId relation)
 {
     return Traverse(relation, EcsAnyId);
 }
 
-template <typename Handle, typename CallbackBuilder, typename... T>
-template <typename U>
-QueryBuilderBase<Handle, CallbackBuilder, T...> &
-QueryBuilderBase<Handle, CallbackBuilder, T...>::Traverse(EntityId target)
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+template<typename U>
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Traverse(EntityId target)
 {
     static_assert(!std::is_reference_v<U> && !std::is_const_v<U>);
 
     return Traverse(ComponentTypeId<U>::Id(), target);
 }
 
-template <typename Handle, typename CallbackBuilder, typename... T>
-template <typename U>
-QueryBuilderBase<Handle, CallbackBuilder, T...> &
-QueryBuilderBase<Handle, CallbackBuilder, T...>::TraverseAny()
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+template<typename U>
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::TraverseAny()
 {
     static_assert(!std::is_reference_v<U> && !std::is_const_v<U>);
 
     return TraverseAny(ComponentTypeId<U>::Id());
 }
 
-template <typename Handle, typename CallbackBuilder, typename... T>
-QueryBuilderBase<Handle, CallbackBuilder, T...> &
-QueryBuilderBase<Handle, CallbackBuilder, T...>::Op(TermOp op)
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Op(TermOp op)
 {
     m_currTerm.op = op;
-    return *this;
+    return Self();
 }
 
-template <typename Handle, typename CallbackBuilder, typename... T>
-template <typename U>
-QueryBuilderBase<Handle, CallbackBuilder, T...> &
-QueryBuilderBase<Handle, CallbackBuilder, T...>::With()
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+template<typename U>
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::With(TermBehavior behavior)
 {
-    return Term<U>().Op(HAS);
+    return Term<U>().Op(HAS).Behavior(behavior);
 }
 
-template <typename Handle, typename CallbackBuilder, typename... T>
-template <typename U>
-QueryBuilderBase<Handle, CallbackBuilder, T...> &
-QueryBuilderBase<Handle, CallbackBuilder, T...>::Without()
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+template<typename U>
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Without()
 {
     return Term<U>().Op(NOT);
 }
 
-//
-// template <typename... T>
-// template <typename U>
-// QueryBuilder<T...> &QueryBuilder<T...>::Optional()
-// {
-//     return Term<U>().Optional();
-// }
-//
-// template <typename... T>
-// QueryBuilder<T...> &QueryBuilder<T...>::With()
-// {
-//     return Op(HAS);
-// }
-//
-// template <typename... T>
-// QueryBuilder<T...> &QueryBuilder<T...>::Without()
-// {
-//     return Op(NOT);
-// }
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+    Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::With(EntityId cId, TermBehavior behavior)
+    {
+        return Term(cId).Op(HAS).Behavior(behavior);
+    }
 
-template <typename Handle, typename CallbackBuilder, typename... T>
-template <typename U>
-QueryBuilderBase<Handle, CallbackBuilder, T...> &
-QueryBuilderBase<Handle, CallbackBuilder, T...>::Up(EntityId target)
+    template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+    Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Without(EntityId cId)
+    {
+        return Term(cId).Op(NOT);    
+    }
+
+    template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+    Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::With(EntityId relation, EntityId target, TermBehavior behavior)
+    {
+        return Term(relation, target).Op(HAS).Behavior(behavior)
+    }
+
+    template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+    Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Without(EntityId relation, EntityId target)
+    {
+        return Term(relation, target).Op(NOT); 
+    }
+
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+template<typename U>
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Up(EntityId target, TermBehavior behavior)
 {
     static_assert(!std::is_reference_v<U> && !std::is_const_v<U>);
 
-    return Up(ComponentTypeId<U>::Id(), target);
+    return Up(ComponentTypeId<U>::Id(), target).Behavior(behavior);
 }
 
-template <typename Handle, typename CallbackBuilder, typename... T>
-template <typename U>
-QueryBuilderBase<Handle, CallbackBuilder, T...> &
-QueryBuilderBase<Handle, CallbackBuilder, T...>::Cascade()
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+template<typename U>
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Cascade(TermBehavior behavior)
 {
     static_assert(!std::is_reference_v<U> && !std::is_const_v<U>);
 
-    return Cascade(ComponentTypeId<U>::Id());
+    return Cascade(ComponentTypeId<U>::Id()).Behavior(behavior);
 }
 
-template <typename Handle, typename CallbackBuilder, typename... T>
-QueryBuilderBase<Handle, CallbackBuilder, T...> &
-QueryBuilderBase<Handle, CallbackBuilder, T...>::Up(EntityId relation,
-                                                    EntityId target)
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Up(EntityId relation,
+                                                    EntityId target, TermBehavior behavior)
 {
     m_currTerm.validTravTarget = target;
-    return Through(UP).Traverse(relation, target);
+    return Through(UP).Traverse(relation, target).Behavior(behavior);
 }
 
-template <typename Handle, typename CallbackBuilder, typename... T>
-QueryBuilderBase<Handle, CallbackBuilder, T...> &
-QueryBuilderBase<Handle, CallbackBuilder, T...>::Cascade(EntityId relation)
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Cascade(EntityId relation, EntityId target, TermBehavior behavior)
 {
-    return Through(CASCADE).TraverseAny(relation);
+    return Through(CASCADE).Traverse(relation, target).Behavior(behavior);
 }
 
-// template <typename... Components>
-// QueryBuilder<Components...> &
-// QueryBuilder<Components...>::Cascade(EntityId first, EntityId second)
-// {
-//     return Traverse(CASCADE).TraveseTarget(first, second);
-// }
-
-template <typename Handle, typename CallbackBuilder, typename... T>
-template <typename U>
-QueryBuilderBase<Handle, CallbackBuilder, T...> &
-QueryBuilderBase<Handle, CallbackBuilder, T...>::Modify()
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+template<typename U>
+Derived &
+QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Modify()
 {
     Term<U>();
     m_currTerm.behavior = STRUCTURE_CHANGE;
+    ++m_structureChangeCount;
 
-    return *this;
+    return Self();
 }
 
-template <typename Handle, typename CallbackBuilder, typename... T>
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
 template <typename... CallbackArgs>
-CallbackBuilder QueryBuilderBase<Handle, CallbackBuilder, T...>::Filter(
+CallbackBuilder QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Filter(
     bool (*cb)(CallbackArgs...), void *ctx)
 {
     Query *q = BuildQuery();
@@ -563,9 +554,9 @@ CallbackBuilder QueryBuilderBase<Handle, CallbackBuilder, T...>::Filter(
     return CallbackBuilder(q).Filter(cb, ctx);
 }
 
-template <typename Handle, typename CallbackBuilder, typename... T>
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
 template <typename... CallbackArgs>
-Handle QueryBuilderBase<Handle, CallbackBuilder, T...>::Each(
+Handle QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::Each(
     void (*cb)(CallbackArgs...), void *ctx)
 {
     Query *q = BuildQuery();
@@ -573,14 +564,15 @@ Handle QueryBuilderBase<Handle, CallbackBuilder, T...>::Each(
     return CallbackBuilder(q).Each(cb, ctx);
 }
 
-template <typename Handle, typename CallbackBuilder, typename... T>
-Query *QueryBuilderBase<Handle, CallbackBuilder, T...>::BuildQuery()
+template <typename Handle, typename Derived, typename CallbackBuilder, typename... T>
+Query *QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::BuildQuery()
 {
     m_desc.terms[m_currTermIdx] = m_currTerm;
 
     // construct query
     void *addr = m_world->m_allocators.queries.Alloc();
     Query *query = new (addr) Query(m_world, 0);
+    query->structureChangeCount = m_structureChangeCount;
     query->termCount = m_currTermIdx + 1;
     QueryTerm *terms = m_world->m_wAllocator.Alloc<QueryTerm>(query->termCount);
     uint8_t *sortedTermIdx =
@@ -594,11 +586,18 @@ Query *QueryBuilderBase<Handle, CallbackBuilder, T...>::BuildQuery()
 
     auto priority = [](const QueryTerm &t) -> EntityId
     {
+        if (t.behavior == STRUCTURE_CHANGE)
+        {
+            return EcsInvalidId;
+        }
+
         if (t.travMethod == SELF)
         {
+
             if (t.op == NOT)
             {
-                return EcsInvalidId;
+                //This might fighting with EcsName
+                return EcsInvalidId + 1;
             }
 
             return t.cId;
@@ -606,12 +605,8 @@ Query *QueryBuilderBase<Handle, CallbackBuilder, T...>::BuildQuery()
         else
         {
             // relationship is used to filter
-            // cId component now is just a pass-into-callback reference
-
-            if (t.op == NOT)
-            {
-                return EcsInvalidId;
-            }
+            // cId component now is just a pass-into-callback reference from
+            // traversed-to entity
 
             return MakeRelationship(t.travRelation, t.travTarget);
         }

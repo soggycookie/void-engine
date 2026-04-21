@@ -25,20 +25,44 @@ enum TermOp : uint16_t
 
 enum TermBehavior : uint16_t
 {
-    READ_WRITE,
+    READ,
+    WRITE,
     STRUCTURE_CHANGE
 };
 
 class Query;
 
-//////////////////////////// QueryTerm /////////////////////////////
+// =========================================================
+//
+//                      ** QueryTerm **
+//
+//  Term to describe a query.
+//
+//  Term operation:
+//      - With:
+//          + SELF: has component on SELF.
+//          + UP: has component on Parent.
+//          + CASCADE: has component on Ancestor.
+//      - Without: opposite with With.
+//
+//  Term behavior:
+//      - Query is used for System:
+//          + Insert sync point.
+//          + Help setting up scheduler.
+//      - Query is used for normal usage, mostly run
+//      discretely without any dependency:
+//          + Mean nothing, because user must manually flush
+//          anyway. Recommond doing it because of
+//          good practice :)
+//
+// =========================================================
 
 struct QueryTerm
 {
     QueryTerm()
         : cId(EcsInvalidId), travRelation(EcsInvalidId),
           travTarget(EcsInvalidId), validTravTarget(EcsInvalidId),
-          travMethod(SELF), op(HAS), behavior(READ_WRITE), fieldId(0)
+          travMethod(SELF), op(HAS), behavior(TermBehavior::READ), fieldId(0)
     {
     }
 
@@ -54,7 +78,15 @@ struct QueryTerm
 
 constexpr uint16_t InlineArrayOptimizationCount = 8;
 
-//////////////////////////// QueryArchetype /////////////////////////////
+// =========================================================
+//
+//                    ** QueryArchetype **
+//
+//  A archetype that is matched by a query.
+//
+//  Its entity can be filterd if query enable entity filter.
+//
+// =========================================================
 
 struct QueryArchetype
 {
@@ -122,15 +154,21 @@ struct QueryArchetype
     int32_t *hi_matchedColumnIdx; // map term index to column index
     int32_t lo_matchedColumnIdx[InlineArrayOptimizationCount];
 
-    // NOTE: if there are ecs operation like add or delete, bitmask will be
-    // invalidated. Try to avoid these expensive filtering as much as possible
     uint32_t lo_entityMask[InlineArrayOptimizationCount];
     uint32_t *hi_entityMask;
     uint32_t maskCount;
     uint32_t maskCapacity;
 };
 
-//////////////////////////// QueryResult /////////////////////////////
+// =========================================================
+//
+//                    ** QueryResult **
+//
+//  Result return by a query.
+//
+//  The name speaks for itself.
+//
+// =========================================================
 
 struct QueryResult
 {
@@ -216,7 +254,16 @@ struct QueryResult
     uint32_t capacity;
 };
 
-//////////////////////////// QueryIter /////////////////////////////
+// =========================================================
+//
+//                    ** QueryIter **
+//
+//  Pass as an argument to filter and exec callback of a
+//  query
+//
+//  Contains general world context
+//
+// =========================================================
 
 struct QueryIter
 {
@@ -231,7 +278,7 @@ struct QueryIter
     EntityId eId;
     double deltaTime;
 
-    Entity GetEntity() { return Entity( world, eId); }
+    Entity GetEntity() { return Entity(world, eId); }
 };
 
 template <typename... CallbackArgs>
@@ -248,11 +295,23 @@ constexpr bool is_first_arg_query_iter_v =
 constexpr int32_t QueryIterIndex = -1;
 constexpr int32_t InvalidIndex = -2;
 
-//////////////////////////// QueryCallback /////////////////////////////
+// =========================================================
+//
+//                    ** QueryExecCallback **
+//
+//  Exec callback of a query.
+//
+//  This is an abstract struct for exec callback that may
+//  have multiple parameter signatures.
+//
+//  Also support shuffled callback sig without following
+//  query term order.
+//
+// =========================================================
 
-struct QueryCallback
+struct QueryExecCallback
 {
-    QueryCallback()
+    QueryExecCallback()
         : ctx(nullptr), fn(nullptr), invoker(nullptr), sigIdxToTermIdx(nullptr),
           sigCount(0)
     {
@@ -266,7 +325,19 @@ struct QueryCallback
     uint32_t sigCount;
 };
 
-///////////////////////// QueryFilterCallback /////////////////////////////////
+// =========================================================
+//
+//                    ** QueryFilterCallback **
+//
+//  Filter callback of a query.
+//
+//  This is an abstract struct for exec callback that may
+//  have multiple parameter signatures.
+//
+//  Also support shuffled callback sig without following
+//  query term order.
+//
+// =========================================================
 
 struct QueryFilterCallback
 {
@@ -287,7 +358,13 @@ struct QueryFilterCallback
 
 constexpr const uint32_t MaxTermCount = 32;
 
-/////////////////////////////// QueryDesc /////////////////////////////////////
+// =========================================================
+//
+//                    ** QueryDesc **
+//
+//  Use to build query.
+//
+// =========================================================
 
 struct QueryDesc
 {
@@ -307,14 +384,25 @@ struct MatchedArchetype
     bool matched;
 };
 
-//////////////////////////////// Query /////////////////////////////////////////
+// =========================================================
+//
+//                    ** Query **
+//
+//  The query itself.
+//
+//  Query is an internal resource. It contains intrusive ref.
+//
+//  This should never be exposed to public API.
+//
+// =========================================================
 
 struct Query : public IntrusiveRefCount
 {
     Query(World *world, EntityId eId = 0)
         : world(world), eId(eId), terms(nullptr), sortedTermIdx(nullptr),
           termCount(0), isEntityFiltered(false), result(), execCallback(),
-          entityFilterCallback(), lastSweep_archetype(0), isCached(false)
+          entityFilterCallback(), lastSweep_archetype(0),
+          structureChangeCount(0), isCached(false)
     {
     }
 
@@ -331,6 +419,7 @@ struct Query : public IntrusiveRefCount
         lastSweep_archetype = other.lastSweep_archetype;
         entityFilterCallback = other.entityFilterCallback;
         isCached = other.isCached;
+        structureChangeCount = other.structureChangeCount;
 
         other.terms = nullptr;
         other.sortedTermIdx = nullptr;
@@ -349,6 +438,7 @@ struct Query : public IntrusiveRefCount
         lastSweep_archetype = other.lastSweep_archetype;
         entityFilterCallback = other.entityFilterCallback;
         isCached = other.isCached;
+        structureChangeCount = other.structureChangeCount;
 
         other.terms = nullptr;
         other.sortedTermIdx = nullptr;
@@ -405,15 +495,24 @@ struct Query : public IntrusiveRefCount
     QueryTerm *terms;
     uint8_t *sortedTermIdx;
     QueryResult result;
-    QueryCallback execCallback;
+    QueryExecCallback execCallback;
     QueryFilterCallback entityFilterCallback;
     uint32_t lastSweep_archetype;
     uint32_t termCount;
+    uint16_t structureChangeCount;
     bool isEntityFiltered;
     bool isCached;
 };
 
-///////////////////////////// QueryHandle //////////////////////////////////
+// =========================================================
+//
+//                    ** QueryHandle **
+//
+//  Public handle for query.
+//
+//  User will operate through this handle.
+//
+// =========================================================
 
 class QueryHandle
 {
@@ -468,18 +567,34 @@ private:
     Query *m_query;
 };
 
-/////////////////////////// SystemHandle ////////////////////////////////
+// =========================================================
+//
+//                    ** SystemHandle **
+//
+//  Public handle for system.
+//
+//  User will operate through this handle.
+//
+// =========================================================
 
 using SystemHandle = QueryHandle;
 
-///////////////////////// QueryBuilderBase ////////////////////////////
+// =========================================================
+//
+//                    ** QueryBuilderBase **
+//
+//  Use to build QueryDesc
+//
+// =========================================================
 
-template <typename Handle, typename CallbackBuilder, typename... T>
+template <typename Handle, typename Derived, typename CallbackBuilder,
+          typename... T>
 class QueryBuilderBase
 {
 protected:
     QueryBuilderBase(World *world)
-        : m_world(world), m_currTermIdx(0), m_desc(), m_firstTerm(true)
+        : m_world(world), m_currTermIdx(0), m_desc(), m_firstTerm(true),
+          m_structureChangeCount(0)
     {
         static_assert(!std::is_reference_v<Handle> && !std::is_const_v<Handle>);
         static_assert(((!std::is_reference_v<T> && !std::is_const_v<T>) && ...),
@@ -489,56 +604,32 @@ protected:
     }
 
 public:
-    QueryBuilderBase<Handle, CallbackBuilder, T...> &Term(EntityId id);
-
-    QueryBuilderBase<Handle, CallbackBuilder, T...> &Term(EntityId first,
-                                                          EntityId second);
+    template <typename U>
+    Derived &With(TermBehavior behavior = TermBehavior::READ);
 
     template <typename U>
-    QueryBuilderBase<Handle, CallbackBuilder, T...> &Term();
+    Derived &Without();
 
-    QueryBuilderBase<Handle, CallbackBuilder, T...> &
-    Through(TraverseMethod method);
+    Derived &With(EntityId cId, TermBehavior behavior = TermBehavior::READ);
 
-    // QueryBuilder<T...> &TraveseTarget(EntityId targetId);
+    Derived &Without(EntityId cId);
 
-    QueryBuilderBase<Handle, CallbackBuilder, T...> &Traverse(EntityId relation,
-                                                              EntityId target);
+    Derived &With(EntityId relation, EntityId target, TermBehavior behavior = TermBehavior::READ);
 
-    QueryBuilderBase<Handle, CallbackBuilder, T...> &
-    TraverseAny(EntityId relation);
+    Derived &Without(EntityId relation, EntityId target);
 
     template <typename U>
-    QueryBuilderBase<Handle, CallbackBuilder, T...> &Traverse(EntityId target);
+    Derived &Up(EntityId target, TermBehavior behavior = TermBehavior::READ);
 
     template <typename U>
-    QueryBuilderBase<Handle, CallbackBuilder, T...> &TraverseAny();
+    Derived &Cascade(TermBehavior behavior = TermBehavior::READ);
 
-    QueryBuilderBase<Handle, CallbackBuilder, T...> &Op(TermOp op);
+    Derived &Up(EntityId relation, EntityId target, TermBehavior behavior = TermBehavior::READ);
 
-    template <typename U>
-    QueryBuilderBase<Handle, CallbackBuilder, T...> &With();
-
-    template <typename U>
-    QueryBuilderBase<Handle, CallbackBuilder, T...> &Without();
-
-    // QueryBuilder<T...> &With();
-    //
-    // QueryBuilder<T...> &Without();
+    Derived &Cascade(EntityId relation, EntityId target, TermBehavior behavior = TermBehavior::READ);
 
     template <typename U>
-    QueryBuilderBase<Handle, CallbackBuilder, T...> &Up(EntityId target);
-
-    template <typename U>
-    QueryBuilderBase<Handle, CallbackBuilder, T...> &Cascade();
-
-    QueryBuilderBase<Handle, CallbackBuilder, T...> &Up(EntityId relation,
-                                                        EntityId target);
-
-    QueryBuilderBase<Handle, CallbackBuilder, T...> &Cascade(EntityId relation);
-
-    template <typename U>
-    QueryBuilderBase<Handle, CallbackBuilder, T...> &Modify();
+    Derived &Modify();
 
     template <typename... CallbackArgs>
     CallbackBuilder Filter(bool (*)(CallbackArgs...), void *ctx = nullptr);
@@ -547,17 +638,49 @@ public:
     Handle Each(void (*)(CallbackArgs...), void *ctx = nullptr);
 
 protected:
+    Derived &Self() { return *PTR_CAST(this, Derived); }
+
     Query *BuildQuery();
+
+    Derived &Term(EntityId id);
+
+    Derived &Term(EntityId first, EntityId second);
+
+    template <typename U>
+    Derived &Term();
+
+    Derived &Behavior(TermBehavior behavior);
+
+    Derived &Through(TraverseMethod method);
+
+    // QueryBuilder<T...> &TraveseTarget(EntityId targetId);
+
+    Derived &Traverse(EntityId relation, EntityId target);
+
+    Derived &TraverseAny(EntityId relation);
+
+    template <typename U>
+    Derived &Traverse(EntityId target);
+
+    template <typename U>
+    Derived &TraverseAny();
+
+    Derived &Op(TermOp op);
 
 protected:
     World *m_world;
     QueryDesc m_desc;
     QueryTerm m_currTerm;
     uint32_t m_currTermIdx;
+    uint16_t m_structureChangeCount;
     bool m_firstTerm;
 };
 
-/////////////////////// QueryCallBackBuilderBase //////////////////////////
+// =========================================================
+//
+//                ** QueryCallBackBuilderBase **
+//
+// =========================================================
 
 template <typename Derived, typename Handle>
 class QueryCallBackBuilderBase
@@ -577,7 +700,11 @@ protected:
     Query *m_query;
 };
 
-////////////////////////// QueryCallBackBuilder //////////////////////////////
+// =========================================================
+//
+//               ** QueryCallbackBuilder **
+//
+// =========================================================
 
 class QueryCallbackBuilder
     : public QueryCallBackBuilderBase<QueryCallbackBuilder, QueryHandle>
@@ -598,7 +725,8 @@ private:
     template <typename... T>
     friend class QueryBuilder;
 
-    template <typename Handle, typename CallbackBuilder, typename... T>
+    template <typename Handle, typename Derived, typename CallbackBuilder,
+              typename... T>
     friend class QueryBuilderBase;
 
     QueryCallbackBuilder(Query *query)
@@ -607,7 +735,11 @@ private:
     }
 };
 
-////////////////////////// SystemCallBackBuilder //////////////////////////////
+// =========================================================
+//
+//              ** SystemCallbackBuilder **
+//
+// =========================================================
 
 class SystemCallbackBuilder
     : public QueryCallBackBuilderBase<SystemCallbackBuilder, SystemHandle>
@@ -629,7 +761,8 @@ private:
     template <typename... T>
     friend class SystemBuilder;
 
-    template <typename Handle, typename CallbackBuilder, typename... T>
+    template <typename Handle, typename Derived, typename CallbackBuilder,
+              typename... T>
     friend class QueryBuilderBase;
 
     SystemCallbackBuilder(Query *query)
@@ -643,32 +776,48 @@ private:
     EntityId m_phaseId;
 };
 
-/////////////////////////////// QueryBuilder ///////////////////////////////
+// =========================================================
+//
+//                  ** QueryBuilder **
+//
+//  Inherit QueryBuilderBase.
+//
+//  Return QueryHandle as final step.
+//
+// =========================================================
 
 template <typename... T>
-class QueryBuilder
-    : public QueryBuilderBase<QueryHandle, QueryCallbackBuilder, T...>
+class QueryBuilder : public QueryBuilderBase<QueryHandle, QueryBuilder<T...>,
+                                             QueryCallbackBuilder, T...>
 {
 public:
     QueryCallbackBuilder Cache(EntityId eId);
 
     QueryBuilder(World *world)
-        : ECS::QueryBuilderBase<QueryHandle, QueryCallbackBuilder, T...>(world)
+        : ECS::QueryBuilderBase<QueryHandle, QueryBuilder<T...>, QueryCallbackBuilder, T...>(world)
     {
     }
 };
 
-/////////////////////////////// SystemBuilder ///////////////////////////////
+// =========================================================
+//
+//                  ** SystemBuilder **
+//
+//  Inherit QueryBuilderBase.
+//
+//  Return SystemHandle as final step.
+//
+// =========================================================
 
 template <typename... T>
-class SystemBuilder
-    : public QueryBuilderBase<SystemHandle, SystemCallbackBuilder, T...>
+class SystemBuilder : public QueryBuilderBase<SystemHandle, SystemBuilder<T...>,
+                                              SystemCallbackBuilder, T...>
 {
 public:
     SystemCallbackBuilder DependOn(EntityId eId);
 
     SystemBuilder(World *world)
-        : ECS::QueryBuilderBase<SystemHandle, SystemCallbackBuilder, T...>(
+        : ECS::QueryBuilderBase<SystemHandle, SystemBuilder<T...>, SystemCallbackBuilder, T...>(
               world)
     {
     }

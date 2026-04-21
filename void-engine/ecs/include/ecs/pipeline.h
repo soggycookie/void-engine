@@ -1,6 +1,9 @@
 #pragma once
+#include "ds/hash_map.h"
+#include "ds/world_allocator.h"
 #include "ecs_pch.h"
 #include "ecs_type.h"
+#include "internal_component.h"
 #include "query.h"
 #include "type_info.h"
 
@@ -9,24 +12,36 @@ namespace ECS
 
 ////////////////////////// PipelineStage ///////////////////////////
 
-struct PipelineStage
+struct StageStep
 {
-    Store<Query *> systems;
+    Query *system;
+    bool isSyncPoint;
+};
+
+struct Stage
+{
+    Store<StageStep> steps;
 };
 
 ////////////////////////// Pipeline ///////////////////////////
 
 struct Pipeline
 {
+    Pipeline() = default;
+
     void Init(World *world) { this->world = world; }
 
     void BuildFromBasePhase(EntityId basePhaseId);
+
+    void BuildStep(HashMap<EntityId, TermBehavior> &behaviors,
+                   EcsSystem *system, Store<StageStep> &appendedStore,
+                   WorldAllocator &wAllocator);
 
     void Progress();
 
     void Destroy();
 
-    Store<PipelineStage> stages;
+    Store<Stage> stages;
     World *world;
 };
 
