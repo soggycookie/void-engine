@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.23)
 
-set(CMAKE_CXX_STANDARD          17)
+set(CMAKE_CXX_STANDARD          20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS        OFF)
 
@@ -44,7 +44,6 @@ add_custom_command(TARGET ${VOID_ENGINE_EXEC} POST_BUILD
 
 target_compile_definitions(${VOID_ENGINE_EXEC}
     PRIVATE
-		VOID_DEV_MODE
         $<$<CONFIG:Debug>:VOID_DEBUG>
 )
 
@@ -52,6 +51,7 @@ target_compile_definitions(${VOID_ENGINE_EXEC}
 if(WIN32)
 	file(GLOB_RECURSE VOID_ENGINE_PLATFORM_SRC_FILES CONFIGURE_DEPENDS
 		"${VOID_ENGINE_PLATFORM_SRC}/d3d11/*.cpp"
+		"${VOID_ENGINE_PLATFORM_SRC}/vulkan/*.cpp"
 		"${VOID_ENGINE_PLATFORM_SRC}/win32/*.cpp"
 	)
     
@@ -62,6 +62,7 @@ if(WIN32)
 
 	target_include_directories(${VOID_ENGINE_EXEC} 
 	  PRIVATE "${VOID_ENGINE_INCLUDE_PLATFORM}/d3d11"
+	  PRIVATE "${VOID_ENGINE_INCLUDE_PLATFORM}/vulkan"
 	  PRIVATE "${VOID_ENGINE_INCLUDE_PLATFORM}/win32"
 	)
 
@@ -75,6 +76,11 @@ if(WIN32)
 			d3dcompiler
     )
 
+	target_compile_definitions(${VOID_ENGINE_EXEC}
+    PRIVATE
+        VOID_WIN32
+)
+
 endif()
 
 set(VOID_ECS_LIB "ecs")
@@ -83,11 +89,12 @@ set(VOID_ECS_INCLUDE "void-engine/ecs/include/ecs")
 set(VOID_ECS_API_INCLUDE "void-engine/ecs/include/public_api")
 set(VOID_ECS_PRECOMPILED_HEADER "${VOID_ECS_INCLUDE}/ecs_pch.h")
 
-file(GLOB_RECURSE VOID_ECS_SRC_FILES CONFIGURE_DEPENDS
+file(GLOB_RECURSE VOID_ECS_FILES CONFIGURE_DEPENDS
     "${VOID_ECS_SRC}/*.cpp"  
+    "${VOID_ECS_INCLUDE}/*.h"
 )
 
-add_library(${VOID_ECS_LIB} STATIC ${VOID_ECS_SRC_FILES})
+add_library(${VOID_ECS_LIB} STATIC ${VOID_ECS_FILES})
 
 set_target_properties(${VOID_ECS_LIB} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
@@ -111,7 +118,37 @@ target_include_directories(${VOID_ECS_LIB}
   PUBLIC ${VOID_ECS_API_INCLUDE}
 )
 
+set(VOID_LOGGER_LIB "logger")
+set(VOID_LOGGER_SRC "void-engine/logger/src")
+set(VOID_LOGGER_INCLUDE "void-engine/logger/include")
+
+file(GLOB_RECURSE VOID_LOGGER_FILES CONFIGURE_DEPENDS
+    "${VOID_LOGGER_SRC}/*.cpp"  
+    "${VOID_LOGGER_INCLUDE}/*.h"
+)
+
+add_library(${VOID_LOGGER_LIB} STATIC ${VOID_LOGGER_FILES})
+
+set_target_properties(${VOID_LOGGER_LIB} PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
+    LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
+    ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
+    VS_GLOBAL_IntDir         "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
+    PDB_OUTPUT_DIRECTORY     "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
+)
+
+target_include_directories(${VOID_LOGGER_LIB}
+    PUBLIC ${VOID_LOGGER_INCLUDE}
+)
+
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
+
+find_package(Vulkan REQUIRED)
+
 target_link_libraries(${VOID_ENGINE_EXEC}
     PRIVATE
 	${VOID_ECS_LIB} 
+    ${VOID_LOGGER_LIB}
+	Vulkan::Vulkan
 )
+

@@ -9,7 +9,7 @@ namespace VoidEngine
     public:
         virtual ~RendererAPI() = default;
 
-        virtual void Clear() = 0;
+        virtual void Shutdown() = 0;
         virtual bool Init(int width, int height, void* outputWindow) = 0;
 
         virtual void NewFrame() = 0;

@@ -1,17 +1,20 @@
 
 #include "pch.h"
+#include <stdexcept>
 #include <windows.h>
 
 #include <cstddef>
+#include <winuser.h>
 
 #include "ds/dynamic_array.h"
 #include "ds/flat_hash_map.h"
 
-//belong to game layer
-//but platform dependent
+// belong to game layer
+// but platform dependent
 #include "application.h"
+#include "log.h"
 
-#ifdef VOID_DEV_MODE
+#ifdef VOID_DEBUG
 
 class AVLTree
 {
@@ -20,207 +23,205 @@ private:
     {
         float value;
         int height;
-        Node* left;
-        Node* right;
+        Node *left;
+        Node *right;
     };
-private:
-    Node* root = nullptr;
 
 private:
-    int height(Node* node)
+    Node *root = nullptr;
+
+private:
+    int height(Node *node)
     {
-       if(node == nullptr)
-           return 0;
+        if (node == nullptr)
+            return 0;
 
-       return node->height;
+        return node->height;
     }
 
-    Node* rightRotation(Node* current)
+    Node *rightRotation(Node *current)
     {
-        Node* node = current->left;
+        Node *node = current->left;
         current->left = node->right;
         node->right = current;
 
-        current->height = 1 + max(height(current->left), height(current->right));
+        current->height =
+            1 + max(height(current->left), height(current->right));
         node->height = 1 + max(height(node->left), height(node->right));
-    
+
         return node;
     }
 
-    Node* leftRotation(Node* current)
+    Node *leftRotation(Node *current)
     {
-        Node* node = current->right;
+        Node *node = current->right;
         current->right = node->left;
         node->left = current;
 
-        current->height = 1 + max(height(current->left), height(current->right));
+        current->height =
+            1 + max(height(current->left), height(current->right));
         node->height = 1 + max(height(node->left), height(node->right));
-    
-        return node;   
+
+        return node;
     }
 
-    Node* insert(Node* current, float value)
+    Node *insert(Node *current, float value)
     {
-        if(current == nullptr)
+        if (current == nullptr)
         {
             current = new Node{value, 1, nullptr, nullptr};
         }
         else
         {
-            if(value > current->value)
+            if (value > current->value)
             {
                 current->right = insert(current->right, value);
             }
-            else if(value < current->value)
+            else if (value < current->value)
             {
                 current->left = insert(current->left, value);
             }
         }
 
-        current->height = 1 + max(height(current->left), height(current->right));
+        current->height =
+            1 + max(height(current->left), height(current->right));
         int balance = height(current->left) - height(current->right);
 
-        //left
-        if(balance > 1)
+        // left
+        if (balance > 1)
         {
             std::cout << "imbalance at node " << current->value << std::endl;
-            
-            //left-left
-            if(value < current->left->value)
+
+            // left-left
+            if (value < current->left->value)
             {
                 return rightRotation(current);
             }
-            //left-right
+            // left-right
             else
             {
                 current->left = leftRotation(current->left);
                 return rightRotation(current);
             }
         }
-        else if(balance < -1)
+        else if (balance < -1)
         {
             std::cout << "imbalance at node " << current->value << std::endl;
-            //right-right
-            if(value > current->right->value)
+            // right-right
+            if (value > current->right->value)
             {
                 return leftRotation(current);
             }
-            //right-left
+            // right-left
             else
             {
                 current->right = rightRotation(current->right);
-                return leftRotation(current);           
+                return leftRotation(current);
             }
-        
         }
 
         return current;
     }
 
-    Node* remove(Node* node, float value)
-{
-    if(node == nullptr)
-        return nullptr;
-
-    // Normal BST delete
-    if(value < node->value)
+    Node *remove(Node *node, float value)
     {
-        node->left = remove(node->left, value);
-    }
-    else if(value > node->value)
-    {
-        node->right = remove(node->right, value);
-    }
-    else
-    {
-        // --- CASE 1: leaf ---
-        if(node->left == nullptr && node->right == nullptr)
-        {
-            delete node;
+        if (node == nullptr)
             return nullptr;
-        }
 
-        // --- CASE 2: one child ---
-        else if(node->left == nullptr || node->right == nullptr)
+        // Normal BST delete
+        if (value < node->value)
         {
-            Node* child = node->left ? node->left : node->right;
-            delete node;
-            return child;
+            node->left = remove(node->left, value);
         }
-
-        // --- CASE 3: two children ---
+        else if (value > node->value)
+        {
+            node->right = remove(node->right, value);
+        }
         else
         {
-            // find inorder successor (min of right subtree)
-            Node* min = node->right;
-            while(min->left)
-                min = min->left;
+            // --- CASE 1: leaf ---
+            if (node->left == nullptr && node->right == nullptr)
+            {
+                delete node;
+                return nullptr;
+            }
 
-            // copy successor value into this node
-            node->value = min->value;
+            // --- CASE 2: one child ---
+            else if (node->left == nullptr || node->right == nullptr)
+            {
+                Node *child = node->left ? node->left : node->right;
+                delete node;
+                return child;
+            }
 
-            // delete successor in right subtree
-            node->right = remove(node->right, min->value);
+            // --- CASE 3: two children ---
+            else
+            {
+                // find inorder successor (min of right subtree)
+                Node *min = node->right;
+                while (min->left)
+                    min = min->left;
+
+                // copy successor value into this node
+                node->value = min->value;
+
+                // delete successor in right subtree
+                node->right = remove(node->right, min->value);
+            }
         }
-    }
 
-    // ===== UPDATE HEIGHT =====
-    node->height = 1 + max(height(node->left), height(node->right));
+        // ===== UPDATE HEIGHT =====
+        node->height = 1 + max(height(node->left), height(node->right));
 
-    // ===== REBALANCE =====
-    int balance = height(node->left) - height(node->right);
+        // ===== REBALANCE =====
+        int balance = height(node->left) - height(node->right);
 
-    // L > R
-    if(balance > 1)
-    {
-        // LL
-        if(height(node->left->left) >= height(node->left->right))
+        // L > R
+        if (balance > 1)
+        {
+            // LL
+            if (height(node->left->left) >= height(node->left->right))
+                return rightRotation(node);
+
+            // LR
+            node->left = leftRotation(node->left);
             return rightRotation(node);
+        }
 
-        // LR
-        node->left = leftRotation(node->left);
-        return rightRotation(node);
-    }
+        // R > L
+        if (balance < -1)
+        {
+            // RR
+            if (height(node->right->right) >= height(node->right->left))
+                return leftRotation(node);
 
-    // R > L
-    if(balance < -1)
-    {
-        // RR
-        if(height(node->right->right) >= height(node->right->left))
+            // RL
+            node->right = rightRotation(node->right);
             return leftRotation(node);
+        }
 
-        // RL
-        node->right = rightRotation(node->right);
-        return leftRotation(node);
+        return node;
     }
 
-    return node;
-}
 public:
     AVLTree() = default;
 
-    void insert(float value)
-    {
-        root = insert(root, value);
-    }
+    void insert(float value) { root = insert(root, value); }
 
-    void remove(float value)
-    {
-        root = remove(root, value);      
-    }
+    void remove(float value) { root = remove(root, value); }
 
     void print()
     {
-        std::queue<Node*> q;
+        std::queue<Node *> q;
         q.push(root);
 
-        std::ostream& os = std::cout;
-        while(!q.empty())
+        std::ostream &os = std::cout;
+        while (!q.empty())
         {
-            Node* n = q.front();
+            Node *n = q.front();
             q.pop();
 
-            if(n == nullptr)
+            if (n == nullptr)
             {
                 os << "null, ";
             }
@@ -231,7 +232,6 @@ public:
 
                 os << n->value << ", ";
             }
-
         }
 
         os << std::endl;
@@ -245,146 +245,144 @@ private:
     {
         bool color;
         float value;
-        Node* parent;
-        Node* left;
-        Node* right;
+        Node *parent;
+        Node *left;
+        Node *right;
     };
-private:
-    Node* root = nullptr;
 
-    void leftRotation(Node* current)
+private:
+    Node *root = nullptr;
+
+    void leftRotation(Node *current)
     {
-        Node* node = current->right;
-        node->parent = current->parent; 
+        Node *node = current->right;
+        node->parent = current->parent;
         current->right = node->left;
-        
-        if(node->left)
+
+        if (node->left)
             node->left->parent = current;
-        
+
         node->left = current;
         current->parent = node;
 
-        if(!node->parent)
+        if (!node->parent)
         {
             root = node;
         }
         else
         {
-            if(node->parent->left && node->parent->left == current)
+            if (node->parent->left && node->parent->left == current)
             {
                 node->parent->left = node;
             }
-            else if(node->parent->right && node->parent->right == current)
+            else if (node->parent->right && node->parent->right == current)
             {
                 node->parent->right = node;
             }
         }
     }
-    
-    void rightRotation(Node* current)
+
+    void rightRotation(Node *current)
     {
-        Node* node = current->left;
-        node->parent = current->parent; 
+        Node *node = current->left;
+        node->parent = current->parent;
         current->left = node->right;
-        
-        if(node->right)
-            node->right->parent = current;
-        
-        node->right = current;
-        current->parent = node;  
 
-        if(!node->parent)
+        if (node->right)
+            node->right->parent = current;
+
+        node->right = current;
+        current->parent = node;
+
+        if (!node->parent)
         {
             root = node;
         }
         else
         {
-            if(node->parent->left && node->parent->left == current)
+            if (node->parent->left && node->parent->left == current)
             {
                 node->parent->left = node;
             }
-            else if(node->parent->right && node->parent->right == current)
+            else if (node->parent->right && node->parent->right == current)
             {
                 node->parent->right = node;
             }
         }
-
     }
 
-    void fixInsert(Node* node)
+    void fixInsert(Node *node)
     {
-        while(node != root && node->parent->color)
+        while (node != root && node->parent->color)
         {
-            Node* grandpa = node->parent->parent;
-            //parent in left subtree
-            if(node->parent == grandpa->left)
+            Node *grandpa = node->parent->parent;
+            // parent in left subtree
+            if (node->parent == grandpa->left)
             {
-                //red parent - red unc
-                if(grandpa->right && grandpa->right->color)
+                // red parent - red unc
+                if (grandpa->right && grandpa->right->color)
                 {
                     node->parent->color = 0;
                     grandpa->right->color = 0;
                     grandpa->color = 1;
-                    
-                    //propagate to grandparent to continue fixing
+
+                    // propagate to grandparent to continue fixing
                     node = grandpa;
-                
                 }
-                //unc not exist or is black
+                // unc not exist or is black
                 else
                 {
-                    //LR 
-                    if(node == node->parent->right)
+                    // LR
+                    if (node == node->parent->right)
                     {
                         node = node->parent;
                         leftRotation(node);
                     }
 
-                    //LL
+                    // LL
                     node->parent->color = 0;
                     grandpa->color = 1;
                     rightRotation(grandpa);
                 }
             }
-            //in right subtree
+            // in right subtree
             else
             {
-                //red parent - red unc
-                if(grandpa->left && grandpa->left->color)
+                // red parent - red unc
+                if (grandpa->left && grandpa->left->color)
                 {
                     node->parent->color = 0;
                     grandpa->left->color = 0;
                     grandpa->color = 1;
-                    
-                    //propagate to grandparent to continue fixing
+
+                    // propagate to grandparent to continue fixing
                     node = grandpa;
-                
                 }
-                //unc not exist or is black
+                // unc not exist or is black
                 else
                 {
-                    //RL
-                    if(node == node->parent->left)
+                    // RL
+                    if (node == node->parent->left)
                     {
                         node = node->parent;
                         rightRotation(node);
                     }
 
-                    //RR
+                    // RR
                     node->parent->color = 0;
                     grandpa->color = 1;
                     leftRotation(grandpa);
-                }            
+                }
             }
         }
         root->color = 0;
     }
 
-    void transplant(Node* u, Node* v)
+    void transplant(Node *u, Node *v)
     {
-        if(u->parent)
+        if (u->parent)
         {
-            if(u == u->parent->left)
+            if (u == u->parent->left)
             {
                 u->parent->left = v;
             }
@@ -393,34 +391,35 @@ private:
                 u->parent->right = v;
             }
 
-            if(v && v->parent)
+            if (v && v->parent)
             {
                 v->parent = u->parent;
             }
         }
     }
 
-    void fixDelete(Node* node, Node* nodeParent)
+    void fixDelete(Node *node, Node *nodeParent)
     {
-        Node* sibling;
-        while(node != root && !Color(node))
+        Node *sibling;
+        while (node != root && !Color(node))
         {
-            if(node == nodeParent->left)
+            if (node == nodeParent->left)
             {
                 sibling = nodeParent->right;
-                
-                //sibling is red
-                if(Color(sibling))
+
+                // sibling is red
+                if (Color(sibling))
                 {
                     sibling->color = 0;
                     nodeParent->color = 1;
                     leftRotation(nodeParent);
                     sibling = nodeParent->right;
                 }
-                
-                if(!sibling || (!Color(sibling->right) && !Color(sibling->left)))
+
+                if (!sibling ||
+                    (!Color(sibling->right) && !Color(sibling->left)))
                 {
-                    if(sibling)
+                    if (sibling)
                     {
                         sibling->color = 1;
                     }
@@ -429,9 +428,9 @@ private:
                 // 1 of sibling child is red anyway, so sibling can not be NULL
                 else
                 {
-                    if(!Color(sibling->right))
+                    if (!Color(sibling->right))
                     {
-                        if(sibling->left)
+                        if (sibling->left)
                         {
                             sibling->left->color = 0;
                         }
@@ -442,8 +441,8 @@ private:
 
                     sibling->color = nodeParent->color;
                     nodeParent->color = 0;
-                    
-                    if(sibling->right)
+
+                    if (sibling->right)
                     {
                         sibling->right->color = 0;
                     }
@@ -454,26 +453,26 @@ private:
             else
             {
                 sibling = nodeParent->left;
-                
-                //sibling is red
-                if(Color(sibling))
+
+                // sibling is red
+                if (Color(sibling))
                 {
                     sibling->color = 0;
                     nodeParent->color = 1;
                     rightRotation(nodeParent);
                     sibling = nodeParent->left;
                 }
-                
-                if(sibling && !Color(sibling->right) && !Color(sibling->left))
+
+                if (sibling && !Color(sibling->right) && !Color(sibling->left))
                 {
                     sibling->color = 1;
                     node = nodeParent;
                 }
-                else if(sibling)
+                else if (sibling)
                 {
-                    if(!Color(sibling->left))
+                    if (!Color(sibling->left))
                     {
-                        if(sibling->right)
+                        if (sibling->right)
                         {
                             sibling->right->color = 0;
                         }
@@ -484,26 +483,26 @@ private:
 
                     sibling->color = nodeParent->color;
                     nodeParent->color = 0;
-                    
-                    if(sibling->left)
+
+                    if (sibling->left)
                     {
                         sibling->left->color = 0;
                     }
                     rightRotation(nodeParent);
                     node = root;
-                }            
+                }
             }
         }
-        
-        if(node)
+
+        if (node)
         {
             node->color = 0;
         }
     }
 
-    bool Color(Node* node)
+    bool Color(Node *node)
     {
-        if(!node)
+        if (!node)
             return 0;
 
         return node->color;
@@ -514,14 +513,14 @@ public:
 
     void insert(float value)
     {
-        Node* newNode = new Node{1, value, nullptr, nullptr, nullptr};
-        Node* i = root;
-        Node* p = nullptr;
+        Node *newNode = new Node{1, value, nullptr, nullptr, nullptr};
+        Node *i = root;
+        Node *p = nullptr;
 
-        while(i)
+        while (i)
         {
             p = i;
-            if(value < i->value)
+            if (value < i->value)
             {
                 i = i->left;
             }
@@ -533,9 +532,9 @@ public:
 
         newNode->parent = p;
 
-        if(p)
+        if (p)
         {
-            if(value < p->value)
+            if (value < p->value)
             {
                 p->left = newNode;
             }
@@ -550,20 +549,19 @@ public:
         }
 
         fixInsert(newNode);
-
     }
 
     void remove(float value)
     {
-        Node* node = root;
-        
-        while(node)
+        Node *node = root;
+
+        while (node)
         {
-            if(value < node->value)
+            if (value < node->value)
             {
                 node = node->left;
             }
-            else if(value > node->value)
+            else if (value > node->value)
             {
                 node = node->right;
             }
@@ -572,24 +570,24 @@ public:
                 break;
             }
         }
-        
-        if(!node)
+
+        if (!node)
         {
             return;
         }
 
         bool originalColor;
-        Node* x ;
-        Node* nodeParent ;
+        Node *x;
+        Node *nodeParent;
         originalColor = node->color;
-        
-        if(!node->left)
+
+        if (!node->left)
         {
             x = node->right;
             nodeParent = node->parent;
             transplant(node, node->right);
         }
-        else if(!node->right)
+        else if (!node->right)
         {
             x = node->left;
             nodeParent = node->parent;
@@ -597,9 +595,9 @@ public:
         }
         else
         {
-            Node* y = node->right;
+            Node *y = node->right;
 
-            while(y->left)
+            while (y->left)
             {
                 y = y->left;
             }
@@ -607,12 +605,12 @@ public:
             x = y->right;
             originalColor = y->color;
 
-            //y is node->right
-            if(y->parent == node)
+            // y is node->right
+            if (y->parent == node)
             {
                 nodeParent = y;
             }
-            //y inside left subtree of node->right
+            // y inside left subtree of node->right
             else
             {
                 nodeParent = y->parent;
@@ -627,8 +625,8 @@ public:
         }
 
         delete node;
-        //if the node is black, the black height change -> fix the balance
-        if(!originalColor)
+        // if the node is black, the black height change -> fix the balance
+        if (!originalColor)
         {
             fixDelete(x, nodeParent);
         }
@@ -636,16 +634,16 @@ public:
 
     void print()
     {
-        std::queue<Node*> q;
+        std::queue<Node *> q;
         q.push(root);
 
-        std::ostream& os = std::cout;
-        while(!q.empty())
+        std::ostream &os = std::cout;
+        while (!q.empty())
         {
-            Node* n = q.front();
+            Node *n = q.front();
             q.pop();
 
-            if(n == nullptr)
+            if (n == nullptr)
             {
                 os << "NIL, ";
             }
@@ -654,11 +652,10 @@ public:
                 q.push(n->left);
                 q.push(n->right);
 
-                std::string c = n->color? "R" : "B";
+                std::string c = n->color ? "R" : "B";
 
-                os << n->value << "(" << c <<")" << ", ";
+                os << n->value << "(" << c << ")" << ", ";
             }
-
         }
 
         os << std::endl;
@@ -671,9 +668,52 @@ int main()
     //_CrtSetBreakAlloc(287);
     using namespace VoidEngine;
 
-    Application* app = new Application();
+    Application *app = nullptr;
+    try
+    {
+        app = new Application();
 
-    if(app->StartUp())
+        if (app->StartUp())
+        {
+            app->Update();
+        }
+        app->ShutDown();
+    }
+    catch (const std::runtime_error &e)
+    {
+        if(app)
+        {
+            Logger::ShowErrorDialog(app->GetWindow()->GetWindowHandle(), "Error", e.what());
+        }
+        else
+        {
+            Logger::ShowErrorDialog(nullptr, "Error", e.what());
+        }
+    }
+    catch (...)
+    {
+    }
+
+    if (app)
+    {
+        delete app;
+    }
+
+
+    FLUSH_LOG();
+    return 0;
+}
+
+#else
+
+#ifdef VOID_WIN32
+int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hInstPrev, PSTR cmdline,
+                   int cmdshow)
+{
+    using namespace VoidEngine;
+    Application *app = new Application();
+
+    if (app->StartUp())
     {
         app->Update();
     }
@@ -682,24 +722,7 @@ int main()
 
     return 0;
 }
-
 #else
+#endif // VOID_WIN32
 
-int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hInstPrev, PSTR cmdline, int cmdshow)
-{
-    using namespace VoidEngine;
-    GlobalPersistantAllocator::SetBufferSize(KB(4));
-    
-    Application* app = new Application();
-
-    if(app->StartUp())
-    {
-        app->Update();
-    }
-    app->ShutDown();
-
-    return 0;
-}
-
-#endif
-
+#endif // VOID_DEBUG
