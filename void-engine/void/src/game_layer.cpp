@@ -54,25 +54,25 @@ void GameLayer::OnDetach()
 
 void GameLayer::OnInit()
 {
-    Vertex quadVertices[] = {
-        //   position (x, y, z, w)       uv
-        {{-1.0f, 1.0f, 0.0f, 1.0f}, {0.0f, 0.0f}}, // top-left
-        {{1.0f, 1.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},  // top-right
-        {{1.0f, -1.0f, 0.0f, 1.0f}, {1.0f, 1.0f}}, // bottom-right
-        {{-1.0f, -1.0f, 0.0f, 1.0f}, {0.0f, 1.0f}} // bottom-left
-    };
+    //Vertex quadVertices[] = {
+    //    //   position (x, y, z, w)       uv
+    //    {{-1.0f, 1.0f, 0.0f, 1.0f}, {0.0f, 0.0f}}, // top-left
+    //    {{1.0f, 1.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},  // top-right
+    //    {{1.0f, -1.0f, 0.0f, 1.0f}, {1.0f, 1.0f}}, // bottom-right
+    //    {{-1.0f, -1.0f, 0.0f, 1.0f}, {0.0f, 1.0f}} // bottom-left
+    //};
 
-    uint32_t quadIndices[] = {0, 1, 2, 0, 2, 3};
+    //uint32_t quadIndices[] = {0, 1, 2, 0, 2, 3};
 
-    mesh = ResourceSystem::Create<MeshResource>(123, false);
-    mesh->SetVertexData(quadVertices, 4);
-    mesh->SetIndexData(quadIndices, 6);
-    mesh->SubmitMeshToGpu();
+    //mesh = ResourceSystem::Create<MeshResource>(123, false);
+    //mesh->SetVertexData(quadVertices, 4);
+    //mesh->SetIndexData(quadIndices, 6);
+    //mesh->SubmitMeshToGpu();
 
-    auto shader = ResourceSystem::Load<ShaderResource>(
-        L"asset//shader//square_demo.hlsl");
-    material = ResourceSystem::Create<MaterialResource>(
-        ResourceSystem::GenerateGUID(), shader->GetGUID());
+    //auto shader = ResourceSystem::Load<ShaderResource>(
+    //    L"asset//shader//square_demo.hlsl");
+    //material = ResourceSystem::Create<MaterialResource>(
+    //    ResourceSystem::GenerateGUID(), shader->GetGUID());
      
 
     world = ECS::CreateWorld();
@@ -95,30 +95,30 @@ void GameLayer::OnInit()
 
     ECS::Entity e1 = world->CreateEntity("Second ", e0.GetFullId()).Build();
     
-    world->CreateSystem<Position>().
-        Phase(ECS::EcsOnUpdateId).
-        Each(+[](const ECS::QueryIter& iter ,Position& pos)
-             {
-                ECS::EcsTime& time = iter.world->GetSingleton<ECS::EcsTime>();
-                pos.x += time.deltaTime;
-                pos.y -= time.deltaTime;
-             }, "UpdatePos");
+    //world->CreateSystem<Position>().
+    //    Phase(ECS::EcsOnUpdateId).
+    //    Each(+[](const ECS::QueryIter& iter ,Position& pos)
+    //         {
+    //            ECS::EcsTime& time = iter.world->GetSingleton<ECS::EcsTime>();
+    //            pos.x += time.deltaTime;
+    //            pos.y -= time.deltaTime;
+    //         }, "UpdatePos");
 
-    world->CreateSystem<Position>().With<NPC>().
-        Phase(ECS::EcsOnUpdateId).
-        Each(+[](const ECS::QueryIter& iter , Position& pos)
-             {
-                ECS::EcsTime& time = iter.world->GetSingleton<ECS::EcsTime>();
-                pos.x += time.deltaTime;
-                pos.y -= time.deltaTime;
-             }, "UpdateNpcPos");
+    //world->CreateSystem<Position>().With<NPC>().
+    //    Phase(ECS::EcsOnUpdateId).
+    //    Each(+[](const ECS::QueryIter& iter , Position& pos)
+    //         {
+    //            ECS::EcsTime& time = iter.world->GetSingleton<ECS::EcsTime>();
+    //            pos.x += time.deltaTime;
+    //            pos.y -= time.deltaTime;
+    //         }, "UpdateNpcPos");
 
-    world->CreateSystem<ECS::EcsSystem>().With<ECS::EcsName>().
-        Phase(ECS::EcsOnUpdateId).
-        Each(+[](const ECS::QueryIter& iter, ECS::EcsSystem& sys, const ECS::EcsName& name)
-             {
-                 std::cout << name.name << std::endl;
-             }, "DisplayName");
+    //world->CreateSystem<ECS::EcsSystem>().With<ECS::EcsName>().
+    //    Phase(ECS::EcsOnUpdateId).
+    //    Each(+[](const ECS::QueryIter& iter, ECS::EcsSystem& sys, const ECS::EcsName& name)
+    //         {
+    //             std::cout << name.name << std::endl;
+    //         }, "DisplayName");
 }
 
 void GameLayer::OnEvent(InputEvent &e) { Layer::OnEvent(e); }

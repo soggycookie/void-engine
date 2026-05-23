@@ -34,6 +34,8 @@ public:
         return m_window->GetWindowTime();
     }
 
+    Window* GetWindow() const {return m_window;}
+
     // void PushLayer(Layer* layer);
     // void PushOverLay(Layer* layer);
 
