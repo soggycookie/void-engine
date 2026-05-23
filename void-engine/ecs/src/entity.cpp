@@ -7,7 +7,11 @@
 
 namespace ECS
 {
-/////////////////////////////// Entity Builder ////////////////////////////////
+// =========================================================
+//
+//                    ** EntityBuilder **
+//
+// =========================================================
 
 EntityBuilder &EntityBuilder::Id(EntityId eId)
 {
@@ -78,7 +82,11 @@ Entity EntityBuilder::Build()
     return Entity(m_world, m_patch.eId);
 }
 
-///////////////////////////////// EntityCommand ////////////////////////////////
+// =========================================================
+//
+//                    ** EntityCommand **
+//
+// =========================================================
 
 void EntityCommand::Add(World *world, EntityId cId)
 {
@@ -180,7 +188,12 @@ void EntityCommand::RemoveCmdsSort()
 }
 
 void EntityCommand::Id(EntityId id) { eId = id; }
-//////////////////////////////// EntityPatcher //////////////////////////////
+
+// =========================================================
+//
+//                   ** EntityPatcher **
+//
+// =========================================================
 
 void EntityPatcher::Flush()
 {

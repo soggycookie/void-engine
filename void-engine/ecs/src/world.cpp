@@ -519,6 +519,9 @@ void World::ResolveEntityCommand(EntityCommand &patch)
         return;
     }
 
+    patch.AddCmdsSort();
+    patch.RemoveCmdsSort();
+
     if (patch.mode == EntityCommandMode::SPAWN)
     {
         patch.eId = CreateBaseEntity(patch.eId).GetFullId();
@@ -534,9 +537,6 @@ void World::ResolveEntityCommand(EntityCommand &patch)
             patch.Assign(this, EcsNameId, &eName);
         }
     }
-
-    patch.AddCmdsSort();
-    patch.RemoveCmdsSort();
 
     EntityRecord &r = *m_entityIndex.GetPageData(patch.eId);
     Archetype *srcArchetype = r.archetype;
@@ -2211,12 +2211,12 @@ void World::RevalidateCachedQuery_EntityFilter(Archetype *archetype,
     {
         TrackedQuery &trackedQuery = archetype->trackedQueries[qIdx];
 
-        Query* query = nullptr;
-        if(HasComponent<EcsQuery>(trackedQuery.id))
+        Query *query = nullptr;
+        if (HasComponent<EcsQuery>(trackedQuery.id))
         {
-            query = Get<EcsQuery>(trackedQuery.id).query;            
+            query = Get<EcsQuery>(trackedQuery.id).query;
         }
-        else if(HasComponent<EcsSystem>(trackedQuery.id))
+        else if (HasComponent<EcsSystem>(trackedQuery.id))
         {
             query = Get<EcsSystem>(trackedQuery.id).query;
         }
@@ -2224,7 +2224,6 @@ void World::RevalidateCachedQuery_EntityFilter(Archetype *archetype,
         {
             assert(0);
         }
-
 
         if (!query->isEntityFiltered)
         {
@@ -2270,12 +2269,12 @@ void World::RevalidateCachedQuery_ArchetypeFilter(ComponentRecord &cr,
         for (size_t qIdx = 0; qIdx < cr.trackedQueries.count; ++qIdx)
         {
 
-            Query* query = nullptr;
-            if(HasComponent<EcsQuery>(cr.trackedQueries[qIdx]))
+            Query *query = nullptr;
+            if (HasComponent<EcsQuery>(cr.trackedQueries[qIdx]))
             {
-                query = Get<EcsQuery>(cr.trackedQueries[qIdx]).query;            
+                query = Get<EcsQuery>(cr.trackedQueries[qIdx]).query;
             }
-            else if(HasComponent<EcsSystem>(cr.trackedQueries[qIdx]))
+            else if (HasComponent<EcsSystem>(cr.trackedQueries[qIdx]))
             {
                 query = Get<EcsSystem>(cr.trackedQueries[qIdx]).query;
             }
@@ -2329,7 +2328,7 @@ void World::FlushDeferredCmd()
     }
 
     std::cout << "Count: " << m_deferredCmds.count << std::endl;
-    for(size_t idx = 0; idx < m_deferredCmds.count; ++idx)
+    for (size_t idx = 0; idx < m_deferredCmds.count; ++idx)
     {
         ResolveEntityCommand(m_deferredCmds[idx]);
     }

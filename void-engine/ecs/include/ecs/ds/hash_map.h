@@ -1,6 +1,8 @@
 #pragma once
 #include "world_allocator.h"
 #include <cassert>
+#include <cstring>
+#include <type_traits>
 /*
     Robin hood open addressing hash map
 */
@@ -195,13 +197,17 @@ public:
         {
             std::free(m_array);
         }
+        m_bucketCount = 0;
+        m_count = 0;
     }
+
+    static constexpr float LoadFactorThreshold = 0.8f;
 
     template <typename K, typename V>
     void Insert(K &&key, V &&value)
     {
         if (static_cast<float>(m_count) / static_cast<float>(m_bucketCount) >=
-            0.8)
+            LoadFactorThreshold)
         {
             Grow();
         }
@@ -349,6 +355,26 @@ public:
     }
 
     bool Empty() const { return m_count == 0; }
+
+    void Clear()
+    {
+        for (uint32_t i = 0; i < m_bucketCount; i++)
+        {
+            Bucket *bucket =
+                CAST_OFFSET_ELEMENT(m_array, Bucket, sizeof(Bucket), i);
+
+            assert(bucket && "Bucket is null!");
+
+            if (bucket->occupied)
+            {
+                Key &key = KeyCast(bucket);
+                Value &value = ValueCast(bucket);
+
+                DestroyBucket(bucket);
+            }
+        }
+        m_count = 0;
+    }
 
     size_t GetCount() const { return m_count; }
 

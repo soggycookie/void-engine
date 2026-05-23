@@ -1,71 +1,65 @@
 #pragma once
-#include "pch.h"
-#include "renderer_api.h"
 #include "graphic_buffer.h"
 #include "graphic_shader.h"
+#include "pch.h"
+#include "renderer_api.h"
 
 namespace VoidEngine
 {
-    class Window;
+class Window;
 
-    class Renderer
+class Renderer
+{
+public:
+    Renderer() = delete;
+
+    virtual ~Renderer() = default;
+
+    static void *GetRendererAPIContext()
     {
-    public:
+        return s_pRendererAPI->GetContext();
+    }
 
-        Renderer() = delete;
+    static void NewFrame();
+    static void EndFrame();
 
-        virtual ~Renderer() = default;
+    static void *CreateAndSubmitBuffer(void *const data, size_t byteSize,
+                                       BufferType type);
+    // static void SubmitBufferData(const GraphicBuffer& buffer);
+    static void DestroyBuffer(GraphicBuffer &buffer);
 
-        static void* GetRendererAPIContext()
+    static void *CompileShader(const wchar_t *file, const char *entry,
+                               const char *target);
+    static void *CreateShader(void **compiledSrc, ShaderType type);
+    static void DestroyShader(GraphicShader &shader);
+
+    static void Draw(MeshResource *mesh, MaterialResource *material);
+
+private:
+    friend class Application;
+
+    static bool SetGraphicAPI(GraphicAPI api);
+
+    static void ShutDown() { s_pRendererAPI->Shutdown(); }
+
+    static void StartUp(Window *window)
+    {
+        if (!window)
         {
-            return s_rendererAPI->GetContext();
+            assert(0 && "Window is null! [Renderer]");
         }
 
-        static void NewFrame();
-        static void EndFrame();
-        
+        s_pWindow = window;
+    }
 
-        static void* CreateAndSubmitBuffer(void* const data, size_t byteSize, BufferType type);
-        //static void SubmitBufferData(const GraphicBuffer& buffer);
-        static void DestroyBuffer(GraphicBuffer& buffer);
+    // High Level API
 
-        static void* CompileShader(const wchar_t* file, const char* entry, const char* target);
-        static void* CreateShader(void** compiledSrc, ShaderType type);
-        static void DestroyShader(GraphicShader& shader);
+    // static void RenderStaticMesh();
 
+protected:
+    static RendererAPI *s_pRendererAPI;
+    static Window *s_pWindow;
+    static GraphicAPI s_graphicAPI;
+};
 
-        static void Draw(MeshResource* mesh, MaterialResource* material);
-
-    private:
-        friend class Application;
-    
-        static bool SetGraphicAPI(GraphicAPI api);
-        
-        static void ShutDown()
-        {
-            s_rendererAPI->Clear();
-            delete s_rendererAPI;
-        }
-
-        static void StartUp(Window* window)
-        {
-            if(!window)
-            {
-                assert(0 && "Window is null! [Renderer]");
-            }
-
-            s_window = window;
-        }
-
-
-        //High Level API
-
-        //static void RenderStaticMesh();
-
-    protected:
-        static RendererAPI* s_rendererAPI;
-        static Window* s_window;
-        static GraphicAPI s_graphicAPI;
-    };
-
-}
+} // namespace VoidEngine

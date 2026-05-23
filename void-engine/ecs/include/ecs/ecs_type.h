@@ -486,10 +486,6 @@ struct TrackedQuery
 {
     EntityId id;
     uint32_t idx;
-
-    TrackedQuery(TrackedQuery &&other) = default;
-
-    TrackedQuery &operator=(TrackedQuery &&other) = default;
 };
 
 struct Archetype

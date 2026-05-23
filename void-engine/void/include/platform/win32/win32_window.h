@@ -25,6 +25,11 @@ namespace VoidEngine
 
         void* GetDisplayWindow() override;
 
+        void* GetWindowHandle() const override
+        {
+            return m_windowHandle;
+        }
+
     private:
         bool Init() override;
         //bool SetupRenderer() override;

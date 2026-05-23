@@ -23,13 +23,8 @@ struct EcsQuery
 
 struct EcsSystem
 {
-    EcsSystem() = default;
-    EcsSystem(EcsSystem&& other) = default;
-
     Query *query;
 };
-
-
 
 struct EcsTime
 {

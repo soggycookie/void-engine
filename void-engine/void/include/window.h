@@ -38,6 +38,8 @@ public:
     virtual void BeginTimeElapse() = 0;
     virtual void EndTimeElapse(double &outPassedTime) = 0;
     virtual void *GetDisplayWindow() = 0;
+    virtual void* GetWindowHandle() const = 0;
+
 
     double GetDeltaTime() const { return m_deltaTime; }
 

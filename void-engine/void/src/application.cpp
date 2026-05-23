@@ -38,7 +38,7 @@ bool Application::StartUp()
                             &MemorySystem::s_resourceAllocator);
 
     Renderer::StartUp(m_window);
-    Renderer::SetGraphicAPI(GraphicAPI::D3D11);
+    Renderer::SetGraphicAPI(GraphicAPI::VULKAN);
 
     Profiler::StartUp(m_window);
 
