@@ -8,10 +8,10 @@ set(VOID_PROJECT_NAME "void-engine")
 project(${VOID_PROJECT_NAME})
 
 set(VOID_ENGINE_EXEC "void-engine")
-set(VOID_ENGINE_SRC "void-engine/void/src")
-set(VOID_ENGINE_INCLUDE "void-engine/void/include")
-set(VOID_ENGINE_PLATFORM_SRC "void-engine/void/src/platform")
-set(VOID_ENGINE_INCLUDE_PLATFORM "void-engine/void/include/platform")
+set(VOID_ENGINE_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/void/src")
+set(VOID_ENGINE_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/void/include")
+set(VOID_ENGINE_PLATFORM_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/void/src/platform")
+set(VOID_ENGINE_INCLUDE_PLATFORM "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/void/include/platform")
 set(VOID_PRECOMPILED_HEADER "${VOID_ENGINE_INCLUDE}/pch.h")
 
 file(GLOB_RECURSE VOID_ENGINE_SRC_FILES CONFIGURE_DEPENDS
@@ -84,9 +84,9 @@ if(WIN32)
 endif()
 
 set(VOID_ECS_LIB "ecs")
-set(VOID_ECS_SRC "void-engine/ecs/src")
-set(VOID_ECS_INCLUDE "void-engine/ecs/include/ecs")
-set(VOID_ECS_API_INCLUDE "void-engine/ecs/include/public_api")
+set(VOID_ECS_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/ecs/src")
+set(VOID_ECS_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/ecs/include/ecs")
+set(VOID_ECS_API_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/ecs/include/public_api")
 set(VOID_ECS_PRECOMPILED_HEADER "${VOID_ECS_INCLUDE}/ecs_pch.h")
 
 file(GLOB_RECURSE VOID_ECS_FILES CONFIGURE_DEPENDS
@@ -119,8 +119,8 @@ target_include_directories(${VOID_ECS_LIB}
 )
 
 set(VOID_LOGGER_LIB "logger")
-set(VOID_LOGGER_SRC "void-engine/logger/src")
-set(VOID_LOGGER_INCLUDE "void-engine/logger/include")
+set(VOID_LOGGER_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/logger/src")
+set(VOID_LOGGER_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/logger/include")
 
 file(GLOB_RECURSE VOID_LOGGER_FILES CONFIGURE_DEPENDS
     "${VOID_LOGGER_SRC}/*.cpp"  
@@ -144,6 +144,63 @@ target_include_directories(${VOID_LOGGER_LIB}
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 
 find_package(Vulkan REQUIRED)
+
+find_program(SLANGC_EXECUTABLE
+    NAMES slangc
+    HINTS $ENV{VULKAN_SDK}/Bin      
+    REQUIRED
+)
+message(STATUS "Found slangc: ${SLANGC_EXECUTABLE}")
+
+set(SLANG_DIR "${VOID_ENGINE_SRC}/shader/slang")
+set(SPIRV_DIR "${VOID_ENGINE_SRC}/shader/spirv")
+
+function(add_shader_target TARGET)
+    cmake_parse_arguments("SHADER" "" "" "SOURCES" ${ARGN})
+
+    # create output dir once, outside the loop
+    add_custom_command(
+        OUTPUT  ${SPIRV_DIR}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${SPIRV_DIR}
+    )
+
+    set(ALL_SHADER_TARGETS "")
+
+    foreach(SHADER_FILE ${SHADER_SOURCES})
+        # resolve to absolute path
+        get_filename_component(SHADER_FILE ${SHADER_FILE} ABSOLUTE)
+        # no CACHE here
+        get_filename_component(SHADER_NAME ${SHADER_FILE} NAME_WE)
+
+        set(OUTPUT_FILE  ${SPIRV_DIR}/${SHADER_NAME}.spv)
+        set(ENTRY_POINTS -entry vertMain -entry fragMain)
+
+        add_custom_command(
+            OUTPUT  ${OUTPUT_FILE}
+            COMMAND ${SLANGC_EXECUTABLE}
+                        ${SHADER_FILE}
+                        -target spirv
+                        -profile spirv_1_4
+                        -emit-spirv-directly
+                        -fvk-use-entrypoint-name
+                        ${ENTRY_POINTS}
+                        -o ${SHADER_NAME}.spv
+            WORKING_DIRECTORY ${SPIRV_DIR}
+            DEPENDS   ${SPIRV_DIR} ${SHADER_FILE}
+            COMMENT   "Compiling ${SHADER_NAME}"
+            VERBATIM
+        )
+
+        add_custom_target(${SHADER_NAME}_shader DEPENDS ${OUTPUT_FILE})
+        list(APPEND ALL_SHADER_TARGETS ${SHADER_NAME}_shader)
+    endforeach()
+
+    add_custom_target(${TARGET} DEPENDS ${ALL_SHADER_TARGETS})
+endfunction()
+
+file(GLOB SLANG_SOURCES "${SLANG_DIR}/*.slang")
+add_shader_target(all_shaders SOURCES ${SLANG_SOURCES})
+add_dependencies("${VOID_ENGINE_EXEC}" all_shaders)
 
 target_link_libraries(${VOID_ENGINE_EXEC}
     PRIVATE
