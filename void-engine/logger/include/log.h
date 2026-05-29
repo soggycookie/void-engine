@@ -1,6 +1,11 @@
 #pragma once
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <iostream>
+#include <source_location>
+#include <string>
+#include <string_view>
 #include <utility>
 
 #ifdef _WIN32
@@ -88,10 +93,85 @@ inline const char *GetLogSeverityString(LogSeverity severity)
     return nullptr;
 }
 
-inline void ShowErrorDialog(void* windowHandle, const char* caption, const char* content)
+struct ContextFieldPrinter
+{
+    char msg[kMaxLogMsgLength] = "";
+    uint32_t count = 0;
+    bool first = true;
+
+    template <typename Arg, typename... Fields>
+    void AddField(const char *fieldLabel, const Arg &val, Fields &&...fields)
+    {
+        AddField(fieldLabel, val);
+        AddField(std::forward<Fields>(fields)...);
+    }
+
+    template <typename Arg>
+    void AddField(const char *fieldLabel, const Arg &val)
+    {
+        uint32_t writeSize = 0;
+        if (first)
+        {
+            writeSize = std::snprintf(&msg[count], kMaxLogMsgLength - count,
+                                      "%s = ", fieldLabel);
+        }
+        else
+        {
+            writeSize = std::snprintf(&msg[count], kMaxLogMsgLength - count,
+                                      ", %s = ", fieldLabel);
+        }
+
+        count += writeSize;
+
+        if (count >= kMaxLogMsgLength)
+        {
+            count = kMaxLogMsgLength - 1;
+            return;
+        }
+
+        if constexpr (std::is_same_v<Arg, std::string> ||
+                      std::is_same_v<Arg, std::string_view> ||
+                      std::is_convertible_v<Arg, const char *>)
+        {
+            writeSize = std::snprintf(&msg[count], kMaxLogMsgLength - count,
+                                      "\"%s\"", std::string(val).c_str());
+        }
+        else if constexpr (std::is_floating_point_v<Arg>)
+        {
+            writeSize = std::snprintf(&msg[count], kMaxLogMsgLength - count,
+                                      "%g", static_cast<double>(val));
+        }
+        else if constexpr (std::is_integral_v<Arg>)
+        {
+            writeSize = std::snprintf(&msg[count], kMaxLogMsgLength - count,
+                                      "%lld", static_cast<int64_t>(val));
+        }
+        else
+        {
+            // LOG_ASSERT_LOG_ERROR("<opaque>");
+        }
+
+        first = false;
+
+        count += writeSize;
+
+        if (count >= kMaxLogMsgLength)
+        {
+
+            count = kMaxLogMsgLength - 1;
+            return;
+        }
+    }
+
+    void Print() const { std::cout << "Context:\n" << msg << std::endl; }
+};
+
+inline void ShowErrorDialog(void *windowHandle, const char *caption,
+                            const char *content)
 {
 #ifdef _WIN32
-    MessageBoxEx(static_cast<HWND>(windowHandle), content, caption, MB_OK | MB_ICONERROR, 0);
+    MessageBoxEx(static_cast<HWND>(windowHandle), content, caption,
+                 MB_OK | MB_ICONERROR, 0);
 #else
 
 #endif
@@ -120,3 +200,31 @@ inline void ShowErrorDialog(void* windowHandle, const char* caption, const char*
 #define LOG_ERROR(channel, fmt, ...)                                           \
     Logger::WriteLog(Logger::LogSeverity::ERROR_, channel, __FILE__, __LINE__, \
                      fmt, ##__VA_ARGS__)
+
+#define CONTEXT(...)                                                           \
+    [](Logger::ContextFieldPrinter &fp) { fp.AddField(__VA_ARGS__); }
+
+#define LOG_ASSERT(cond, msg, ...)                                             \
+    while (true)                                                               \
+    {                                                                          \
+        if (cond)                                                              \
+            break;                                                             \
+        Logger::WriteLog(Logger::LogSeverity::ERROR_, "ASSERT", __FILE__,      \
+                         __LINE__, msg, ##__VA_ARGS__);                        \
+        FLUSH_LOG();                                                           \
+        std::terminate();                                                      \
+    }
+
+#define LOG_ASSERT_CTX(cond, ctx, msg, ...)                                    \
+    while (true)                                                               \
+    {                                                                          \
+        if (cond)                                                              \
+            break;                                                             \
+        Logger::WriteLog(Logger::LogSeverity::ERROR_, "ASSERT", __FILE__,      \
+                         __LINE__, msg, ##__VA_ARGS__);                        \
+        Logger::ContextFieldPrinter fp;                                        \
+        ctx(fp);                                                               \
+        FLUSH_LOG();                                                           \
+        fp.Print();                                                            \
+        std::terminate();                                                      \
+    }
