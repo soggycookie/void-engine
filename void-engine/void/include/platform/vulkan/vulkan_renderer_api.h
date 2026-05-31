@@ -50,14 +50,15 @@ private:
     void SetUpDebugMessenger();
     void SelectPhysicalDevice();
     void CreateLogicalDevice();
-    void CreateSwapchain();
+    void CreateSwapchain(VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE);
     void CreateImageViews();
     void CreateGraphicPipeline();
     VkShaderModule CreateShaderModule(const std::vector<char> &binaryCode);
     void RecordCommandBuffer(uint32_t imageIndex);
     void CreateCommandPool();
-    void CreateCommandBuffer();
-    void CreateSyncObject();
+    void CreateCommandBuffers();
+    void CreateSyncObjects();
+    void RecreateSwapchain();
 
     void DrawFrame();
 
@@ -74,9 +75,18 @@ private:
     VkSurfaceFormatKHR
     ChooseSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &formats);
 
-    VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities);
+    VkExtent2D
+    ChooseSwapchainExtent(const VkSurfaceCapabilitiesKHR &capabilities);
 
 private:
+    struct FrameSyncObjs
+    {
+
+        VkSemaphore presentCompleteSemaphore;
+        VkSemaphore renderFinishedSemaphore;
+        VkFence drawFence;
+    };
+
     VkInstance m_instance;
     VkPhysicalDevice m_physicalDevice;
     VkDevice m_logicalDevice;
@@ -88,12 +98,13 @@ private:
     VkPipelineLayout m_pipelineLayout;
     VkPipeline m_pipeline;
     VkCommandPool m_commandPool;
-    VkCommandBuffer m_cmdBuffer;
-    uint32_t m_queueFamilyIndex = ~0;
 
-    VkSemaphore m_presentCompleteSemaphore;
-    VkSemaphore m_renderFinishedSemaphore;
-    VkFence m_drawFence;
+    uint32_t m_queueFamilyIndex = ~0;
+    uint32_t m_frameIndex = 0;
+    static constexpr uint32_t s_kMaxFrameInFlight = 2;
+
+    FrameSyncObjs m_frames[s_kMaxFrameInFlight];
+    VkCommandBuffer m_frameCmdBuffers[s_kMaxFrameInFlight];
 
     std::vector<VkImage> m_images;
     std::vector<VkImageView> m_imageViews;

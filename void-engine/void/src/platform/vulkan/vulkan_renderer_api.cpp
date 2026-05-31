@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <fstream>
 #include <ios>
-#include <vector>
+#include "application.h"
 
 // CURRENTLY ONLY ALLOW VULKAN API > 1.3
 
@@ -24,8 +24,8 @@ bool Vulkan_RendererAPI::Init(int width, int height, void *outputWindow)
     CreateImageViews();
     CreateGraphicPipeline();
     CreateCommandPool();
-    CreateCommandBuffer();
-    CreateSyncObject();
+    CreateCommandBuffers();
+    CreateSyncObjects();
 
     return true;
 }
@@ -58,19 +58,27 @@ void Vulkan_RendererAPI::Draw(MeshResource *mesh, MaterialResource *material) {}
 
 void Vulkan_RendererAPI::Shutdown()
 {
-    vkDestroySemaphore(m_logicalDevice, m_presentCompleteSemaphore, nullptr);
-    vkDestroySemaphore(m_logicalDevice, m_renderFinishedSemaphore, nullptr);
-    vkDestroyFence(m_logicalDevice, m_drawFence, nullptr);
-
+    for (size_t idx = 0; idx < s_kMaxFrameInFlight; ++idx)
+    {
+        vkDestroySemaphore(m_logicalDevice,
+                           m_frames[idx].presentCompleteSemaphore, nullptr);
+        vkDestroySemaphore(m_logicalDevice,
+                           m_frames[idx].renderFinishedSemaphore, nullptr);
+        vkDestroyFence(m_logicalDevice, m_frames[idx].drawFence, nullptr);
+    }
     vkDestroyCommandPool(m_logicalDevice, m_commandPool, nullptr);
+
     vkDestroyPipeline(m_logicalDevice, m_pipeline, nullptr);
     vkDestroyPipelineLayout(m_logicalDevice, m_pipelineLayout, nullptr);
+
     for (VkImageView &view : m_imageViews)
     {
         vkDestroyImageView(m_logicalDevice, view, nullptr);
+        view = VK_NULL_HANDLE;
     }
 
     vkDestroySwapchainKHR(m_logicalDevice, m_swapchain, nullptr);
+
     vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
     vkDestroyDevice(m_logicalDevice, nullptr);
 
@@ -439,8 +447,6 @@ void Vulkan_RendererAPI::SelectPhysicalDevice()
                                             VK_QUEUE_GRAPHICS_BIT) > 0;
                                 });
 
-
-
         VkPhysicalDeviceVulkan11Features vulkan11features{
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
             .pNext = nullptr,
@@ -463,7 +469,8 @@ void Vulkan_RendererAPI::SelectPhysicalDevice()
         vkGetPhysicalDeviceFeatures2(device, &features2);
 
         bool supportsRequiredFeatures =
-            vulkan13Features.dynamicRendering && vulkan13Features.synchronization2 &&
+            vulkan13Features.dynamicRendering &&
+            vulkan13Features.synchronization2 &&
             extendedDynamicStateFeatures.extendedDynamicState &&
             vulkan11features.shaderDrawParameters;
 
@@ -540,7 +547,6 @@ void Vulkan_RendererAPI::CreateLogicalDevice()
         .pNext = nullptr,
         .shaderDrawParameters = VK_TRUE,
     };
-
 
     VkPhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicStateFeatures{
         .sType =
@@ -627,7 +633,7 @@ VkPresentModeKHR Vulkan_RendererAPI::ChoosePresentMode(
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-VkExtent2D Vulkan_RendererAPI::ChooseSwapExtent(
+VkExtent2D Vulkan_RendererAPI::ChooseSwapchainExtent(
     const VkSurfaceCapabilitiesKHR &capabilities)
 {
     if (capabilities.currentExtent.width != UINT32_MAX)
@@ -635,8 +641,8 @@ VkExtent2D Vulkan_RendererAPI::ChooseSwapExtent(
         return capabilities.currentExtent;
     }
 
-    uint32_t width = m_window->GetWindowProperty().width;
-    uint32_t height = m_window->GetWindowProperty().height;
+    uint32_t width = m_window->GetFramebufferSize().width;
+    uint32_t height = m_window->GetFramebufferSize().height;
 
     VkExtent2D extent = {
         .width = width,
@@ -652,7 +658,7 @@ VkExtent2D Vulkan_RendererAPI::ChooseSwapExtent(
     return extent;
 }
 
-void Vulkan_RendererAPI::CreateSwapchain()
+void Vulkan_RendererAPI::CreateSwapchain(VkSwapchainKHR oldSwapchain)
 {
     VkSurfaceCapabilitiesKHR surfaceCapabilities{};
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_physicalDevice, m_surface,
@@ -679,7 +685,7 @@ void Vulkan_RendererAPI::CreateSwapchain()
 
     VkSurfaceFormatKHR format = ChooseSurfaceFormat(surfaceFormats);
     VkPresentModeKHR mode = ChoosePresentMode(presentModes);
-    VkExtent2D extent2d = ChooseSwapExtent(surfaceCapabilities);
+    VkExtent2D extent2d = ChooseSwapchainExtent(surfaceCapabilities);
 
     m_format = format;
     m_extent = extent2d;
@@ -707,7 +713,7 @@ void Vulkan_RendererAPI::CreateSwapchain()
         .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         .presentMode = mode,
         .clipped = VK_TRUE,
-        .oldSwapchain = nullptr,
+        .oldSwapchain = oldSwapchain,
     };
 
     if (vkCreateSwapchainKHR(m_logicalDevice, &swapchainCreateInfo, nullptr,
@@ -730,6 +736,7 @@ void Vulkan_RendererAPI::CreateSwapchain()
     m_images.resize(swapchainImageCount);
     vkGetSwapchainImagesKHR(m_logicalDevice, m_swapchain, &swapchainImageCount,
                             m_images.data());
+
 }
 
 void Vulkan_RendererAPI::CreateImageViews()
@@ -976,18 +983,18 @@ void Vulkan_RendererAPI::CreateCommandPool()
     vkCreateCommandPool(m_logicalDevice, &cmdPool, nullptr, &m_commandPool);
 }
 
-void Vulkan_RendererAPI::CreateCommandBuffer()
+void Vulkan_RendererAPI::CreateCommandBuffers()
 {
     VkCommandBufferAllocateInfo cmdBufferAllocInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .pNext = nullptr,
         .commandPool = m_commandPool,
         .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
+        .commandBufferCount = s_kMaxFrameInFlight,
     };
 
     vkAllocateCommandBuffers(m_logicalDevice, &cmdBufferAllocInfo,
-                             &m_cmdBuffer);
+                             m_frameCmdBuffers);
 }
 
 void Vulkan_RendererAPI::TransitionImageLayout(
@@ -1025,7 +1032,7 @@ void Vulkan_RendererAPI::TransitionImageLayout(
         .pImageMemoryBarriers = &barrier,
     };
 
-    vkCmdPipelineBarrier2(m_cmdBuffer, &dependencyInfo);
+    vkCmdPipelineBarrier2(m_frameCmdBuffers[m_frameIndex], &dependencyInfo);
 }
 
 void Vulkan_RendererAPI::RecordCommandBuffer(uint32_t imageIndex)
@@ -1037,7 +1044,7 @@ void Vulkan_RendererAPI::RecordCommandBuffer(uint32_t imageIndex)
         .pInheritanceInfo = 0,
     };
 
-    vkBeginCommandBuffer(m_cmdBuffer, &beginInfo);
+    vkBeginCommandBuffer(m_frameCmdBuffers[m_frameIndex], &beginInfo);
 
     TransitionImageLayout(imageIndex, VK_IMAGE_LAYOUT_UNDEFINED,
                           VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, {},
@@ -1067,9 +1074,10 @@ void Vulkan_RendererAPI::RecordCommandBuffer(uint32_t imageIndex)
         .pColorAttachments = &renderingAttachmentInfo,
     };
 
-    vkCmdBeginRendering(m_cmdBuffer, &renderingInfo);
+    vkCmdBeginRendering(m_frameCmdBuffers[m_frameIndex], &renderingInfo);
 
-    vkCmdBindPipeline(m_cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
+    vkCmdBindPipeline(m_frameCmdBuffers[m_frameIndex],
+                      VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
     VkViewport viewport{
         .x = 0.0f,
         .y = 0.0f,
@@ -1085,12 +1093,12 @@ void Vulkan_RendererAPI::RecordCommandBuffer(uint32_t imageIndex)
         .extent = m_extent,
     };
 
-    vkCmdSetViewport(m_cmdBuffer, 0, 1, &viewport);
-    vkCmdSetScissor(m_cmdBuffer, 0, 1, &scissor);
+    vkCmdSetViewport(m_frameCmdBuffers[m_frameIndex], 0, 1, &viewport);
+    vkCmdSetScissor(m_frameCmdBuffers[m_frameIndex], 0, 1, &scissor);
 
-    vkCmdDraw(m_cmdBuffer, 3, 1, 0, 0);
+    vkCmdDraw(m_frameCmdBuffers[m_frameIndex], 3, 1, 0, 0);
 
-    vkCmdEndRendering(m_cmdBuffer);
+    vkCmdEndRendering(m_frameCmdBuffers[m_frameIndex]);
 
     TransitionImageLayout(imageIndex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                           VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
@@ -1098,10 +1106,10 @@ void Vulkan_RendererAPI::RecordCommandBuffer(uint32_t imageIndex)
                           VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                           VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT);
 
-    vkEndCommandBuffer(m_cmdBuffer);
+    vkEndCommandBuffer(m_frameCmdBuffers[m_frameIndex]);
 }
 
-void Vulkan_RendererAPI::CreateSyncObject()
+void Vulkan_RendererAPI::CreateSyncObjects()
 {
     VkSemaphoreCreateInfo presentComplete{
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
@@ -1122,29 +1130,35 @@ void Vulkan_RendererAPI::CreateSyncObject()
     };
 
     vkCreateSemaphore(m_logicalDevice, &presentComplete, nullptr,
-                      &m_presentCompleteSemaphore);
+                      &m_frames[m_frameIndex].presentCompleteSemaphore);
     vkCreateSemaphore(m_logicalDevice, &renderFinished, nullptr,
-                      &m_renderFinishedSemaphore);
-    vkCreateFence(m_logicalDevice, &drawFence, nullptr, &m_drawFence);
+                      &m_frames[m_frameIndex].renderFinishedSemaphore);
+    vkCreateFence(m_logicalDevice, &drawFence, nullptr,
+                  &m_frames[m_frameIndex].drawFence);
 }
 
 void Vulkan_RendererAPI::DrawFrame()
 {
-    if (vkWaitForFences(m_logicalDevice, 1, &m_drawFence, VK_TRUE,
-                        UINT64_MAX) != VK_SUCCESS)
+    if (vkWaitForFences(m_logicalDevice, 1, &m_frames[m_frameIndex].drawFence,
+                        VK_TRUE, UINT64_MAX) != VK_SUCCESS)
     {
         LOG_ASSERT("VULKAN", "Failed to wait for draw fence");
     }
 
-    vkResetFences(m_logicalDevice, 1, &m_drawFence);
-
     uint32_t imageIndex = UINT32_MAX;
 
-    if (vkAcquireNextImageKHR(m_logicalDevice, m_swapchain, UINT64_MAX,
-                              m_presentCompleteSemaphore, VK_NULL_HANDLE,
-                              &imageIndex) != VK_SUCCESS)
+    VkResult acquireResult = vkAcquireNextImageKHR(m_logicalDevice, m_swapchain, UINT64_MAX,
+                              m_frames[m_frameIndex].presentCompleteSemaphore,
+                              VK_NULL_HANDLE, &imageIndex);
+
+    if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR)
     {
-        LOG_ASSERT("VULKAN", "Failed to acquire next image to present");
+        RecreateSwapchain();
+        return;
+    }
+    else if(acquireResult != VK_SUCCESS && acquireResult!= VK_SUBOPTIMAL_KHR)
+    {
+        LOG_ASSERT(acquireResult == VK_TIMEOUT || acquireResult == VK_NOT_READY, "Failed to acquire next image to present");
     }
 
     RecordCommandBuffer(imageIndex);
@@ -1152,7 +1166,7 @@ void Vulkan_RendererAPI::DrawFrame()
     VkSemaphoreSubmitInfo waitSemaphoreSubmitInfo{
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
         .pNext = nullptr,
-        .semaphore = m_presentCompleteSemaphore,
+        .semaphore = m_frames[m_frameIndex].presentCompleteSemaphore,
         .value = 0,
         .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
     };
@@ -1160,7 +1174,7 @@ void Vulkan_RendererAPI::DrawFrame()
     VkSemaphoreSubmitInfo signalSemaphoreSubmitInfo{
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
         .pNext = nullptr,
-        .semaphore = m_renderFinishedSemaphore,
+        .semaphore = m_frames[m_frameIndex].renderFinishedSemaphore,
         .value = 0,
         .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
     };
@@ -1168,7 +1182,7 @@ void Vulkan_RendererAPI::DrawFrame()
     VkCommandBufferSubmitInfo cmdBufferSubmitInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
         .pNext = nullptr,
-        .commandBuffer = m_cmdBuffer,
+        .commandBuffer = m_frameCmdBuffers[m_frameIndex],
     };
 
     VkSubmitInfo2 submitInfo{.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
@@ -1182,27 +1196,56 @@ void Vulkan_RendererAPI::DrawFrame()
                              .pSignalSemaphoreInfos =
                                  &signalSemaphoreSubmitInfo};
 
-    vkQueueSubmit2(m_graphicQueue, 1, &submitInfo, m_drawFence);
+    vkResetFences(m_logicalDevice, 1, &m_frames[m_frameIndex].drawFence);
+    vkQueueSubmit2(m_graphicQueue, 1, &submitInfo,
+                   m_frames[m_frameIndex].drawFence);
 
     VkPresentInfoKHR presentInfo{
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .pNext = nullptr,
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &m_renderFinishedSemaphore,
+        .pWaitSemaphores = &m_frames[m_frameIndex].renderFinishedSemaphore,
         .swapchainCount = 1,
         .pSwapchains = &m_swapchain,
         .pImageIndices = &imageIndex,
     };
 
-    if (vkQueuePresentKHR(m_graphicQueue, &presentInfo) != VK_SUCCESS)
+    VkResult presentResult = vkQueuePresentKHR(m_graphicQueue, &presentInfo);
+
+    if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR || Application::GetApp().IsResizing())
     {
+        RecreateSwapchain();
     }
+    else if(presentResult != VK_SUCCESS)
+    {
+        LOG_ASSERT(presentResult == VK_TIMEOUT || presentResult == VK_NOT_READY, "Failed to acquire next image to present");
+    }
+
 }
 
-    void Vulkan_RendererAPI::DrawTest()
-    {
-        DrawFrame();
+void Vulkan_RendererAPI::DrawTest()
+{
+    DrawFrame();
+    m_frameIndex = (m_frameIndex++ % s_kMaxFrameInFlight);
 
-        vkQueueWaitIdle(m_graphicQueue);
+    // vkQueueWaitIdle(m_graphicQueue);
+}
+
+void Vulkan_RendererAPI::RecreateSwapchain()
+{
+    vkQueueWaitIdle(m_graphicQueue);
+
+    for (VkImageView &view : m_imageViews)
+    {
+        vkDestroyImageView(m_logicalDevice, view, nullptr);
+        view = VK_NULL_HANDLE;
     }
+
+    VkSwapchainKHR oldSwapchain = m_swapchain;
+    CreateSwapchain(oldSwapchain);
+
+    vkDestroySwapchainKHR(m_logicalDevice, oldSwapchain, nullptr);
+
+    CreateImageViews();
+}
 } // namespace VoidEngine

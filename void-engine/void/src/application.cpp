@@ -7,6 +7,8 @@
 
 namespace VoidEngine
 {
+Application* Application::s_instance = nullptr;
+
 bool Application::StartUp()
 {
     MemorySystem::StartUp(m_config);

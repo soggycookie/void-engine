@@ -7,13 +7,17 @@
 #include "layer_stack.h"
 #include "pch.h"
 #include "window.h"
+#include "log.h"
 
 namespace VoidEngine
 {
 class Application
 {
 public:
-    Application() = default;
+    Application(){
+        LOG_ASSERT(s_instance == nullptr, "Can not create another instance of app!");
+        s_instance = this;
+    }
 
     virtual ~Application() = default;
 
@@ -39,10 +43,23 @@ public:
     // void PushLayer(Layer* layer);
     // void PushOverLay(Layer* layer);
 
+    static Application& GetApp()
+    {
+        LOG_ASSERT(s_instance, "App instance is null");
+        return *s_instance;
+    }
+
+    bool IsResizing() const
+    {
+        return m_isResizing;
+    }
+
 private:
     void OnEvent(InputEvent &e);
 
 private:
+    static Application* s_instance;
+
     LayerStack *m_layerStack;
     Window *m_window;
     GameLayer *m_gameLayer;

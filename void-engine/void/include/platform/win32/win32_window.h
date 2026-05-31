@@ -34,6 +34,15 @@ public:
 
     void *GetWindowHandle() const override { return m_windowHandle; }
 
+    ClientDimension GetFramebufferSize() const override
+    {
+        RECT rect;
+        GetClientRect(m_windowHandle, &rect);
+
+        return ClientDimension{.width = (rect.right - rect.left),
+                               .height = (rect.bottom - rect.top)};
+    }
+
     HINSTANCE GetModuleInstanceHandle() const { return m_hInstance; }
 
     HWND GetNativeWindowHandle() const { return m_windowHandle; }
