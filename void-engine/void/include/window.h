@@ -9,9 +9,11 @@ using EventCallback = std::function<void(InputEvent &)>;
 
 struct WindowProperty
 {
-    std::string title = "void-engine";
-    int width = 1280;
-    int height = 720;
+    const char *title = "void-engine";
+    uint32_t width = 1280;
+    uint32_t height = 720;
+    uint32_t minWidth = 800;
+    uint32_t minHeight = 600;
 };
 
 class Window
@@ -24,22 +26,17 @@ public:
         : m_property(property), m_eventCallback(func), m_deltaTime(0),
           m_windowTime(0), m_isTimeStopped(false)
     {
-        int32_t minWidth = 200;
-        int32_t minHeight = 200;
-
-        m_minWidth = minWidth;
-        m_minHeight = minHeight;
     }
 
     virtual ~Window() = default;
 
     virtual void Update() = 0;
 
+    virtual bool Init() = 0;
     virtual void BeginTimeElapse() = 0;
     virtual void EndTimeElapse(double &outPassedTime) = 0;
     virtual void *GetDisplayWindow() = 0;
-    virtual void* GetWindowHandle() const = 0;
-
+    virtual void *GetWindowHandle() const = 0;
 
     double GetDeltaTime() const { return m_deltaTime; }
 
@@ -47,25 +44,14 @@ public:
 
     double GetWindowTime() const { return m_windowTime; }
 
-    ClientDimension GetDimension() const
-    {
-        ClientDimension dimension = {m_minWidth, m_minHeight};
-        return dimension;
-    }
+    const WindowProperty &GetWindowProperty() const { return m_property; }
 
-    virtual bool Init() = 0;
-    // virtual bool SetupRenderer()
-    //{
-    //     Renderer::SetWindow(this);
-    //     return Renderer::SetGraphicAPI(GraphicAPI::D3D11);
-    // }
+    void SetWidth(uint32_t width) { m_property.width = width; }
+    void SetHeight(uint32_t height) { m_property.height = height; }
 
 protected:
     // TODO: move this property to APP
     WindowProperty m_property;
-    int32_t m_minWidth;
-    int32_t m_minHeight;
-
     EventCallback m_eventCallback;
 
     // TODO: move this to another class

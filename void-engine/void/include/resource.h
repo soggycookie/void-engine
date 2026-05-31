@@ -1,6 +1,5 @@
 #pragma once
 #include "pch.h"
-#include "common_type.h"
 #include "graphic_buffer.h"
 #include "graphic_shader.h"
 

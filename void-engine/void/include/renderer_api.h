@@ -1,12 +1,18 @@
 #pragma once
+#include "pch.h"
+#include "log.h"
 #include "graphic_buffer.h"
 #include "resource.h"
 
 namespace VoidEngine
 {
+    class Window;
+
     class RendererAPI
     {
     public:
+        RendererAPI(Window* window) : m_window(window) {}
+
         virtual ~RendererAPI() = default;
 
         virtual void Shutdown() = 0;
@@ -26,6 +32,11 @@ namespace VoidEngine
 
         virtual void Draw(MeshResource* mesh, MaterialResource* material) = 0;
 
+        virtual void DrawTest() = 0;
+
+
+    protected:
+        Window* m_window; 
     };
 
 }

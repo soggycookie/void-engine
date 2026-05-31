@@ -1,6 +1,7 @@
 #pragma once
 #include "pch.h"
 #include "input/key_button.h"
+#define NOMINMAX
 #include <windows.h>
 
 namespace VoidEngine

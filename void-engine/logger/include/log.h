@@ -25,7 +25,7 @@ enum class LogSeverity : uint32_t
     ERROR_,
 };
 
-constexpr uint32_t kMaxLogMsgLength = 256;
+constexpr uint32_t kMaxLogMsgLength = 1024;
 
 struct LogEntry
 {
@@ -36,7 +36,7 @@ struct LogEntry
     char msg[kMaxLogMsgLength];
 };
 
-constexpr uint32_t kLogCapacity = 4;
+constexpr uint32_t kLogCapacity = 32;
 
 struct LogBuffer
 {

@@ -20,6 +20,8 @@
 #include <set>
 #include <unordered_set>
 #include <bitset>
+#include <ranges>
+#include <stdexcept>
 
 #include "common_type.h"
 

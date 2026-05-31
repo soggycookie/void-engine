@@ -13,8 +13,8 @@ struct ScreenVertex
     float uv[2];  // texture coords
 };
 
-D3D11_RendererAPI::D3D11_RendererAPI()
-    : m_inputLayouts(MemorySystem::GeneralAllocator())
+D3D11_RendererAPI::D3D11_RendererAPI(Window* window)
+    : RendererAPI(window), m_inputLayouts(MemorySystem::GeneralAllocator())
 {
 }
 

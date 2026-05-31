@@ -1,52 +1,59 @@
 #pragma once
-#include "window.h"
+
+#define NOMINMAX
 #include <windows.h>
+
+#include "window.h"
 
 namespace VoidEngine
 {
 
-#define HR(hr) if(FAILED(hr)) { return false; }
+#define HR(hr)                                                                 \
+    if (FAILED(hr))                                                            \
+    {                                                                          \
+        return false;                                                          \
+    }
 
-    class Win32Window : public Window
+class Win32_Window : public Window
+{
+public:
+    Win32_Window(const WindowProperty &property, EventCallback func)
+        : Window(property, func), m_currCount(0), m_prevCount(0),
+          m_windowHandle(nullptr), m_hInstance(nullptr)
     {
-    public:
-        Win32Window(const WindowProperty& property, EventCallback func) 
-            : Window(property, func),
-              m_currCount(0), m_prevCount(0)
-        {
-            QueryPerformanceFrequency(&m_countsPerSec);
-        }
+        QueryPerformanceFrequency(&m_countsPerSec);
+    }
 
-        void Update() override;
+    void Update() override;
 
-        //move this to profiler
-        void BeginTimeElapse() override;
-        void EndTimeElapse(double& outPassedTime) override;
+    // move this to profiler
+    void BeginTimeElapse() override;
+    void EndTimeElapse(double &outPassedTime) override;
 
-        void* GetDisplayWindow() override;
+    void *GetDisplayWindow() override;
 
-        void* GetWindowHandle() const override
-        {
-            return m_windowHandle;
-        }
+    void *GetWindowHandle() const override { return m_windowHandle; }
 
-    private:
-        bool Init() override;
-        //bool SetupRenderer() override;
+    HINSTANCE GetModuleInstanceHandle() const { return m_hInstance; }
 
-        void SetUpScene();
+    HWND GetNativeWindowHandle() const { return m_windowHandle; }
 
-    private:
-        HWND m_windowHandle;
-        LARGE_INTEGER m_countsPerSec;
-        
-        int64_t m_currCount;
-        int64_t m_prevCount;
-        
-        int64_t m_stopWatchCurrCount;
-        int64_t m_stopWatchPrevCount;
+private:
+    bool Init() override;
+    // bool SetupRenderer() override;
 
+    void SetUpScene();
 
-    };
+private:
+    HWND m_windowHandle;
+    HINSTANCE m_hInstance;
+    LARGE_INTEGER m_countsPerSec;
 
-}
+    int64_t m_currCount;
+    int64_t m_prevCount;
+
+    int64_t m_stopWatchCurrCount;
+    int64_t m_stopWatchPrevCount;
+};
+
+} // namespace VoidEngine

@@ -31,9 +31,9 @@ bool Renderer::SetGraphicAPI(GraphicAPI api)
     {
     case GraphicAPI::D3D11:
     {
-        s_pRendererAPI = new D3D11_RendererAPI();
-        auto dimension = s_pWindow->GetDimension();
-        s_pRendererAPI->Init(dimension.width, dimension.height,
+        s_pRendererAPI = new D3D11_RendererAPI(s_pWindow);
+        s_pRendererAPI->Init(s_pWindow->GetWindowProperty().width,
+                             s_pWindow->GetWindowProperty().height,
                              s_pWindow->GetDisplayWindow());
         s_graphicAPI = api;
         return true;
@@ -41,9 +41,9 @@ bool Renderer::SetGraphicAPI(GraphicAPI api)
     case GraphicAPI::VULKAN:
     {
 
-        s_pRendererAPI = new Vulkan_RendererAPI();
-        auto dimension = s_pWindow->GetDimension();
-        s_pRendererAPI->Init(dimension.width, dimension.height,
+        s_pRendererAPI = new Vulkan_RendererAPI(s_pWindow);
+        s_pRendererAPI->Init(s_pWindow->GetWindowProperty().width,
+                             s_pWindow->GetWindowProperty().height,
                              s_pWindow->GetDisplayWindow());
         s_graphicAPI = api;
         return true;
@@ -92,4 +92,10 @@ void Renderer::Draw(MeshResource *mesh, MaterialResource *material)
 {
     s_pRendererAPI->Draw(mesh, material);
 }
+
+void Renderer::DrawTest()
+{
+    s_pRendererAPI->DrawTest();
+}
+
 } // namespace VoidEngine

@@ -7,6 +7,7 @@
 #include "input_event.h"
 
 #include <directxmath.h>
+#include <winuser.h>
 namespace VoidEngine
 {
 #define MIN_WINDOW_X 200
@@ -28,7 +29,7 @@ static ClientDimension GetClientDimension(HWND hwnd)
 // Win32 window definition
 Window *Window::Create(const WindowProperty &property, EventCallback func)
 {
-    return new Win32Window(property, func);
+    return new Win32_Window(property, func);
 }
 
 /*
@@ -75,9 +76,9 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     }
     case WM_DESTROY:
     {
-        //InputEvent e(InputEventCategory::APPLICATION,
-        //             InputEventType::APP_CLOSED, 0, 0);
-        //window->DispatchInputEvent(e);
+        // InputEvent e(InputEventCategory::APPLICATION,
+        //              InputEventType::APP_CLOSED, 0, 0);
+        // window->DispatchInputEvent(e);
 
         break;
     }
@@ -85,6 +86,9 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     {
         int width = LOWORD(lParam);
         int height = HIWORD(lParam);
+
+        window->SetWidth(width);
+        window->SetHeight(height);
 
         InputEvent e(InputEventCategory::APPLICATION,
                      InputEventType::APP_RESIZING, width, height);
@@ -124,9 +128,9 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
         if (window)
         {
             ((MINMAXINFO *)lParam)->ptMinTrackSize.x =
-                window->GetDimension().width;
+                window->GetWindowProperty().minWidth;
             ((MINMAXINFO *)lParam)->ptMinTrackSize.y =
-                window->GetDimension().height;
+                window->GetWindowProperty().minHeight;
         }
         else
         {
@@ -137,7 +141,7 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     }
     case WM_MOVING:
     {
-        //Renderer::EndFrame();
+        // Renderer::EndFrame();
         break;
     }
     //////////////////////////////////////////////////////////////
@@ -177,48 +181,45 @@ static LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT uMsg, WPARAM wParam,
     }
     case WM_LBUTTONDOWN:
     {
-        InputEvent e(InputEventType::MOUSE_PRESSED, KeyCode::MOUSE_LEFT, 0,
-                     0);
+        InputEvent e(InputEventType::MOUSE_PRESSED, KeyCode::MOUSE_LEFT, 0, 0);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_MBUTTONDOWN:
     {
-        InputEvent e(InputEventType::MOUSE_PRESSED, KeyCode::MOUSE_MIDDLE,
-                     0, 0);
+        InputEvent e(InputEventType::MOUSE_PRESSED, KeyCode::MOUSE_MIDDLE, 0,
+                     0);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_RBUTTONDOWN:
     {
-        InputEvent e(InputEventType::MOUSE_PRESSED, KeyCode::MOUSE_RIGHT, 0,
-                     0);
+        InputEvent e(InputEventType::MOUSE_PRESSED, KeyCode::MOUSE_RIGHT, 0, 0);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_LBUTTONUP:
     {
-        InputEvent e(InputEventType::MOUSE_RELEASED, KeyCode::MOUSE_LEFT, 0,
-                     0);
+        InputEvent e(InputEventType::MOUSE_RELEASED, KeyCode::MOUSE_LEFT, 0, 0);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_MBUTTONUP:
     {
-        InputEvent e(InputEventType::MOUSE_RELEASED, KeyCode::MOUSE_MIDDLE,
-                     0, 0);
+        InputEvent e(InputEventType::MOUSE_RELEASED, KeyCode::MOUSE_MIDDLE, 0,
+                     0);
         window->DispatchInputEvent(e);
 
         break;
     }
     case WM_RBUTTONUP:
     {
-        InputEvent e(InputEventType::MOUSE_RELEASED, KeyCode::MOUSE_RIGHT,
-                     0, 0);
+        InputEvent e(InputEventType::MOUSE_RELEASED, KeyCode::MOUSE_RIGHT, 0,
+                     0);
         window->DispatchInputEvent(e);
 
         break;
@@ -310,7 +311,7 @@ propagate it to application layer -> dispatch to other layers
 we should not bind events, do other work inside window
 because it is platform-specific
 */
-void Win32Window::Update()
+void Win32_Window::Update()
 {
     LARGE_INTEGER currCount;
     QueryPerformanceCounter(&currCount);
@@ -346,14 +347,14 @@ void Win32Window::Update()
     // std::cout << m_windowTime << std::endl;
 }
 
-void Win32Window::BeginTimeElapse()
+void Win32_Window::BeginTimeElapse()
 {
     LARGE_INTEGER count;
     QueryPerformanceCounter(&count);
     m_stopWatchPrevCount = count.QuadPart;
 }
 
-void Win32Window::EndTimeElapse(double &outPassedTime)
+void Win32_Window::EndTimeElapse(double &outPassedTime)
 {
     LARGE_INTEGER count;
     QueryPerformanceCounter(&count);
@@ -364,17 +365,32 @@ void Win32Window::EndTimeElapse(double &outPassedTime)
                     static_cast<double>(m_countsPerSec.QuadPart);
 }
 
-bool Win32Window::Init()
+bool Win32_Window::Init()
 {
-    const char k_className[] = "VoidEngineWindowClass";
-    HINSTANCE hInst = GetModuleHandle(NULL);
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
-    RegisterWindowClass(hInst, k_className);
+    const char k_className[] = "VoidEngineWindowClass";
+    m_hInstance = GetModuleHandle(NULL);
+
+    RegisterWindowClass(m_hInstance, k_className);
+
+    constexpr UINT kBaseDPI = 96;
+
+    UINT dpi = GetDpiForSystem();
+
+    float scale = static_cast<float>(dpi) / static_cast<float>(kBaseDPI);
+
+    m_property.width *= scale;
+    m_property.height *= scale;
 
     m_windowHandle = CreateWindowEx(
         0, k_className, "Void-engine", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
         CW_USEDEFAULT, CW_USEDEFAULT, m_property.width, m_property.height, NULL,
-        NULL, hInst, this);
+        NULL, m_hInstance, this);
+
+    LOG_INFO("Win32", "Window: %u - %u", m_property.width, m_property.height);
+    LOG_INFO("Win32", "Rect: %u - %u", GetClientDimension(m_windowHandle).width,
+             GetClientDimension(m_windowHandle).height);
 
     if (!m_windowHandle)
     {
@@ -390,7 +406,7 @@ bool Win32Window::Init()
 }
 
 // TODO: support multiple graphic API in the future
-// bool Win32Window::SetupRenderer()
+// bool Win32_Window::SetupRenderer()
 //{
 //     if(!Window::SetupRenderer())
 //     {
@@ -411,9 +427,9 @@ bool Win32Window::Init()
 //    return true;
 //}
 
-void Win32Window::SetUpScene() {}
+void Win32_Window::SetUpScene() {}
 
-void *Win32Window::GetDisplayWindow()
+void *Win32_Window::GetDisplayWindow()
 {
     return static_cast<void *>(m_windowHandle);
 }

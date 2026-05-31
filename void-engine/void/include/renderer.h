@@ -1,12 +1,18 @@
 #pragma once
+#include "renderer_api.h"
 #include "graphic_buffer.h"
 #include "graphic_shader.h"
-#include "pch.h"
-#include "renderer_api.h"
 
 namespace VoidEngine
 {
 class Window;
+
+enum class GraphicAPI
+{
+    UNKNOWN,
+    D3D11,
+    VULKAN
+};
 
 class Renderer
 {
@@ -34,6 +40,8 @@ public:
     static void DestroyShader(GraphicShader &shader);
 
     static void Draw(MeshResource *mesh, MaterialResource *material);
+
+    static void DrawTest();
 
 private:
     friend class Application;

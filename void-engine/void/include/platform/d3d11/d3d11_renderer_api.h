@@ -51,7 +51,7 @@ namespace VoidEngine
         };
 
     public:
-        D3D11_RendererAPI();
+        D3D11_RendererAPI(Window* window);
         ~D3D11_RendererAPI() = default;
 
         void Shutdown() override;
@@ -75,6 +75,8 @@ namespace VoidEngine
         void DestroyShader(GraphicShader& shader) override;
 
         void Draw(MeshResource* mesh, MaterialResource* material) override;
+        void DrawTest() override{}
+
     private:
 
         ID3D11InputLayout* CreateInputLayout(const VertexDescriptor* vd, size_t count, ID3DBlob* compiledVertexSrc);

@@ -37,9 +37,7 @@ void GameLayer::OnUpdate(double dt)
     // std::cout << "Mouse Pos ECS: " << input.GetMousePos().mouseX <<
     // std::endl;
 
-    Renderer::NewFrame();
-    Renderer::Draw(mesh, material);
-    Renderer::EndFrame();
+    Renderer::DrawTest();
 
     frameCount++;
 
