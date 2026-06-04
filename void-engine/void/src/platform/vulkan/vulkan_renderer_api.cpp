@@ -1,9 +1,7 @@
 #include "vulkan_renderer_api.h"
-#include "log.h"
-#include <cstdint>
-#include <fstream>
-#include <ios>
 #include "application.h"
+#include "log.h"
+#include <fstream>
 
 // CURRENTLY ONLY ALLOW VULKAN API > 1.3
 
@@ -736,7 +734,6 @@ void Vulkan_RendererAPI::CreateSwapchain(VkSwapchainKHR oldSwapchain)
     m_images.resize(swapchainImageCount);
     vkGetSwapchainImagesKHR(m_logicalDevice, m_swapchain, &swapchainImageCount,
                             m_images.data());
-
 }
 
 void Vulkan_RendererAPI::CreateImageViews()
@@ -824,9 +821,17 @@ void Vulkan_RendererAPI::CreateGraphicPipeline()
 
     VkPipelineShaderStageCreateInfo shaderStages[]{vertStage, fragStage};
 
+    //auto bindingDescription = Vertex::GetBindingDescription();
+    //auto attributeDescriptions = Vertex::GetAttributeDescriptions();
+
     VkPipelineVertexInputStateCreateInfo vertexInputState{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .pNext = nullptr,
+        //.vertexBindingDescriptionCount = 1,
+        //.pVertexBindingDescriptions = &bindingDescription,
+        //.vertexAttributeDescriptionCount =
+        //    static_cast<uint32_t>(attributeDescriptions.size()),
+        //.pVertexAttributeDescriptions = attributeDescriptions.data(),
     };
 
     VkPipelineInputAssemblyStateCreateInfo inputAssemblyState{
@@ -1147,7 +1152,8 @@ void Vulkan_RendererAPI::DrawFrame()
 
     uint32_t imageIndex = UINT32_MAX;
 
-    VkResult acquireResult = vkAcquireNextImageKHR(m_logicalDevice, m_swapchain, UINT64_MAX,
+    VkResult acquireResult =
+        vkAcquireNextImageKHR(m_logicalDevice, m_swapchain, UINT64_MAX,
                               m_frames[m_frameIndex].presentCompleteSemaphore,
                               VK_NULL_HANDLE, &imageIndex);
 
@@ -1156,9 +1162,10 @@ void Vulkan_RendererAPI::DrawFrame()
         RecreateSwapchain();
         return;
     }
-    else if(acquireResult != VK_SUCCESS && acquireResult!= VK_SUBOPTIMAL_KHR)
+    else if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR)
     {
-        LOG_ASSERT(acquireResult == VK_TIMEOUT || acquireResult == VK_NOT_READY, "Failed to acquire next image to present");
+        LOG_ASSERT(acquireResult == VK_TIMEOUT || acquireResult == VK_NOT_READY,
+                   "Failed to acquire next image to present");
     }
 
     RecordCommandBuffer(imageIndex);
@@ -1212,15 +1219,17 @@ void Vulkan_RendererAPI::DrawFrame()
 
     VkResult presentResult = vkQueuePresentKHR(m_graphicQueue, &presentInfo);
 
-    if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR || Application::GetApp().IsResizing())
+    if (presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
+        presentResult == VK_SUBOPTIMAL_KHR ||
+        Application::GetApp().IsResizing())
     {
         RecreateSwapchain();
     }
-    else if(presentResult != VK_SUCCESS)
+    else if (presentResult != VK_SUCCESS)
     {
-        LOG_ASSERT(presentResult == VK_TIMEOUT || presentResult == VK_NOT_READY, "Failed to acquire next image to present");
+        LOG_ASSERT(presentResult == VK_TIMEOUT || presentResult == VK_NOT_READY,
+                   "Failed to acquire next image to present");
     }
-
 }
 
 void Vulkan_RendererAPI::DrawTest()

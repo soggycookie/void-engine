@@ -12,6 +12,7 @@ set(VOID_ENGINE_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/void/src")
 set(VOID_ENGINE_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/void/include")
 set(VOID_ENGINE_PLATFORM_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/void/src/platform")
 set(VOID_ENGINE_INCLUDE_PLATFORM "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/void/include/platform")
+set(VOID_ENGINE_EXTERNAL "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/external")
 set(VOID_PRECOMPILED_HEADER "${VOID_ENGINE_INCLUDE}/pch.h")
 
 file(GLOB_RECURSE VOID_ENGINE_SRC_FILES CONFIGURE_DEPENDS
@@ -92,6 +93,7 @@ set(VOID_ECS_PRECOMPILED_HEADER "${VOID_ECS_INCLUDE}/ecs_pch.h")
 file(GLOB_RECURSE VOID_ECS_FILES CONFIGURE_DEPENDS
     "${VOID_ECS_SRC}/*.cpp"  
     "${VOID_ECS_INCLUDE}/*.h"
+    "${VOID_ECS_INCLUDE}/*.hpp"
 )
 
 add_library(${VOID_ECS_LIB} STATIC ${VOID_ECS_FILES})
@@ -125,6 +127,7 @@ set(VOID_LOGGER_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/logger/include"
 file(GLOB_RECURSE VOID_LOGGER_FILES CONFIGURE_DEPENDS
     "${VOID_LOGGER_SRC}/*.cpp"  
     "${VOID_LOGGER_INCLUDE}/*.h"
+    "${VOID_LOGGER_INCLUDE}/*.hpp"
 )
 
 add_library(${VOID_LOGGER_LIB} STATIC ${VOID_LOGGER_FILES})
@@ -202,10 +205,54 @@ file(GLOB SLANG_SOURCES "${SLANG_DIR}/*.slang")
 add_shader_target(all_shaders SOURCES ${SLANG_SOURCES})
 add_dependencies("${VOID_ENGINE_EXEC}" all_shaders)
 
+include(FetchContent)
+
+FetchContent_Declare(
+    glm
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG 1.0.3
+	SOURCE_DIR ${VOID_ENGINE_EXTERNAL}/glm
+)
+
+FetchContent_MakeAvailable(glm)
+
+set(VOID_MATH_LIB "math")
+#set(VOID_MATH_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/math/src")
+set(VOID_MATH_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/math/include")
+
+#file(GLOB_RECURSE VOID_MATH_FILES CONFIGURE_DEPENDS
+#   "${VOID_MATH_SRC}/*.cpp"  
+#   "${VOID_MATH_INCLUDE}/*.h"
+#	"${VOID_MATH_INCLUDE}/*.hpp"
+#)
+
+add_library(${VOID_MATH_LIB} INTERFACE)
+
+#set_target_properties(${VOID_MATH_LIB} PROPERTIES
+#    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
+#   LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
+#    ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
+#    VS_GLOBAL_IntDir         "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
+#    PDB_OUTPUT_DIRECTORY     "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
+#)
+
+target_include_directories(${VOID_MATH_LIB}
+    INTERFACE ${VOID_MATH_INCLUDE}
+)
+
+target_link_libraries(${VOID_MATH_LIB} INTERFACE glm)
+
 target_link_libraries(${VOID_ENGINE_EXEC}
     PRIVATE
 	${VOID_ECS_LIB} 
     ${VOID_LOGGER_LIB}
 	Vulkan::Vulkan
+#	${VOID_MATH_LIB}
+)
+
+target_link_libraries(${VOID_ECS_LIB} 
+	PRIVATE
+	${VOID_LOGGER_LIB}
+#	${VOID_MATH_LIB}
 )
 

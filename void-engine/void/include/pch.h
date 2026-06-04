@@ -1,11 +1,12 @@
 #pragma once
 #define _CRTDBG_MAP_ALLOC
+#include <math.h> 
 #include <stdlib.h>
 #include <crtdbg.h>
-
 #include <type_traits>
 #include <iostream>
 #include <string>
+#include <array>
 #include <string_view>
 #include <sstream>
 #include <functional>
