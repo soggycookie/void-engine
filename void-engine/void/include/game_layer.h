@@ -1,6 +1,7 @@
 #pragma once
 #include "ecs.h"
 #include "layer.h"
+#include "log.h"
 #include "resource.h"
 
 namespace VoidEngine
@@ -25,7 +26,6 @@ struct NPC
 };
 
 //////////////// Input Manager ///////////////
-
 
 class EcsInputManager
 {
@@ -59,8 +59,8 @@ public:
 
     MousePos GetMousePos() const { return m_mousePos; }
 
-    void Set(const std::bitset<256> &prev, const std::bitset<256> &curr,
-             int32_t mouseX, int32_t mouseY)
+    void Set(const std::bitset<256> &prev, const std::bitset<256> &curr, int32_t mouseX,
+             int32_t mouseY)
     {
         m_prevInputState = prev;
         m_currInputState = curr;
@@ -77,7 +77,7 @@ private:
 class GameLayer : public Layer
 {
 public:
-    GameLayer(Application* app) : m_gameTime(0), Layer(app) {}
+    GameLayer(Application *app) : m_gameTime(0), Layer(app) {}
 
     void OnInit() override;
     void OnDetach() override;
@@ -91,7 +91,7 @@ private:
     ECS::World *world;
     size_t m_gameTime;
     double elapsedTime;
-    MeshResource *mesh;
+    // MeshResource *mesh;
     MaterialResource *material;
 };
 } // namespace VoidEngine

@@ -4,6 +4,10 @@ set(CMAKE_CXX_STANDARD          20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS        OFF)
 
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+	set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+endif()
+
 set(VOID_PROJECT_NAME "void-engine")
 project(${VOID_PROJECT_NAME})
 
@@ -13,6 +17,8 @@ set(VOID_ENGINE_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/void/include")
 set(VOID_ENGINE_PLATFORM_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/void/src/platform")
 set(VOID_ENGINE_INCLUDE_PLATFORM "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/void/include/platform")
 set(VOID_ENGINE_EXTERNAL "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/external")
+set(VOID_ENGINE_RESOURCE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/resource")
+
 set(VOID_PRECOMPILED_HEADER "${VOID_ENGINE_INCLUDE}/pch.h")
 
 file(GLOB_RECURSE VOID_ENGINE_SRC_FILES CONFIGURE_DEPENDS
@@ -34,13 +40,9 @@ set_target_properties(${VOID_ENGINE_EXEC} PROPERTIES
 target_precompile_headers(${VOID_ENGINE_EXEC} PRIVATE ${VOID_PRECOMPILED_HEADER})
 
 target_include_directories(${VOID_ENGINE_EXEC} 
-  PRIVATE ${VOID_ENGINE_INCLUDE}
-)
-
-add_custom_command(TARGET ${VOID_ENGINE_EXEC} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${PROJECT_SOURCE_DIR}/void-engine/asset"
-        "$<TARGET_FILE_DIR:${VOID_ENGINE_EXEC}>/asset"
+  PRIVATE 
+	${VOID_ENGINE_INCLUDE}
+	${VOID_ENGINE_EXTERNAL}
 )
 
 target_compile_definitions(${VOID_ENGINE_EXEC}
@@ -155,8 +157,8 @@ find_program(SLANGC_EXECUTABLE
 )
 message(STATUS "Found slangc: ${SLANGC_EXECUTABLE}")
 
-set(SLANG_DIR "${VOID_ENGINE_SRC}/shader/slang")
-set(SPIRV_DIR "${VOID_ENGINE_SRC}/shader/spirv")
+set(SLANG_DIR "${VOID_ENGINE_RESOURCE}/shader/slang")
+set(SPIRV_DIR "${VOID_ENGINE_RESOURCE}/shader/spirv")
 
 function(add_shader_target TARGET)
     cmake_parse_arguments("SHADER" "" "" "SOURCES" ${ARGN})
@@ -211,7 +213,7 @@ FetchContent_Declare(
     glm
     GIT_REPOSITORY https://github.com/g-truc/glm.git
     GIT_TAG 1.0.3
-	SOURCE_DIR ${VOID_ENGINE_EXTERNAL}/glm
+	SOURCE_DIR "${VOID_ENGINE_EXTERNAL}/glm"
 )
 
 FetchContent_MakeAvailable(glm)
@@ -247,12 +249,57 @@ target_link_libraries(${VOID_ENGINE_EXEC}
 	${VOID_ECS_LIB} 
     ${VOID_LOGGER_LIB}
 	Vulkan::Vulkan
-#	${VOID_MATH_LIB}
+	${VOID_MATH_LIB}
 )
 
 target_link_libraries(${VOID_ECS_LIB} 
 	PRIVATE
 	${VOID_LOGGER_LIB}
-#	${VOID_MATH_LIB}
+	${VOID_MATH_LIB}
 )
 
+# --- Embed per-file copy script into binary dir at configure time ---
+file(WRITE "${CMAKE_BINARY_DIR}/copy_changed.cmake" [[
+file(GLOB_RECURSE ALL_FILES LIST_DIRECTORIES false "${SRC}/*")
+foreach(F ${ALL_FILES})
+    file(RELATIVE_PATH REL "${SRC}" "${F}")
+    set(D "${DST}/${REL}")
+    if(NOT EXISTS "${D}")
+        set(DO TRUE)
+    else()
+        file(TIMESTAMP "${F}" ST "%s")
+        file(TIMESTAMP "${D}" DT "%s")
+        if(ST GREATER DT)
+            set(DO TRUE)
+        else()
+            set(DO FALSE)
+        endif()
+    endif()
+    if(DO)
+        get_filename_component(DIR "${D}" DIRECTORY)
+        file(MAKE_DIRECTORY "${DIR}")
+        file(COPY_FILE "${F}" "${D}" ONLY_IF_DIFFERENT)
+        message(STATUS "Copied: ${REL}")
+    endif()
+endforeach()
+]])
+
+# --- Asset folder (game content) ---
+add_custom_command(TARGET ${VOID_ENGINE_EXEC} POST_BUILD
+    COMMAND ${CMAKE_COMMAND}
+        "-DSRC=${PROJECT_SOURCE_DIR}/void-engine/asset"
+        "-DDST=${PROJECT_SOURCE_DIR}/bin/$<CONFIG>/asset"
+        -P "${CMAKE_BINARY_DIR}/copy_changed.cmake"
+    COMMENT "Syncing assets..."
+    VERBATIM
+)
+
+# --- Resources folder (internal engine use) ---
+add_custom_command(TARGET ${VOID_ENGINE_EXEC} POST_BUILD
+    COMMAND ${CMAKE_COMMAND}
+        "-DSRC=${VOID_ENGINE_RESOURCE}"
+        "-DDST=${PROJECT_SOURCE_DIR}/bin/$<CONFIG>/resource"
+        -P "${CMAKE_BINARY_DIR}/copy_changed.cmake"
+    COMMENT "Syncing resources..."
+    VERBATIM
+)

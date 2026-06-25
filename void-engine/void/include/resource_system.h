@@ -1,7 +1,9 @@
 #pragma once
-#include "resource_type_traits.h"
-#include "resource_cache.h"
+#include "log.h"
+#include "pch.h"
 #include "renderer.h"
+#include "resource.h"
+#include "resource_registry.h"
 
 #include "allocator/free_list_allocator.h"
 #include "allocator/pool_allocator.h"
@@ -9,150 +11,157 @@
 
 namespace VoidEngine
 {
-    class ResourceSystem
+
+
+
+class ResourceSystem
+{
+public:
+     //template <typename T, typename... Args>
+     //static T *Create(GUID guid, Args &&...args)
+     //{
+     //    static_assert(ResourceTypeTraits<T>::type != ResourceType::UNKNOWN,
+     //                  "Type and template type mismatch!");
+    
+     //    return s_resourceRegistry.Create<T>(guid, 1, std::forward<Args>(args)...);
+     //}
+
+    template <typename T>
+    static ResourceHandle<T> Acquire(const GUID &guid)
     {
-    public:
-        
-        static ResourceGUID GenerateGUID()
+
+        static_assert(ResourceTypeTraits<T>::type != ResourceType::UNKNOWN,
+                      "T is not a registered resource type");
+
+        if (s_resourceRegistry.Contains(guid))
         {
-            static size_t guid = 0;
-            return guid++;
+            LOG_ERROR("RESOURCE SYSTEM", "Resource GUID %d does not exist!", guid);
+            return ResourceHandle<T>(kInvalidGUID);
         }
 
-        template<typename T, typename... Args>
-        static T* Create(ResourceGUID guid, Args&&... args)
-        {
-            static_assert(
-                ResourceTypeTraits<T>::type != ResourceType::UNKNOWN,
-                "Type and template type mismatch! [ResourceSystem.Create]"
-            );
+        auto &resourceData = s_resourceRegistry.Get(guid);
+        ++resourceData.ref;
 
-            return ResourceCache::Create<T>(guid, 1, std::forward<Args>(args)...);  
+        if (!resourceData.isLoaded)
+        {
+            Reload<T>(resourceData);
         }
 
-        template<typename T>
-        static T* Acquire(const ResourceGUID& guid)
+        LOG_ASSERT(ResourceTypeTraits<T>::type == resourceData.type,
+                   "Resource type and template type mismatch!");
+
+        return ResourceHandle<T>(guid);
+    }
+
+    template <typename T>
+    static void Release(GUID guid)
+    {
+        static_assert(ResourceTypeTraits<T>::type != ResourceType::UNKNOWN,
+                      "T is not a registered resource type");
+
+        if (s_resourceRegistry.Contains(guid))
         {
-
-            static_assert(
-                ResourceTypeTraits<T>::type != ResourceType::UNKNOWN,
-                "T is not a registered resource type [ResourceSystem.Acquire]"
-            );
-
-            auto resourceRef = ResourceCache::Acquire(guid);
-
-            if(resourceRef.type == ResourceType::UNKNOWN)
-            {
-                return nullptr;
-            }
-
-            assert(
-                ResourceTypeTraits<T>::type == resourceRef.type &&
-                "Resource type and template type mismatch! [ResourceSystem.Acquire]"
-            );
-
-            return resourceRef.As<T>();   
+            LOG_ERROR("RESOURCE SYSTEM", "Resource GUID %d does not exist!", guid);
+            //return ResourceHandle<T>(kInvalidGUID);
         }
 
-        template<typename T>        
-        static void Release(ResourceGUID guid)
-        {
-            static_assert(
-                ResourceTypeTraits<T>::type != ResourceType::UNKNOWN,
-                "T is not a registered resource type [ResourceSystem.Release]"
-            );
+        auto &resourceData = s_resourceRegistry.Get(guid);
+        --resourceData.ref;
 
-            ResourceCache::Release<T>(guid);
+        LOG_ASSERT(ResourceTypeTraits<T>::type == resourceData.type,
+                   "Resource type and template type mismatch!");
+
+        if (resourceData.ref == 0)
+        {
+            s_resourceRegistry.Unload<T>(resourceData);
         }
+    }
 
-        /// <summary>
-        /// This will wipe the resource out of the table, even if there are others refering to it
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="guid"></param>
+    /// <summary>
+    /// This will wipe the resource out of the table, even if there are others refering to it
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="guid"></param>
 
-        template<typename T>
-        static void Destroy(ResourceGUID guid)
+    template <typename T>
+    static void Destroy(GUID guid)
+    {
+
+        static_assert(ResourceTypeTraits<T>::type != ResourceType::UNKNOWN,
+                      "T is not a registered resource type [ResourceSystem.Destroy]");
+
+        s_resourceRegistry.Destroy<T>(guid);
+    }
+
+    template <typename T>
+    static ResourceHandle<T> Load(const std::wstring_view file)
+    {
+        static_assert(ResourceTypeTraits<T>::type != ResourceType::UNKNOWN,
+                      "T is not a registered resource type [ResourceSystem.Destroy]");
+
+        std::filesystem::path p;
+
+        if (std::filesystem::exists(s_assetPath / file))
         {
-
-            static_assert(
-                ResourceTypeTraits<T>::type != ResourceType::UNKNOWN,
-                "T is not a registered resource type [ResourceSystem.Destroy]"
-            );
-
-            ResourceCache::Destroy(guid);
+            p = s_assetPath / file;
         }
-
-        template<typename T>
-        static T* Load(const std::wstring_view file)
+        else if (std::filesystem::exists(s_resourcePath / file))
         {
-            std::filesystem::path p = file; // relative path
-            std::cout << std::filesystem::current_path() << '\n';
-            
-            if (std::filesystem::exists(p))
-            {
-                std::cout << "Path exists\n";
-            }
-            else
-            {
-                std::cout << "Path does not exist\n";
-            }
-
-            size_t extPos = file.find_last_of('.');
-
-            if(extPos == std::string_view::npos)
-            {
-                std::cerr << "[ResourceSystem] File does not have extension!" << std::endl;
-                return nullptr;
-            }
-
-            extPos++;
-            size_t extSize = file.length() - extPos;
-
-            std::wstring_view extension = file.substr(extPos, extSize);
-            
-            if(extension == L"hlsl")
-            {
-                void* vertexCompiledSrc = Renderer::CompileShader(file.data(), "VSMain", "vs_5_0");
-                void* pixelCompiledSrc = Renderer::CompileShader(file.data(), "PSMain", "ps_5_0");
-            
-                if(!vertexCompiledSrc || !pixelCompiledSrc)
-                {
-                    std::wcerr << "[ResourceSystem] Failed to load shader! Asset: ";
-                    std::wcerr.write(file.data(), file.size()) << std::endl;
-                }
-                else
-                {
-                    std::wcout << "[ResourceSystem] Load shader successfully! Asset: ";
-                    std::wcout.write(file.data(), file.size()) << std::endl;
-
-                    ShaderResource* shader = ResourceCache::Create<ShaderResource>(GenerateGUID(), 1);
-                    shader->SetVertexShaderCompiledSrc(vertexCompiledSrc);
-                    shader->SetPixelShaderCompiledSrc(pixelCompiledSrc);
-                    shader->SubmitShaderToGpu();
-
-                    return shader;
-                }
-            }
-            else
-            {
-                SIMPLE_LOG("[ResourceSystem] Extension type is unknown or not supported!");
-            }
-
+            p = s_resourcePath / file;
+        }
+        else
+        {
+            LOG_ERROR("RESOURCE SYSTEM", "%s does not exist", file);
             return nullptr;
         }
 
+        switch (ResourceTypeTraits<T>::type) {}
+    }
+
 #ifdef VOID_DEBUG
-        static int32_t InspectRef(ResourceGUID guid);
+    static int32_t InspectRef(GUID guid);
 #endif
 
-        static void LoadBundle(const std::wstring_view file);
-    private:
-        friend class Application;
+    static void LoadBundle(const std::wstring_view file);
 
-        static void StartUp(FreeListAllocator* resourceLookUpAlloc, PoolAllocator* resourceAlloc);
-        static void ShutDown();
+private:
+    friend class Application;
 
+    static void StartUp(FreeListAllocator *resourceLookUpAlloc, PoolAllocator *resourceAlloc);
+    static void ShutDown();
+    static void LocateResourcePath();
 
-    };
+    template <typename T>
+    static void Reload(ResourceData &resourceData)
+    {
+    }
+
+private:
+    static ResourceRegistry s_resourceRegistry;
+
+    static const char *s_assetFolderName;
+    static const char *s_resourceFolderName;
+
+    static std::filesystem::path s_assetPath;
+    static std::filesystem::path s_resourcePath;
+};
+
+template <typename T>
+ResourceHandle<T>::ResourceHandle(const ResourceHandle<T> &handle)
+{
+    m_guid = handle.m_guid;
+    ResourceSystem::Acquire<T>(m_guid);
 }
+
+template <typename T>
+T *ResourceHandle<T>::Get()
+{
+    return nullptr;
+}
+
+template <typename T>
+ResourceHandle<T>::ResourceHandle(GUID guid) : m_guid(guid)
+{
+    // ResourceSystem::Acquire<T>(m_guid);
+}
+} // namespace VoidEngine

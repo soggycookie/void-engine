@@ -33,8 +33,7 @@ bool Renderer::SetGraphicAPI(GraphicAPI api)
     {
         s_pRendererAPI = new D3D11_RendererAPI(s_pWindow);
         s_pRendererAPI->Init(s_pWindow->GetWindowProperty().width,
-                             s_pWindow->GetWindowProperty().height,
-                             s_pWindow->GetDisplayWindow());
+                             s_pWindow->GetWindowProperty().height, s_pWindow->GetDisplayWindow());
         s_graphicAPI = api;
         return true;
     }
@@ -43,8 +42,7 @@ bool Renderer::SetGraphicAPI(GraphicAPI api)
 
         s_pRendererAPI = new Vulkan_RendererAPI(s_pWindow);
         s_pRendererAPI->Init(s_pWindow->GetWindowProperty().width,
-                             s_pWindow->GetWindowProperty().height,
-                             s_pWindow->GetDisplayWindow());
+                             s_pWindow->GetWindowProperty().height, s_pWindow->GetDisplayWindow());
         s_graphicAPI = api;
         return true;
     }
@@ -59,21 +57,16 @@ bool Renderer::SetGraphicAPI(GraphicAPI api)
 
 ////////////////////    Buffer
 
-void *Renderer::CreateAndSubmitBuffer(void *const data, size_t byteSize,
-                                      BufferType type)
+void *Renderer::CreateAndSubmitBuffer(void *const data, size_t byteSize, BufferType type)
 {
     return s_pRendererAPI->CreateAndSubmitBuffer(data, byteSize, type);
 }
 
-void Renderer::DestroyBuffer(GraphicBuffer &buffer)
-{
-    s_pRendererAPI->DestroyBuffer(buffer);
-}
+void Renderer::DestroyBuffer(GraphicBuffer &buffer) { s_pRendererAPI->DestroyBuffer(buffer); }
 
 ////////////////////    Shader
 
-void *Renderer::CompileShader(const wchar_t *file, const char *entry,
-                              const char *target)
+void *Renderer::CompileShader(const wchar_t *file, const char *entry, const char *target)
 {
     return s_pRendererAPI->CompileShader(file, entry, target);
 }
@@ -83,19 +76,13 @@ void *Renderer::CreateShader(void **compiledSrc, ShaderType type)
     return s_pRendererAPI->CreateShader(compiledSrc, type);
 }
 
-void Renderer::DestroyShader(GraphicShader &shader)
-{
-    s_pRendererAPI->DestroyShader(shader);
-}
+void Renderer::DestroyShader(GraphicShader &shader) { s_pRendererAPI->DestroyShader(shader); }
 
-void Renderer::Draw(MeshResource *mesh, MaterialResource *material)
-{
-    s_pRendererAPI->Draw(mesh, material);
-}
+// void Renderer::Draw(MeshResource *mesh, MaterialResource *material)
+// {
+//     s_pRendererAPI->Draw(mesh, material);
+// }
 
-void Renderer::DrawTest()
-{
-    s_pRendererAPI->DrawTest();
-}
+void Renderer::DrawTest() { s_pRendererAPI->DrawTest(); }
 
 } // namespace VoidEngine

@@ -1,7 +1,7 @@
 #pragma once
-#include "renderer_api.h"
 #include "graphic_buffer.h"
 #include "graphic_shader.h"
+#include "renderer_api.h"
 
 namespace VoidEngine
 {
@@ -21,25 +21,20 @@ public:
 
     virtual ~Renderer() = default;
 
-    static void *GetRendererAPIContext()
-    {
-        return s_pRendererAPI->GetContext();
-    }
+    static void *GetRendererAPIContext() { return s_pRendererAPI->GetContext(); }
 
     static void NewFrame();
     static void EndFrame();
 
-    static void *CreateAndSubmitBuffer(void *const data, size_t byteSize,
-                                       BufferType type);
+    static void *CreateAndSubmitBuffer(void *const data, size_t byteSize, BufferType type);
     // static void SubmitBufferData(const GraphicBuffer& buffer);
     static void DestroyBuffer(GraphicBuffer &buffer);
 
-    static void *CompileShader(const wchar_t *file, const char *entry,
-                               const char *target);
+    static void *CompileShader(const wchar_t *file, const char *entry, const char *target);
     static void *CreateShader(void **compiledSrc, ShaderType type);
     static void DestroyShader(GraphicShader &shader);
 
-    static void Draw(MeshResource *mesh, MaterialResource *material);
+    // static void Draw(MeshResource *mesh, MaterialResource *material);
 
     static void DrawTest();
 

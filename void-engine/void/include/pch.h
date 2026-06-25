@@ -1,28 +1,28 @@
 #pragma once
 #define _CRTDBG_MAP_ALLOC
-#include <math.h> 
-#include <stdlib.h>
-#include <crtdbg.h>
-#include <type_traits>
-#include <iostream>
-#include <string>
-#include <array>
-#include <string_view>
-#include <sstream>
-#include <functional>
 #include <algorithm>
-#include <utility>
-#include <memory>
-#include <vector>
-#include <unordered_map>
-#include <queue>
-#include <cassert>
-#include <cstdlib>
-#include <set>
-#include <unordered_set>
+#include <array>
 #include <bitset>
+#include <cassert>
+#include <crtdbg.h>
+#include <cstdlib>
+#include <filesystem>
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <queue>
 #include <ranges>
+#include <set>
+#include <sstream>
 #include <stdexcept>
+#include <stdlib.h>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "common_type.h"
 
@@ -32,6 +32,4 @@
 
 #define DEFAULT_ALIGNMENT alignof(std::max_align_t)
 
-#define SIMPLE_LOG(x) std::cout << x << std::endl; 
-
-
+#define SIMPLE_LOG(x) std::cout << x << std::endl;

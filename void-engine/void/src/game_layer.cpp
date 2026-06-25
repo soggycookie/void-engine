@@ -41,6 +41,7 @@ void GameLayer::OnUpdate(double dt)
 
     frameCount++;
 
+    FLUSH_LOG();
 }
 
 void GameLayer::OnDetach()

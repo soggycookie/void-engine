@@ -652,7 +652,7 @@ Query *QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::BuildQuery()
 template <typename... T>
 QueryCallbackBuilder QueryBuilder<T...>::Cache(EntityId eId)
 {
-    Query *q = QueryBuilderBase<QueryHandle, QueryBuilder<T...>>::BuildQuery();
+    Query *q = QueryBuilderBase<QueryHandle, QueryBuilder<T...>, QueryCallbackBuilder, T...>::BuildQuery();
 
     return QueryCallbackBuilder(q).Cache(eId);
 }
@@ -662,7 +662,7 @@ QueryCallbackBuilder QueryBuilder<T...>::Cache(EntityId eId)
 template <typename... T>
 SystemCallbackBuilder SystemBuilder<T...>::Phase(EntityId eId)
 {
-    Query *q = QueryBuilderBase<SystemHandle, SystemBuilder<T...>>::BuildQuery();
+    Query *q = QueryBuilderBase<SystemHandle, SystemBuilder<T...>, SystemCallbackBuilder, T...>::BuildQuery();
 
     return SystemCallbackBuilder(q).Phase(eId);
 }

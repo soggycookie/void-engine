@@ -1,2 +1,4 @@
 CompileFlags:
   CompilationDatabase: build/
+  Add: -ferror-limit=100
+

@@ -13,7 +13,7 @@ struct ScreenVertex
     float uv[2];  // texture coords
 };
 
-D3D11_RendererAPI::D3D11_RendererAPI(Window* window)
+D3D11_RendererAPI::D3D11_RendererAPI(Window *window)
     : RendererAPI(window), m_inputLayouts(MemorySystem::GeneralAllocator())
 {
 }
@@ -22,22 +22,16 @@ void D3D11_RendererAPI::NewFrame()
 {
     using namespace DirectX;
     XMVECTOR clearColor = XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f);
-    m_context.deviceContext->ClearRenderTargetView(
-        m_context.renderTargetView.Get(),
-        reinterpret_cast<float *>(&clearColor));
+    m_context.deviceContext->ClearRenderTargetView(m_context.renderTargetView.Get(),
+                                                   reinterpret_cast<float *>(&clearColor));
     m_context.deviceContext->ClearDepthStencilView(
-        m_context.depthStencilView.Get(),
-        D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+        m_context.depthStencilView.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
-    m_context.deviceContext->OMSetRenderTargets(
-        1, m_context.renderTargetView.GetAddressOf(),
-        m_context.depthStencilView.Get());
+    m_context.deviceContext->OMSetRenderTargets(1, m_context.renderTargetView.GetAddressOf(),
+                                                m_context.depthStencilView.Get());
 }
 
-void D3D11_RendererAPI::EndFrame()
-{
-    ASSERT_HR(m_context.swapchain->Present(1, 0));
-}
+void D3D11_RendererAPI::EndFrame() { ASSERT_HR(m_context.swapchain->Present(1, 0)); }
 
 // TODO: handle different adapters, output monitors, renderer res, output res,
 // version fallback
@@ -57,10 +51,9 @@ bool D3D11_RendererAPI::Init(int width, int height, void *outputWindow)
         D3D_FEATURE_LEVEL_11_0,
     };
 
-    hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
-                           deviceFlag, featureLevels, _countof(featureLevels),
-                           D3D11_SDK_VERSION, m_context.device.GetAddressOf(),
-                           &m_context.featureLevel,
+    hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, deviceFlag, featureLevels,
+                           _countof(featureLevels), D3D11_SDK_VERSION,
+                           m_context.device.GetAddressOf(), &m_context.featureLevel,
                            m_context.deviceContext.GetAddressOf());
 
     HR(hr);
@@ -71,8 +64,7 @@ bool D3D11_RendererAPI::Init(int width, int height, void *outputWindow)
 
     HR(m_context.device.As(&dxgiDevice));
     HR(dxgiDevice->GetAdapter(&adapter));
-    HR(adapter->GetParent(__uuidof(IDXGIFactory2),
-                          (void **)factory.GetAddressOf()));
+    HR(adapter->GetParent(__uuidof(IDXGIFactory2), (void **)factory.GetAddressOf()));
 
     DXGI_SWAP_CHAIN_DESC1 scDesc = {};
     scDesc.Width = width;
@@ -88,9 +80,8 @@ bool D3D11_RendererAPI::Init(int width, int height, void *outputWindow)
 
     ComPtr<IDXGISwapChain1> swapChain1 = nullptr;
 
-    HR(factory->CreateSwapChainForHwnd(
-        m_context.device.Get(), static_cast<HWND>(outputWindow), &scDesc,
-        nullptr, nullptr, swapChain1.GetAddressOf()));
+    HR(factory->CreateSwapChainForHwnd(m_context.device.Get(), static_cast<HWND>(outputWindow),
+                                       &scDesc, nullptr, nullptr, swapChain1.GetAddressOf()));
 
     swapChain1.As(&m_context.swapchain);
 
@@ -115,21 +106,19 @@ bool D3D11_RendererAPI::Init(int width, int height, void *outputWindow)
     UINT numModes = 0;
     output->GetDisplayModeList(DXGI_FORMAT_R8G8B8A8_UNORM, 0,
                                &numModes, // Give me the count
-                               nullptr // pDesc = NULL, don't fill anything yet
+                               nullptr    // pDesc = NULL, don't fill anything yet
     );
 
     std::vector<DXGI_MODE_DESC> modes(numModes); // Allocate array
-    output->GetDisplayModeList(
-        DXGI_FORMAT_R8G8B8A8_UNORM, 0,
-        &numModes,   // Now it returns how many were ACTUALLY written
-        modes.data() // pDesc != NULL, fill this array please!
+    output->GetDisplayModeList(DXGI_FORMAT_R8G8B8A8_UNORM, 0,
+                               &numModes,   // Now it returns how many were ACTUALLY written
+                               modes.data() // pDesc != NULL, fill this array please!
     );
     // draw simple cube
 
     ComPtr<ID3D11Texture2D> backBuffer;
-    hr = m_context.swapchain->GetBuffer(
-        0, __uuidof(ID3D11Texture2D),
-        reinterpret_cast<LPVOID *>(backBuffer.GetAddressOf()));
+    hr = m_context.swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D),
+                                        reinterpret_cast<LPVOID *>(backBuffer.GetAddressOf()));
 
     HR(hr);
 
@@ -154,13 +143,12 @@ bool D3D11_RendererAPI::Init(int width, int height, void *outputWindow)
 
     ComPtr<ID3D11Texture2D> depthStencilTexture;
 
-    hr = m_context.device->CreateTexture2D(&depthStencilBufferDesc, NULL,
-                                           &depthStencilTexture);
+    hr = m_context.device->CreateTexture2D(&depthStencilBufferDesc, NULL, &depthStencilTexture);
 
     HR(hr);
 
-    hr = m_context.device->CreateDepthStencilView(
-        depthStencilTexture.Get(), NULL, &m_context.depthStencilView);
+    hr = m_context.device->CreateDepthStencilView(depthStencilTexture.Get(), NULL,
+                                                  &m_context.depthStencilView);
 
     HR(hr);
 
@@ -211,8 +199,7 @@ bool D3D11_RendererAPI::Init(int width, int height, void *outputWindow)
     return true;
 }
 
-void *D3D11_RendererAPI::CreateAndSubmitBuffer(void *const data,
-                                               size_t byteSize, BufferType type)
+void *D3D11_RendererAPI::CreateAndSubmitBuffer(void *const data, size_t byteSize, BufferType type)
 {
     D3D11_SUBRESOURCE_DATA subrsrc;
     ZeroMemory(&subrsrc, sizeof(D3D11_SUBRESOURCE_DATA));
@@ -274,20 +261,18 @@ void D3D11_RendererAPI::Shutdown()
     m_context.depthStencilView.Reset();
 }
 
-void *D3D11_RendererAPI::CompileShader(const wchar_t *file, const char *entry,
-                                       const char *target)
+void *D3D11_RendererAPI::CompileShader(const wchar_t *file, const char *entry, const char *target)
 {
     ID3DBlob *compiledShader = nullptr;
     ID3DBlob *error = nullptr;
 
-    HRESULT hr = D3DCompileFromFile(
-        file, nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, entry, target,
+    HRESULT hr = D3DCompileFromFile(file, nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, entry, target,
 #ifdef VOID_DEBUG
-        D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
+                                    D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
 #else
-        0,
+                                    0,
 #endif
-        0, &compiledShader, &error);
+                                    0, &compiledShader, &error);
 
     if (error)
     {
@@ -308,8 +293,7 @@ void *D3D11_RendererAPI::CreateShader(void **compiledSrc, ShaderType type)
     {
         ID3D11VertexShader *vertexShader;
 
-        m_context.device->CreateVertexShader(src->GetBufferPointer(),
-                                             src->GetBufferSize(), nullptr,
+        m_context.device->CreateVertexShader(src->GetBufferPointer(), src->GetBufferSize(), nullptr,
                                              &vertexShader);
 
         return vertexShader;
@@ -318,8 +302,7 @@ void *D3D11_RendererAPI::CreateShader(void **compiledSrc, ShaderType type)
     {
         ID3D11PixelShader *pixelShader;
 
-        m_context.device->CreatePixelShader(src->GetBufferPointer(),
-                                            src->GetBufferSize(), nullptr,
+        m_context.device->CreatePixelShader(src->GetBufferPointer(), src->GetBufferSize(), nullptr,
                                             &pixelShader);
 
         src->Release();
@@ -427,14 +410,11 @@ static DXGI_FORMAT ConvertToD3D11Format(TypeFormat format)
     }
 }
 
-ID3D11InputLayout *
-D3D11_RendererAPI::CreateInputLayout(const VertexDescriptor *vd, size_t count,
-                                     ID3DBlob *compiledVertexSrc)
+ID3D11InputLayout *D3D11_RendererAPI::CreateInputLayout(const VertexDescriptor *vd, size_t count,
+                                                        ID3DBlob *compiledVertexSrc)
 {
-    D3D11_INPUT_ELEMENT_DESC *inputDesc =
-        static_cast<D3D11_INPUT_ELEMENT_DESC *>(
-            MemorySystem::GeneralAllocator()->Alloc(
-                count * sizeof(D3D11_INPUT_ELEMENT_DESC)));
+    D3D11_INPUT_ELEMENT_DESC *inputDesc = static_cast<D3D11_INPUT_ELEMENT_DESC *>(
+        MemorySystem::GeneralAllocator()->Alloc(count * sizeof(D3D11_INPUT_ELEMENT_DESC)));
 
     for (size_t i = 0; i < count; i++)
     {
@@ -452,62 +432,62 @@ D3D11_RendererAPI::CreateInputLayout(const VertexDescriptor *vd, size_t count,
 
     ID3D11InputLayout *inputLayout = nullptr;
 
-    HRESULT hr = m_context.device->CreateInputLayout(
-        inputDesc, count, compiledVertexSrc->GetBufferPointer(),
-        compiledVertexSrc->GetBufferSize(), &inputLayout);
+    HRESULT hr =
+        m_context.device->CreateInputLayout(inputDesc, count, compiledVertexSrc->GetBufferPointer(),
+                                            compiledVertexSrc->GetBufferSize(), &inputLayout);
 
     MemorySystem::GeneralAllocator()->Free(inputDesc);
 
     return inputLayout;
 }
 
-void D3D11_RendererAPI::Draw(MeshResource *mesh, MaterialResource *material)
-{
-    auto shader = material->GetShader();
-    auto vertexShader = shader->GetVertexShader().As<ID3D11VertexShader *>();
-    auto pixelShader = shader->GetPixelShader().As<ID3D11PixelShader *>();
-    auto compiledVertexSrc =
-        shader->GetVertexShader().CompiledSrcAs<ID3DBlob *>();
-
-    InputLayoutKey key = {mesh->GetVertexDescHash(), material->GetGUID()};
-    ID3D11InputLayout *layout = nullptr;
-    if (m_inputLayouts.ContainsKey(key))
-    {
-        layout = m_inputLayouts[key];
-    }
-    else
-    {
-        layout =
-            CreateInputLayout(mesh->GetVertexDesc(), mesh->GetVertexDescCount(),
-                              compiledVertexSrc);
-        m_inputLayouts.Insert(key, layout);
-    }
-
-    // should never be here
-    if (!layout)
-    {
-        assert(0 && "Layout is null!");
-    }
-
-    m_context.deviceContext->IASetInputLayout(layout);
-    m_context.deviceContext->IASetPrimitiveTopology(
-        D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-    auto &vb = mesh->GetVertexGraphicBuffer();
-    auto &ib = mesh->GetIndexGraphicBuffer();
-
-    uint32_t stride = sizeof(Vertex);
-    uint32_t offset = 0;
-
-    auto vbPtr = vb.As<ID3D11Buffer *>();
-
-    m_context.deviceContext->IASetVertexBuffers(0, 1, &vbPtr, &stride, &offset);
-    m_context.deviceContext->IASetIndexBuffer(ib.As<ID3D11Buffer *>(),
-                                              DXGI_FORMAT_R32_UINT, 0);
-
-    m_context.deviceContext->VSSetShader(vertexShader, nullptr, 0);
-    m_context.deviceContext->PSSetShader(pixelShader, nullptr, 0);
-
-    m_context.deviceContext->DrawIndexed(mesh->GetIndexCount(), 0, 0);
-}
+// void D3D11_RendererAPI::Draw(MeshResource *mesh, MaterialResource *material)
+// {
+//     auto shader = material->GetShader();
+//     auto vertexShader = shader->GetVertexShader().As<ID3D11VertexShader *>();
+//     auto pixelShader = shader->GetPixelShader().As<ID3D11PixelShader *>();
+//     auto compiledVertexSrc =
+//         shader->GetVertexShader().CompiledSrcAs<ID3DBlob *>();
+//
+//     InputLayoutKey key = {mesh->GetVertexDescHash(), material->GetGUID()};
+//     ID3D11InputLayout *layout = nullptr;
+//     if (m_inputLayouts.ContainsKey(key))
+//     {
+//         layout = m_inputLayouts[key];
+//     }
+//     else
+//     {
+//         layout =
+//             CreateInputLayout(mesh->GetVertexDesc(), mesh->GetVertexDescCount(),
+//                               compiledVertexSrc);
+//         m_inputLayouts.Insert(key, layout);
+//     }
+//
+//     // should never be here
+//     if (!layout)
+//     {
+//         assert(0 && "Layout is null!");
+//     }
+//
+//     m_context.deviceContext->IASetInputLayout(layout);
+//     m_context.deviceContext->IASetPrimitiveTopology(
+//         D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+//
+//     auto &vb = mesh->GetVertexGraphicBuffer();
+//     auto &ib = mesh->GetIndexGraphicBuffer();
+//
+//     uint32_t stride = sizeof(Vertex);
+//     uint32_t offset = 0;
+//
+//     auto vbPtr = vb.As<ID3D11Buffer *>();
+//
+//     m_context.deviceContext->IASetVertexBuffers(0, 1, &vbPtr, &stride, &offset);
+//     m_context.deviceContext->IASetIndexBuffer(ib.As<ID3D11Buffer *>(),
+//                                               DXGI_FORMAT_R32_UINT, 0);
+//
+//     m_context.deviceContext->VSSetShader(vertexShader, nullptr, 0);
+//     m_context.deviceContext->PSSetShader(pixelShader, nullptr, 0);
+//
+//     m_context.deviceContext->DrawIndexed(mesh->GetIndexCount(), 0, 0);
+// }
 } // namespace VoidEngine

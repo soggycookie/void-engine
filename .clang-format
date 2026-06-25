@@ -4,3 +4,5 @@ BreakBeforeBraces: Allman
 AlwaysBreakTemplateDeclarations: Yes
 AccessModifierOffset: -4
 AlignConsecutiveMacros: true
+ColumnLimit: 100
+
