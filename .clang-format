@@ -4,5 +4,5 @@ BreakBeforeBraces: Allman
 AlwaysBreakTemplateDeclarations: Yes
 AccessModifierOffset: -4
 AlignConsecutiveMacros: true
-ColumnLimit: 100
-
+ColumnLimit: 105
+AllowShortFunctionsOnASingleLine: None

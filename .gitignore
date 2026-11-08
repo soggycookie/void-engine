@@ -38,3 +38,8 @@ bin/
 
 out/
 build/
+asset/
+resource/
+CppProperties.json
+CMakeSettings.json
+external/*

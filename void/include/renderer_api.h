@@ -1,0 +1,39 @@
+//#pragma once
+//#include "logger/log.h"
+//#include "pch.h"
+//
+//namespace VoidEngine
+//{
+//class Window;
+//
+//class RendererAPI
+//{
+//public:
+//    RendererAPI(Window *window) : m_window(window) {}
+//
+//    virtual ~RendererAPI() = default;
+//
+//    virtual void Shutdown() = 0;
+//    virtual bool Init(int width, int height, void *outputWindow) = 0;
+//
+//    virtual void NewFrame() = 0;
+//    virtual void EndFrame() = 0;
+//
+//    virtual void *GetContext() = 0;
+//
+//    virtual void *CreateAndSubmitBuffer(void *const data, size_t byteSize, BufferType type) = 0;
+//    virtual void DestroyBuffer(GraphicBuffer &buffer) = 0;
+//
+//    // virtual void *CompileShader(const wchar_t *file, const char *entry, const char *target) = 0;
+//    // virtual void *CreateShader(void **compiledSrc, ShaderType type) = 0;
+//    // virtual void DestroyShader(GraphicShader &shader) = 0;
+//
+//    // virtual void Draw(MeshResource* mesh, MaterialResource* material) = 0;
+//
+//    virtual void DrawTest() = 0;
+//
+//protected:
+//    Window *m_window;
+//};
+//
+//} // namespace VoidEngine

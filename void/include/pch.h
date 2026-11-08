@@ -1,0 +1,25 @@
+#pragma once
+
+#define _CRTDBG_MAP_ALLOC
+#include <algorithm>
+#include <bit>
+#include <bitset>
+#include <cassert>
+#include <crtdbg.h>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <ranges>
+#include <set>
+#include <sstream>
+#include <stdexcept>
+#include <stdlib.h>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+#include <thread>
+#include <condition_variable>

@@ -12,12 +12,12 @@ set(VOID_PROJECT_NAME "void-engine")
 project(${VOID_PROJECT_NAME})
 
 set(VOID_ENGINE_EXEC "void-engine")
-set(VOID_ENGINE_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/void/src")
-set(VOID_ENGINE_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/void/include")
-set(VOID_ENGINE_PLATFORM_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/void/src/platform")
-set(VOID_ENGINE_INCLUDE_PLATFORM "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/void/include/platform")
-set(VOID_ENGINE_EXTERNAL "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/external")
-set(VOID_ENGINE_RESOURCE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/resource")
+set(VOID_ENGINE_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void/src")
+set(VOID_ENGINE_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void/include")
+set(VOID_ENGINE_PLATFORM_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void/src/platform")
+set(VOID_ENGINE_INCLUDE_PLATFORM "${CMAKE_CURRENT_SOURCE_DIR}/void/include/platform")
+set(VOID_ENGINE_EXTERNAL "${CMAKE_CURRENT_SOURCE_DIR}/external")
+set(VOID_ENGINE_RESOURCE "${CMAKE_CURRENT_SOURCE_DIR}/resource")
 
 set(VOID_PRECOMPILED_HEADER "${VOID_ENGINE_INCLUDE}/pch.h")
 
@@ -33,14 +33,14 @@ set_target_properties(${VOID_ENGINE_EXEC} PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
     VS_GLOBAL_IntDir         "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
     PDB_OUTPUT_DIRECTORY     "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
-	VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/void-engine"
+    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/void-engine"
 )
 
 
 target_precompile_headers(${VOID_ENGINE_EXEC} PRIVATE ${VOID_PRECOMPILED_HEADER})
 
-target_include_directories(${VOID_ENGINE_EXEC} 
-  PRIVATE 
+target_include_directories(${VOID_ENGINE_EXEC}
+  PRIVATE
 	${VOID_ENGINE_INCLUDE}
 	${VOID_ENGINE_EXTERNAL}
 )
@@ -57,7 +57,7 @@ if(WIN32)
 		"${VOID_ENGINE_PLATFORM_SRC}/vulkan/*.cpp"
 		"${VOID_ENGINE_PLATFORM_SRC}/win32/*.cpp"
 	)
-    
+
 	target_sources(${VOID_ENGINE_EXEC}
         PRIVATE
             ${VOID_ENGINE_PLATFORM_SRC_FILES}
@@ -86,65 +86,65 @@ if(WIN32)
 
 endif()
 
-set(VOID_ECS_LIB "ecs")
-set(VOID_ECS_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/ecs/src")
-set(VOID_ECS_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/ecs/include/ecs")
-set(VOID_ECS_API_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/ecs/include/public_api")
-set(VOID_ECS_PRECOMPILED_HEADER "${VOID_ECS_INCLUDE}/ecs_pch.h")
+# set(VOID_ECS_LIB "ecs")
+# set(VOID_ECS_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/ecs/src")
+# set(VOID_ECS_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/ecs/include/ecs")
+# set(VOID_ECS_API_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/ecs/include/public_api")
+# set(VOID_ECS_PRECOMPILED_HEADER "${VOID_ECS_INCLUDE}/ecs_pch.h")
+#
+# file(GLOB_RECURSE VOID_ECS_FILES CONFIGURE_DEPENDS
+#     "${VOID_ECS_SRC}/*.cpp"  
+#     "${VOID_ECS_INCLUDE}/*.h"
+#     "${VOID_ECS_INCLUDE}/*.hpp"
+# )
+#
+# add_library(${VOID_ECS_LIB} STATIC ${VOID_ECS_FILES})
+#
+# set_target_properties(${VOID_ECS_LIB} PROPERTIES
+#     RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
+#     LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
+#     ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
+#     VS_GLOBAL_IntDir         "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
+#     PDB_OUTPUT_DIRECTORY     "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
+# )
+#
+# target_precompile_headers(${VOID_ECS_LIB} PRIVATE ${VOID_ECS_PRECOMPILED_HEADER})
+#
+# target_compile_definitions(${VOID_ECS_LIB}
+#     PUBLIC
+#         $<$<CONFIG:Debug>:ECS_DEBUG>
+# 	PUBLIC
+# 		"ECS_STATIC"
+# )
+#
+# target_include_directories(${VOID_ECS_LIB} 
+#   PRIVATE ${VOID_ECS_INCLUDE}
+#   PUBLIC ${VOID_ECS_API_INCLUDE}
+# )
 
-file(GLOB_RECURSE VOID_ECS_FILES CONFIGURE_DEPENDS
-    "${VOID_ECS_SRC}/*.cpp"  
-    "${VOID_ECS_INCLUDE}/*.h"
-    "${VOID_ECS_INCLUDE}/*.hpp"
-)
-
-add_library(${VOID_ECS_LIB} STATIC ${VOID_ECS_FILES})
-
-set_target_properties(${VOID_ECS_LIB} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
-    LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
-    ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
-    VS_GLOBAL_IntDir         "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
-    PDB_OUTPUT_DIRECTORY     "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
-)
-
-target_precompile_headers(${VOID_ECS_LIB} PRIVATE ${VOID_ECS_PRECOMPILED_HEADER})
-
-target_compile_definitions(${VOID_ECS_LIB}
-    PUBLIC
-        $<$<CONFIG:Debug>:ECS_DEBUG>
-	PUBLIC
-		"ECS_STATIC"
-)
-
-target_include_directories(${VOID_ECS_LIB} 
-  PRIVATE ${VOID_ECS_INCLUDE}
-  PUBLIC ${VOID_ECS_API_INCLUDE}
-)
-
-set(VOID_LOGGER_LIB "logger")
-set(VOID_LOGGER_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/logger/src")
-set(VOID_LOGGER_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/logger/include")
-
-file(GLOB_RECURSE VOID_LOGGER_FILES CONFIGURE_DEPENDS
-    "${VOID_LOGGER_SRC}/*.cpp"  
-    "${VOID_LOGGER_INCLUDE}/*.h"
-    "${VOID_LOGGER_INCLUDE}/*.hpp"
-)
-
-add_library(${VOID_LOGGER_LIB} STATIC ${VOID_LOGGER_FILES})
-
-set_target_properties(${VOID_LOGGER_LIB} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
-    LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
-    ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
-    VS_GLOBAL_IntDir         "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
-    PDB_OUTPUT_DIRECTORY     "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
-)
-
-target_include_directories(${VOID_LOGGER_LIB}
-    PUBLIC ${VOID_LOGGER_INCLUDE}
-)
+# set(VOID_LOGGER_LIB "logger")
+# set(VOID_LOGGER_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/logger/src")
+# set(VOID_LOGGER_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/logger/include")
+#
+# file(GLOB_RECURSE VOID_LOGGER_FILES CONFIGURE_DEPENDS
+#     "${VOID_LOGGER_SRC}/*.cpp"  
+#     "${VOID_LOGGER_INCLUDE}/*.h"
+#     "${VOID_LOGGER_INCLUDE}/*.hpp"
+# )
+#
+# add_library(${VOID_LOGGER_LIB} STATIC ${VOID_LOGGER_FILES})
+#
+# set_target_properties(${VOID_LOGGER_LIB} PROPERTIES
+#     RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
+#     LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
+#     ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
+#     VS_GLOBAL_IntDir         "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
+#     PDB_OUTPUT_DIRECTORY     "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
+# )
+#
+# target_include_directories(${VOID_LOGGER_LIB}
+#     PUBLIC ${VOID_LOGGER_INCLUDE}
+# )
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 
@@ -152,13 +152,13 @@ find_package(Vulkan REQUIRED)
 
 find_program(SLANGC_EXECUTABLE
     NAMES slangc
-    HINTS $ENV{VULKAN_SDK}/Bin      
+    HINTS $ENV{VULKAN_SDK}/Bin
     REQUIRED
 )
 message(STATUS "Found slangc: ${SLANGC_EXECUTABLE}")
 
-set(SLANG_DIR "${VOID_ENGINE_RESOURCE}/shader/slang")
-set(SPIRV_DIR "${VOID_ENGINE_RESOURCE}/shader/spirv")
+set(SLANG_DIR "${VOID_ENGINE_RESOURCE}/base/shader/slang")
+set(SPIRV_DIR "${VOID_ENGINE_RESOURCE}/base/shader/spirv")
 
 function(add_shader_target TARGET)
     cmake_parse_arguments("SHADER" "" "" "SOURCES" ${ARGN})
@@ -212,51 +212,47 @@ include(FetchContent)
 FetchContent_Declare(
     glm
     GIT_REPOSITORY https://github.com/g-truc/glm.git
-    GIT_TAG 1.0.3
-	SOURCE_DIR "${VOID_ENGINE_EXTERNAL}/glm"
+    GIT_TAG 1.0.1
+    SOURCE_DIR "${VOID_ENGINE_EXTERNAL}/glm"
+    UPDATE_DISCONNECTED TRUE
 )
 
-FetchContent_MakeAvailable(glm)
-
-set(VOID_MATH_LIB "math")
-#set(VOID_MATH_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/math/src")
-set(VOID_MATH_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/math/include")
-
-#file(GLOB_RECURSE VOID_MATH_FILES CONFIGURE_DEPENDS
-#   "${VOID_MATH_SRC}/*.cpp"  
-#   "${VOID_MATH_INCLUDE}/*.h"
-#	"${VOID_MATH_INCLUDE}/*.hpp"
-#)
-
-add_library(${VOID_MATH_LIB} INTERFACE)
-
-#set_target_properties(${VOID_MATH_LIB} PROPERTIES
-#    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
-#   LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
-#    ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
-#    VS_GLOBAL_IntDir         "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
-#    PDB_OUTPUT_DIRECTORY     "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
-#)
-
-target_include_directories(${VOID_MATH_LIB}
-    INTERFACE ${VOID_MATH_INCLUDE}
+FetchContent_Declare(
+    vma
+    GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+    GIT_TAG v3.5.0
+    SOURCE_DIR "${VOID_ENGINE_EXTERNAL}/vma"
+    UPDATE_DISCONNECTED TRUE
+)
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG master
+    GIT_SHALLOW TRUE
+    SOURCE_DIR "${VOID_ENGINE_EXTERNAL}/stb"
+    UPDATE_DISCONNECTED TRUE
 )
 
-target_link_libraries(${VOID_MATH_LIB} INTERFACE glm)
-
+FetchContent_MakeAvailable(glm stb vma)
+add_library(vma INTERFACE)
+target_include_directories(vma INTERFACE
+    "${vma_SOURCE_DIR}/include"
+)
+add_library(stb INTERFACE)
+target_include_directories(stb INTERFACE "${stb_SOURCE_DIR}")
+target_link_libraries(vma INTERFACE Vulkan::Vulkan)
 target_link_libraries(${VOID_ENGINE_EXEC}
     PRIVATE
-	${VOID_ECS_LIB} 
-    ${VOID_LOGGER_LIB}
-	Vulkan::Vulkan
-	${VOID_MATH_LIB}
+    glm::glm
+    vma
+    stb
 )
 
-target_link_libraries(${VOID_ECS_LIB} 
-	PRIVATE
-	${VOID_LOGGER_LIB}
-	${VOID_MATH_LIB}
-)
+# target_link_libraries(${VOID_ECS_LIB} 
+# 	PRIVATE
+# 	${VOID_LOGGER_LIB}
+# 	${VOID_MATH_LIB}
+# )
 
 # --- Embed per-file copy script into binary dir at configure time ---
 file(WRITE "${CMAKE_BINARY_DIR}/copy_changed.cmake" [[
@@ -287,7 +283,7 @@ endforeach()
 # --- Asset folder (game content) ---
 add_custom_command(TARGET ${VOID_ENGINE_EXEC} POST_BUILD
     COMMAND ${CMAKE_COMMAND}
-        "-DSRC=${PROJECT_SOURCE_DIR}/void-engine/asset"
+        "-DSRC=${PROJECT_SOURCE_DIR}/asset"
         "-DDST=${PROJECT_SOURCE_DIR}/bin/$<CONFIG>/asset"
         -P "${CMAKE_BINARY_DIR}/copy_changed.cmake"
     COMMENT "Syncing assets..."

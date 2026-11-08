@@ -1,0 +1,87 @@
+//#include "renderer.h"
+//#include "platform/d3d11/d3d11_renderer_api.h"
+//#include "platform/vulkan/vulkan_renderer_api.h"
+//#include "window.h"
+//
+//namespace VoidEngine
+//{
+//RendererAPI *Renderer::s_pRendererAPI = nullptr;
+//GraphicAPI Renderer::s_graphicAPI = GraphicAPI::UNKNOWN;
+//Window *Renderer::s_pWindow = nullptr;
+//
+//void Renderer::NewFrame() { s_pRendererAPI->NewFrame(); }
+//
+//void Renderer::EndFrame() { s_pRendererAPI->EndFrame(); }
+//
+//bool Renderer::SetGraphicAPI(GraphicAPI api)
+//{
+//    if (!s_pWindow)
+//    {
+//        return false;
+//    }
+//
+//    if (s_graphicAPI != GraphicAPI::UNKNOWN)
+//    {
+//        // Create new API's objs and free old one
+//    }
+//
+//    switch (api)
+//    {
+//    case GraphicAPI::D3D11:
+//    {
+//        s_pRendererAPI = new D3D11_RendererAPI(s_pWindow);
+//        s_pRendererAPI->Init(s_pWindow->GetWindowProperty().width,
+//                             s_pWindow->GetWindowProperty().height, s_pWindow->GetDisplayWindow());
+//        s_graphicAPI = api;
+//        return true;
+//    }
+//    case GraphicAPI::VULKAN:
+//    {
+//
+//        // s_pRendererAPI = new VulkanBackend(s_pWindow);
+//        // s_pRendererAPI->Init(s_pWindow->GetWindowProperty().width,
+//        //                      s_pWindow->GetWindowProperty().height,
+//        //                      s_pWindow->GetDisplayWindow());
+//        s_graphicAPI = api;
+//        return true;
+//    }
+//    default:
+//    {
+//        return false;
+//    }
+//    }
+//
+//    return false;
+//}
+//
+//////////////////////    Buffer
+//
+//void *Renderer::CreateAndSubmitBuffer(void *const data, size_t byteSize, BufferType type)
+//{
+//    return s_pRendererAPI->CreateAndSubmitBuffer(data, byteSize, type);
+//}
+//
+//void Renderer::DestroyBuffer(GraphicBuffer &buffer) { s_pRendererAPI->DestroyBuffer(buffer); }
+//
+//////////////////////    Shader
+//
+//void *Renderer::CompileShader(const wchar_t *file, const char *entry, const char *target)
+//{
+//    return s_pRendererAPI->CompileShader(file, entry, target);
+//}
+//
+//void *Renderer::CreateShader(void **compiledSrc, ShaderType type)
+//{
+//    return s_pRendererAPI->CreateShader(compiledSrc, type);
+//}
+//
+//void Renderer::DestroyShader(GraphicShader &shader) { s_pRendererAPI->DestroyShader(shader); }
+//
+//// void Renderer::Draw(MeshResource *mesh, MaterialResource *material)
+//// {
+////     s_pRendererAPI->Draw(mesh, material);
+//// }
+//
+//void Renderer::DrawTest() { s_pRendererAPI->DrawTest(); }
+//
+//} // namespace VoidEngine
