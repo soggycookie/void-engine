@@ -1,5 +1,6 @@
 #ifdef VOID_WIN32
 #include "file_system.h"
+#include "job_system.h"
 
 #define NOMINMAX
 #include <windows.h>
@@ -295,30 +296,55 @@ uint64_t get_file_size(File file)
     return size.QuadPart;
 }
 
-bool async_read(File file, uint64_t offset, uint64_t size)
+void *read(Vallocator &vallocator, File file, uint64_t *out_size)
+{
+    ENGINE_ASSERT(file->handle != INVALID_HANDLE_VALUE, "");
+    uint64_t size = get_file_size(file);
+    if (size == 0)
+    {
+        return nullptr;
+    }
+    if (out_size)
+    {
+        *out_size = size;
+    }
+    void *buffer = vallocator.valloc(size, DEFAULT_ALIGNMENT);
+    DWORD byte_read = 0;
+    BOOL result = ReadFile(file->handle, buffer, size, &byte_read, NULL);
+    if (!result || byte_read != size)
+    {
+        vallocator.vfree(size, buffer);
+        return nullptr;
+    }
+    return buffer;
+}
+
+bool async_read(Vallocator &vallocator, File file, uint64_t offset, uint64_t size,
+                void (*callback)(void *, void *), void *user_data)
 {
     ENGINE_ASSERT(file->handle != INVALID_HANDLE_VALUE, "");
     // TODO move this transient allocator
-    void *buffer = aligned_alloc(DEFAULT_ALIGNMENT, size);
+    void *buffer = vallocator.valloc(size, DEFAULT_ALIGNMENT);
     ENGINE_ASSERT(buffer, "");
-    void *requestAddr = aligned_alloc(alignof(IO_Request), sizeof(IO_Request));
-    ENGINE_ASSERT(requestAddr, "");
-    IO_Request *request = SCAST(IO_Request *, requestAddr);
+    IO_Request *request =
+        SCAST(IO_Request *, vallocator.valloc(sizeof(IO_Request), alignof(IO_Request)));
+    ENGINE_ASSERT(request, "");
 
-    request->buffer = buffer;
-    request->buffer_size = size;
-    request->data.Offset = low_32bit(size);
-    request->data.OffsetHigh = high_32bit(size);
-    request->callback = nullptr;
-    request->userData = nullptr;
+    request->buffer_ = buffer;
+    request->buffer_size_ = size;
+    request->data_.Offset = low_32bit(size);
+    request->data_.OffsetHigh = high_32bit(size);
+    request->callback_ = callback;
+    request->user_data_ = user_data;
+    request->vallocator_ = &vallocator;
 
-    BOOL result = ReadFile(file->handle, buffer, size, NULL, &request->data);
+    BOOL result = ReadFile(file->handle, buffer, size, NULL, &request->data_);
     if (!result && GetLastError() == ERROR_IO_PENDING)
     {
         return true;
     }
-    aligned_free(requestAddr);
-    aligned_free(buffer);
+    vallocator.vfree(sizeof(IO_Request), request);
+    vallocator.vfree(size, buffer);
     return false;
 }
 
@@ -329,6 +355,7 @@ void write(File file, const void *data, uint64_t num_bytes_to_write)
 
     if (!result)
     {
+        ENGINE_ASSERT(false, "Failed to write!");
     }
 }
 
@@ -337,17 +364,17 @@ void seek(File file, uint64_t offset, FileAnchor anchor)
     DWORD move_method = 0;
     switch (anchor)
     {
-    case FileAnchor::BEGIN:
+    case FileAnchor::ANCHOR_BEGIN:
     {
         move_method = FILE_BEGIN;
         break;
     }
-    case FileAnchor::END:
+    case FileAnchor::ANCHOR_END:
     {
         move_method = FILE_END;
         break;
     }
-    case FileAnchor::CURRENT:
+    case FileAnchor::ANCHOR_CURRENT:
     {
         move_method = FILE_CURRENT;
         break;
@@ -429,15 +456,20 @@ StringView get_file_ext(StringView path)
     ENGINE_ASSERT(!path.is_empty(), "Path cannot be null!");
     const char8_t *start = path.data();
     const char8_t *end = start + path.get_length();
+    const char8_t *cur = end;
 
-    while (end != start)
+    while (cur != start)
     {
-        --end;
-        if (*end == u8'.')
-            return StringView(end + 1, BYTE_OFFSET(start, end + 1));
+        --cur;
+        if (*cur == u8'.')
+        {
+            return StringView(cur + 1, BYTE_OFFSET(end, cur + 1));
+        }
 
-        if (*end == u8'\\' || *end == u8'/')
+        if (*cur == u8'\\' || *cur == u8'/')
+        {
             break;
+        }
     }
     return nullptr;
 }
@@ -495,7 +527,7 @@ void find_children(Arena &arena, DynamicArray<DirectoryInfo> &info, StringView p
     temp.end_scratch();
 }
 
-void poll_io_completions(void *)
+void poll_io_completions(void *, void *)
 {
     while (g_ctx.running)
     {
@@ -512,11 +544,15 @@ void poll_io_completions(void *)
             std::cout << "========== Loaded " << byte_transferred << "===========" << std::endl;
 
             IO_Request *request = RCAST(IO_Request *, overlapped);
-            ENGINE_ASSERT(request, "IO request is null!");
-            // BYTE *data = SCAST(BYTE *, request->buffer);
-            // TextEncoding encoding = DetectEncoding(data, byteTransferred);
-            // std::string str(RCAST(char *, data), byteTransferred);
-            // std::cout << str << std::endl;
+            ENGINE_ASSERT(request, "IO request must not be null!");
+            ENGINE_ASSERT(request->vallocator_, "Async read vallocator must not be null!");
+            ENGINE_ASSERT(request->callback_, "Async read callback must not be null!");
+            Job job;
+            job.fn_ = request->callback_;
+            job.context_ = request->user_data_;
+            job.ex_data_ = request->buffer_;
+            JobSystem::get().schedule(job, JobPriority::HIGH);
+            request->vallocator_->vfree(sizeof(IO_Request), request);
             continue;
         }
         if (completion_key == SHUTDOWN_KEY)
@@ -536,7 +572,7 @@ void get_absolute_path(Arena &arena, StringView path, String &out_abs_path)
     wchar_t *utf16 = utf8_to_utf16(scratch, path.data(), path.get_length());
     DWORD size = GetFullPathNameW(utf16, 0, nullptr, nullptr);
     ENGINE_ASSERT(size, "Failed to get absolute path!");
-    //TODO: remove the null terminator
+    // TODO: remove the null terminator
     wchar_t *abs_path = arena_push_array<wchar_t>(*scratch, size);
     DWORD len = GetFullPathNameW(utf16, size, abs_path, nullptr);
     char8_t *utf8_abs_path = utf16_to_utf8(*scratch, abs_path, nullptr);
@@ -555,7 +591,7 @@ void get_current_directory(Arena &arena, String &out_dir)
     Arena *scratch = t_scratches.get_scratch(&arena);
     ScopedScratchTemp temp;
     temp.start_scratch(scratch);
-    //TODO: remove the null terminator
+    // TODO: remove the null terminator
     wchar_t *dir = arena_push_array<wchar_t>(*scratch, char_count);
     DWORD written = GetCurrentDirectoryW(char_count, dir);
     ENGINE_ASSERT(written, "Failed to get current directory!");
@@ -575,7 +611,7 @@ void get_current_directory(Vallocator &vallocator, String &out_dir)
     Arena *scratch = t_scratches.get_scratch(nullptr);
     ScopedScratchTemp temp;
     temp.start_scratch(scratch);
-    //TODO: remove the null terminator
+    // TODO: remove the null terminator
     wchar_t *dir = arena_push_array<wchar_t>(*scratch, char_count);
     DWORD written = GetCurrentDirectoryW(char_count, dir);
     ENGINE_ASSERT(written, "Failed to get current directory!");

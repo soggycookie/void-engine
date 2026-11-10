@@ -12,20 +12,20 @@ class String;
 class StringView
 {
 private:
-    const char8_t *addr_;
+    const char8_t *data_;
     uint64_t length_;
 
 public:
-    StringView() : addr_(nullptr), length_(0)
+    StringView() : data_(nullptr), length_(0)
     {
     }
 
-    StringView(const char8_t *addr) : addr_(addr), length_(0)
+    StringView(const char8_t *addr) : data_(addr), length_(0)
     {
-        length_ = addr ? str_len(addr): 0;
+        length_ = addr ? str_len(addr) : 0;
     }
 
-    StringView(const char8_t *addr, uint64_t length) : addr_(addr), length_(length)
+    StringView(const char8_t *addr, uint64_t length) : data_(addr), length_(length)
     {
     }
 
@@ -44,12 +44,22 @@ public:
 
     const char8_t *data() const
     {
-        return addr_;
+        return data_;
     }
 
     friend std::ostream &operator<<(std::ostream &os, const StringView &view)
     {
-        return os.write(RCAST(const char *, view.addr_), view.length_);
+        return os.write(RCAST(const char *, view.data_), view.length_);
+    }
+
+    bool operator==(StringView other)
+    {
+        return (length_ == other.length_) && (std::memcmp(data_, other.data_, length_) == 0);
+    }
+
+    bool operator!=(StringView other)
+    {
+        return !(*this == other);
     }
 };
 
@@ -65,7 +75,8 @@ public:
     {
     }
 
-    String(String &&other) noexcept : data_(other.data_), count_(other.count_), capacity_(other.capacity_)
+    String(String &&other) noexcept
+        : data_(other.data_), count_(other.count_), capacity_(other.capacity_)
     {
         other.data_ = nullptr;
         other.capacity_ = 0;
@@ -130,6 +141,7 @@ public:
     {
         return os.write(RCAST(const char *, str.data_), str.count_);
     }
+
 private:
     void resize(Arena &arena, uint32_t new_capacity);
     void resize(Vallocator &vallocator, uint32_t new_capacity);

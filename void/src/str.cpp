@@ -6,11 +6,11 @@
 namespace VoidEngine
 {
 
-StringView::StringView(const String &str) : addr_(str.data()), length_(str.get_length())
+StringView::StringView(const String &str) : data_(str.data()), length_(str.get_length())
 {
 }
 
-StringView::StringView(const String &str, uint64_t length) : addr_(str.data()), length_(length)
+StringView::StringView(const String &str, uint64_t length) : data_(str.data()), length_(length)
 {
 }
 

@@ -39,7 +39,8 @@ private:
         {
         }
 
-        WorkerScratch(WorkerScratch &&other) : scratch_arena(std::move(other.scratch_arena)), head(other.head)
+        WorkerScratch(WorkerScratch &&other)
+            : scratch_arena(std::move(other.scratch_arena)), head(other.head)
         {
             other.head = nullptr;
         }
@@ -87,8 +88,8 @@ public:
         system_batch.world = this;
     }
 
-    static void run_system(void *batch);
-    static void run_system_main(void *batch);
+    static void run_system(void *w, void *batch);
+    static void run_system_main(void *w, void *batch);
 
     void startup();
     void shutdown();
@@ -282,8 +283,8 @@ public:
 };
 } // namespace VoidEngine::ECS
 
-#include "sparse_set.inl"
 #include "entity.inl"
 #include "query.inl"
+#include "sparse_set.inl"
 #include "type_info.inl"
 #include "world.inl"

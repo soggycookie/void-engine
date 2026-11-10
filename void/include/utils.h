@@ -9,7 +9,7 @@ namespace VoidEngine
 
 #define OFFSET_ADDR(addr, offset)      RCAST(void *, RCAST(uintptr_t, addr) + (offset))
 #define OFFSET_T_ADDR(T, addr, offset) RCAST(T, RCAST(uintptr_t, addr) + (offset))
-#define BYTE_OFFSET(v1, v2)            SCAST(size_t, RCAST(uintptr_t, v1) - RCAST(uintptr_t, v2))
+#define BYTE_OFFSET(end, start)            SCAST(uint64_t, RCAST(uintptr_t, end) - RCAST(uintptr_t, start))
 
 #define DEFINE_HANDLE(name)                                                                        \
     struct name##_T;                                                                               \

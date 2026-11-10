@@ -187,12 +187,13 @@ void Pipeline::progress(World *world)
                 for (uint64_t worker = 0; worker < worker_dispatch; ++worker)
                 {
                     Job job;
-                    job.fn = &World::run_system;
-                    job.context = batch;
+                    job.fn_ = &World::run_system;
+                    job.context_ = world;
+                    job.ex_data_ = batch;
                     JobSystem::get().schedule(job, JobPriority::HIGH);
                 }
 
-                World::run_system_main(batch);
+                World::run_system_main(world, batch);
 
                 while (batch->remaining.load(std::memory_order_acquire) != 0)
                 {

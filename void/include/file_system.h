@@ -29,9 +29,9 @@ using FileOptionFlags = uint32_t;
 
 enum FileAnchor
 {
-    BEGIN,
-    END,
-    CURRENT,
+    ANCHOR_BEGIN,
+    ANCHOR_END,
+    ANCHOR_CURRENT,
 };
 
 enum DirectoryType
@@ -74,24 +74,28 @@ DEFINE_HANDLE(File);
 
 struct IO_Request
 {
-    IO_Request() : buffer_size(0), buffer(nullptr), callback(nullptr)
+    IO_Request()
+        : buffer_size_(0), buffer_(nullptr), callback_(nullptr), user_data_(nullptr),
+          vallocator_(nullptr)
     {
     }
 
 #ifdef VOID_WIN32
-    OVERLAPPED data;
+    OVERLAPPED data_;
 #endif // VOID_WIN32
 
-    uint64_t buffer_size;
-    void *buffer;
-    void (*callback)(void *);
-    void *userData;
+    uint64_t buffer_size_;
+    void *buffer_;
+    void (*callback_)(void *, void *);
+    void *user_data_;
+    Vallocator *vallocator_;
 };
 
 void startup(uint32_t max_concurrency = 0);
 void shutdown();
 
-void poll_io_completions(void *);
+//dummy 2 void * to satisfy job signature
+void poll_io_completions(void *, void *);
 
 FileMeta get_metadata(StringView path);
 DirectoryType get_directory_type(StringView path);
@@ -104,7 +108,10 @@ bool close(File file);
 
 uint64_t get_file_size(File file);
 
-bool async_read(File file, uint64_t offset, uint64_t size);
+bool async_read(Vallocator &vallocator, File file, uint64_t offset, uint64_t size,
+                void (*callback)(void *, void *), void * user_data = nullptr);
+
+void *read(Vallocator &vallocator, File file, uint64_t *out_size);
 
 bool create(StringView path);
 

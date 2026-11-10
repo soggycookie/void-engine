@@ -4,41 +4,93 @@
 
 namespace VoidEngine
 {
-void IFileSource::init(Vallocator &vallocator, const String &path)
-{
-    sub_resource_path_.init(vallocator, path.get_length());
-    sub_resource_path_.assign(vallocator, path);
-    query_asset();
-}
 
-void IFileSource::destroy(Vallocator &vallocator)
+void ResourceSystem::startup(StringView path)
 {
-    sub_resource_path_.destroy(vallocator);
-}
+    resource_vallocator_.init(gib(64), mib(16), gib(64), mib(4));
+    resource_path_.init(resource_vallocator_, path.get_length());
+    resource_path_.assign(resource_vallocator_, path);
+    sub_resource_paths.init(resource_vallocator_, MAX_FILE_SOURCE);
 
-struct MetaCreation
-{
-    String resource_path_;
-    StringView ext_;
+    Arena *scratch = t_scratches.get_scratch();
+    ScopedArenaTemp temp;
+    temp.start_scratch(scratch);
+    DynamicArray<FS::DirectoryInfo> children;
+    FS::find_children(*scratch, children, path);
 
-    MetaCreation() : resource_path_(), ext_()
+    for (uint64_t idx = 0; idx < children.get_count(); ++idx)
     {
+        FS::DirectoryInfo &info = children[idx];
+        if (info.type == FS::DIRECTORY_TYPE)
+        {
+            String sub_resource;
+            sub_resource.init(resource_vallocator_, info.abs_path.get_length());
+            sub_resource.assign(resource_vallocator_, info.abs_path);
+            sub_resource_paths.push_back(resource_vallocator_, std::move(sub_resource));
+        }
     }
 
-    MetaCreation(MetaCreation &&other)
-        : resource_path_(std::move(other.resource_path_)), ext_(other.ext_)
+    for (uint64_t idx = 0; idx < sub_resource_paths.get_count(); ++idx)
     {
+        query_asset(sub_resource_paths[idx]);
     }
-};
 
-void LooseFileSource::query_asset()
+    temp.end_scratch();
+}
+
+void ResourceSystem::shutdown()
+{
+    for (uint64_t idx = 0; idx < assets_.get_count(); ++idx)
+    {
+        Asset &asset = assets_[idx];
+        if (asset.open)
+        {
+            FS::close(asset.handle);
+        }
+    }
+    resource_registry_.destroy(resource_vallocator_);
+    assets_.destroy(resource_vallocator_);
+    for (uint64_t idx = 0; idx < sub_resource_paths.get_count(); ++idx)
+    {
+        sub_resource_paths[idx].destroy(resource_vallocator_);
+    }
+    sub_resource_paths.destroy(resource_vallocator_);
+    resource_path_.destroy(resource_vallocator_);
+    resource_vallocator_.destroy();
+}
+
+AssetId ResourceSystem::get_free_asset_id()
+{
+    AssetId asset_id = 0;
+    do
+    {
+        asset_id = asset_id_generator_.generate();
+    } while (has(asset_id));
+    return asset_id;
+}
+
+ResourceData *ResourceSystem::acquire(AssetId id)
+{
+    return nullptr;
+}
+
+void ResourceSystem::release(AssetId id)
+{
+}
+
+bool ResourceSystem::has(AssetId id)
+{
+    return resource_registry_.contain_key(id);
+}
+
+void ResourceSystem::query_asset(const String &sub_resource_path)
 {
     ScopedArenaTemp temp_1;
     Arena *scratch = t_scratches.get_scratch();
     temp_1.start_scratch(scratch);
 
     DynamicArray<FS::DirectoryInfo> dir_children;
-    FS::find_children(*scratch, dir_children, sub_resource_path_.data());
+    FS::find_children(*scratch, dir_children, sub_resource_path);
 
     Deque<MetaCreation> meta_creation_deque;
     meta_creation_deque.init(*scratch, 256);
@@ -57,18 +109,15 @@ void LooseFileSource::query_asset()
                 if (has_associated_metadata_file(info.abs_path))
                 {
                     // parse the meta file
+                    parse_resource(info.abs_path, ext);
                 }
                 else
                 {
                     // push into a queue, create meta later so we can compare guid to avoid collision
                     MetaCreation meta_creation;
-                    meta_creation.resource_path_.init(*scratch, info.abs_path.get_length() +
-                                                                    META_FILE_EXT_LENGTH + 1);
-                    meta_creation.resource_path_.append(*scratch, info.abs_path);
-                    meta_creation.resource_path_.append(*scratch, u8".");
-                    meta_creation.resource_path_.append(*scratch, META_FILE_EXT);
                     meta_creation.ext_ = ext;
-                    meta_creation_deque.push_back(*scratch, std::move(meta_creation));
+                    meta_creation.resource_path_ = info.abs_path;
+                    meta_creation_deque.push_back(*scratch, meta_creation);
                 }
             }
         }
@@ -88,16 +137,47 @@ void LooseFileSource::query_asset()
     while (!meta_creation_deque.is_empty())
     {
         MetaCreation &mt = meta_creation_deque.front();
-        std::cout << "Create Meta File: ";
-        std::cout.write(RCAST(char *, mt.resource_path_.data()), mt.resource_path_.get_length())
-            << std::endl;
+        create_metadata_file(mt);
+        parse_resource(mt.resource_path_, mt.ext_);
         meta_creation_deque.pop_front();
     }
-
     temp_1.end_scratch();
 }
 
-bool LooseFileSource::is_supported_ext(StringView ext) const
+void ResourceSystem::create_metadata_file(MetaCreation &mt)
+{
+    ScopedArenaTemp temp;
+    Arena *scratch = t_scratches.get_scratch();
+    temp.start_scratch(scratch);
+
+    String meta_file;
+    meta_file.init(*scratch, mt.resource_path_.get_length() + META_FILE_EXT_LENGTH + 1);
+    meta_file.append(*scratch, mt.resource_path_);
+    meta_file.append(*scratch, u8".");
+    meta_file.append(*scratch, META_FILE_EXT);
+
+    FS::create(meta_file);
+    FS::File meta_handle = FS::open(meta_file, FS::WRITE_ACCESS_FLAG | FS::TRUNCATE_FLAG);
+    AssetId guid = get_free_asset_id();
+    std::cout << "Write id: " << guid << std::endl;
+    FS::write(meta_handle, &guid, sizeof(guid));
+    FS::close(meta_handle);
+    temp.end_scratch();
+}
+
+void ResourceSystem::parse_resource(StringView path, StringView ext)
+{
+    if (ext == u8"jpg")
+    {
+        std::cout << "Parse JPEG: " << path << std::endl;
+    }
+    else
+    {
+        std::cout << "Parse not supported type " << ext << ": " << path << std::endl;
+    }
+}
+
+bool ResourceSystem::is_supported_ext(StringView ext) const
 {
     for (uint64_t idx = 0; idx < SUPPORTED_EXT_COUNT; ++idx)
     {
@@ -109,7 +189,7 @@ bool LooseFileSource::is_supported_ext(StringView ext) const
     return false;
 }
 
-bool LooseFileSource::has_associated_metadata_file(StringView path) const
+bool ResourceSystem::has_associated_metadata_file(StringView path) const
 {
     ScopedArenaTemp temp;
     Arena *scratch = t_scratches.get_scratch();
@@ -124,71 +204,5 @@ bool LooseFileSource::has_associated_metadata_file(StringView path) const
 
     temp.end_scratch();
     return file_exists;
-}
-
-void ResourceSystem::startup(Vallocator &vallocator, StringView path)
-{
-    resource_path_.init(vallocator, path.get_length());
-    resource_path_.assign(vallocator, path);
-    file_sources_.init(vallocator, MAX_FILE_SOURCE);
-
-    Arena *scratch = t_scratches.get_scratch();
-    ScopedArenaTemp temp;
-    temp.start_scratch(scratch);
-    DynamicArray<FS::DirectoryInfo> children;
-    FS::find_children(*scratch, children, path);
-
-    for (uint64_t idx = 0; idx < children.get_count(); ++idx)
-    {
-        FS::DirectoryInfo &info = children[idx];
-        if (info.type == FS::DIRECTORY_TYPE)
-        {
-            IFileSource *source = create_file_source(vallocator, info.abs_path, true);
-            file_sources_.push_back(vallocator, source);
-        }
-    }
-    temp.end_scratch();
-}
-
-void ResourceSystem::shutdown(Vallocator &vallocator)
-{
-    for (uint64_t idx = 0; idx < assets_.get_count(); ++idx)
-    {
-        Asset &asset = assets_[idx];
-        if (asset.open)
-        {
-            FS::close(asset.handle);
-        }
-    }
-    resource_registry_.destroy(vallocator);
-    assets_.destroy(vallocator);
-    for (size_t idx = 0; idx < file_sources_.get_count(); ++idx)
-    {
-        IFileSource *source = file_sources_[idx];
-        source->destroy(vallocator);
-    }
-    file_sources_.destroy(vallocator);
-    resource_path_.destroy(vallocator);
-}
-
-IFileSource *ResourceSystem::create_file_source(Vallocator &vallocator, const String &path, bool loose)
-{
-    IFileSource *source = construct<LooseFileSource>(vallocator);
-    source->init(vallocator, path);
-    return source;
-}
-
-ResourceData *ResourceSystem::acquire(AssetId id)
-{
-    return nullptr;
-}
-
-void ResourceSystem::release(AssetId id)
-{
-}
-
-bool ResourceSystem::has(AssetId id)
-{
-    return false;
 }
 } // namespace VoidEngine

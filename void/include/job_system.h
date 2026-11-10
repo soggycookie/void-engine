@@ -1,6 +1,6 @@
 #pragma once
-#include "dynamic_array.h"
 #include "fixed_queue.h"
+#include "vallocator.h"
 
 namespace VoidEngine
 {
@@ -21,9 +21,10 @@ struct JobCounter;
 
 struct Job
 {
-    void( *fn)(void * context);
-    void* context;
-    JobCounter* counter;
+    void (*fn_)(void *context, void *ex_data);
+    void *context_;
+    void *ex_data_;
+    JobCounter *counter_;
 };
 
 struct JobCounter
@@ -36,9 +37,9 @@ struct JobCounter
 class JobSystem
 {
 private:
-    static JobSystem* Instance;
+    static JobSystem *Instance;
 
-    Vallocator* allocator;
+    Vallocator *allocator;
     FixedQueue<Job, 2048> job_pool;
     std::thread workers[MAX_WORKER_THREAD];
     std::condition_variable wake_cv;
@@ -49,14 +50,13 @@ private:
     bool running;
 
 public:
-
     JobSystem() : running(true), allocator(nullptr), desired_worker_count_(0), worker_count_(0)
     {
         ENGINE_ASSERT(!Instance, "Job system is already initialized!");
         Instance = this;
     }
 
-    static JobSystem& get();
+    static JobSystem &get();
 
     uint32_t get_desired_worker_count() const
     {
@@ -72,4 +72,4 @@ private:
     void worker_main(uint32_t idx);
 };
 
-} //VoidEngine
+} // namespace VoidEngine

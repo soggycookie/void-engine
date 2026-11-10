@@ -74,7 +74,7 @@ void JobSystem::worker_main(uint32_t idx)
             ENGINE_ASSERT(pop_result, "Failed to pop from queue!");
 
             lock.unlock();
-            job.fn(job.context);
+            job.fn_(job.context_, job.ex_data_);
         }
     }
     t_scratches.destroy();

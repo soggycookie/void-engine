@@ -230,6 +230,7 @@ public:
 
     void remove(const Key &key)
     {
+        ENGINE_ASSERT(!is_empty(), "Flat hashmap is already empty!");
         using std::swap;
 
         uint64_t index = Hash<Key>::Value(key) % bucket_capacity;
@@ -290,7 +291,7 @@ public:
 
     bool contain_key(const Key &key) const
     {
-        if (!addr)
+        if (is_empty())
         {
             return false;
         }
@@ -329,6 +330,10 @@ public:
 
     Value *get_value(const Key &key)
     {
+        if (is_empty())
+        {
+            return nullptr;
+        }
         uint64_t index = Hash<Key>::Value(key) % bucket_capacity;
         Bucket *bucket = nullptr;
         uint32_t PSL = 0;
@@ -363,6 +368,10 @@ public:
 
     const Value* get_value(const Key& key) const
     {
+        if (is_empty())
+        {
+            return nullptr;
+        }
         uint64_t index = Hash<Key>::Value(key) % bucket_capacity;
         Bucket *bucket = nullptr;
         uint32_t PSL = 0;

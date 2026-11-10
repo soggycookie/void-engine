@@ -43,38 +43,36 @@ void World::WorkerScratch::reset()
     head = nullptr;
 }
 
-void World::run_system(void *batch)
+void World::run_system(void *w, void *batch)
 {
-    EcsBatch* ecsBatch = RCAST(EcsBatch*, batch);
-    ENGINE_ASSERT(ecsBatch, "Batch is null!");
-    World* world = ecsBatch->world;
-    ENGINE_ASSERT(world, "World is null!");
+    EcsBatch* ecs_batch = RCAST(EcsBatch*, batch);
+    ENGINE_ASSERT(ecs_batch, "Batch must not be null!");
+    World* world = SCAST(World *, w);
+    ENGINE_ASSERT(world, "World must not be null!");
     World::t_scratch_idx = (world->get_worker_round_robin().fetch_add(1) % world->get_worker_count()) + 1;
 
     uint32_t idx = 0;
-    while((idx = ecsBatch->cursor.fetch_add(1, std::memory_order_relaxed)) < ecsBatch->count)
+    while((idx = ecs_batch->cursor.fetch_add(1, std::memory_order_relaxed)) < ecs_batch->count)
     {
-        ecsBatch->systems[idx]->execute();
+        ecs_batch->systems[idx]->execute();
     }
-
     World::t_scratch_idx = -1;
-    ecsBatch->remaining.fetch_sub(1, std::memory_order_release);
+    ecs_batch->remaining.fetch_sub(1, std::memory_order_release);
 }
 
-void World::run_system_main(void* batch)
+void World::run_system_main(void *w, void* batch)
 {
-    EcsBatch* ecsBatch = RCAST(EcsBatch*, batch);
-    ENGINE_ASSERT(ecsBatch, "Batch is null!");
-    World* world = ecsBatch->world;
-    ENGINE_ASSERT(world, "World is null!");
+    EcsBatch* ecs_batch = RCAST(EcsBatch*, batch);
+    ENGINE_ASSERT(ecs_batch, "Batch must not be null!");
+    World* world = SCAST(World *, w);
+    ENGINE_ASSERT(world, "World must not be null!");
 
     uint32_t idx = 0;
-    while((idx = ecsBatch->cursor.fetch_add(1, std::memory_order_relaxed)) < ecsBatch->count)
+    while((idx = ecs_batch->cursor.fetch_add(1, std::memory_order_relaxed)) < ecs_batch->count)
     {
-        ecsBatch->systems[idx]->execute();
+        ecs_batch->systems[idx]->execute();
     }
-
-    ecsBatch->remaining.fetch_sub(1, std::memory_order_release);
+    ecs_batch->remaining.fetch_sub(1, std::memory_order_release);
 }
 
 World *create_world(Vallocator &vallocator)
