@@ -9,50 +9,54 @@
 namespace VoidEngine
 {
 
-#define HR(hr)                                                                                     \
-    if (FAILED(hr))                                                                                \
-    {                                                                                              \
-        return false;                                                                              \
+#define HR(hr)                                                                                          \
+    if (FAILED(hr))                                                                                     \
+    {                                                                                                   \
+        return false;                                                                                   \
     }
 
 class Win32_Window : public Window
 {
 public:
     Win32_Window(const WindowProperty &property, EventCallback func)
-        : Window(property, func), curr_count_(0), prev_count_(0), window_handle_(nullptr),
-          hinstance_(nullptr)
+        : Window(property, func), curr_count_(0), prev_count_(0), hwnd_(nullptr), hinstance_(nullptr)
     {
         QueryPerformanceFrequency(&count_per_sec_);
     }
 
     void update() override;
 
-    // move this to profiler
+    //TODO: move this to profiler
     void begin_time_elapse() override;
     void end_time_elapse(double &outPassedTime) override;
 
-    void *get_display_window() override;
-
-    void *get_window_handle() const override { return window_handle_; }
+    void *get_window_handle() override
+    {
+        return hwnd_;
+    }
 
     ClientDimension get_framebuffer_size() const override
     {
         RECT rect;
-        GetClientRect(window_handle_, &rect);
-
-        return ClientDimension{.width = (rect.right - rect.left),
-                               .height = (rect.bottom - rect.top)};
+        GetClientRect(hwnd_, &rect);
+        return ClientDimension{.width = (rect.right - rect.left), .height = (rect.bottom - rect.top)};
     }
 
-    HINSTANCE get_module_instance_handle() const { return hinstance_; }
+    HWND get_hwnd()
+    {
+        return hwnd_;
+    }
 
-    HWND get_native_handle() const { return window_handle_; }
+    HINSTANCE get_hinstance()
+    {
+        return hinstance_;
+    }
 
 private:
     bool init() override;
 
 private:
-    HWND window_handle_;
+    HWND hwnd_;
     HINSTANCE hinstance_;
     LARGE_INTEGER count_per_sec_;
 
@@ -64,4 +68,4 @@ private:
 };
 
 } // namespace VoidEngine
-#endif //VOID_WIN32
+#endif // VOID_WIN32

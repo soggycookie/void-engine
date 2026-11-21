@@ -21,16 +21,16 @@ void TLFS::print()
     std::stringstream ss;
 
     ss << "\nAllocator: " << name << "\n";
-    Header *first_header = SCAST(Header *, addr);
+    Header *first_header = SCAST(Header *, addr_);
     Header *header = first_header;
 
-    while (is_header_deadend(header))
+    while (!is_header_deadend(header))
     {
         if (is_used_block(header))
         {
-            if (header->debug_tag.file)
+            if (header->debug_tag_.file_)
             {
-                ss << "[Used - " << header->debug_tag.file << ":" << header->debug_tag.line << " - "
+                ss << "[Used - " << header->debug_tag_.file_ << ":" << header->debug_tag_.line_ << " - "
                    << get_payload_size(header) << "]";
             }
             else
@@ -53,49 +53,99 @@ void TLFS::print()
 
 void TLFS::init(uint64_t res_size, uint64_t com_size)
 {
-    ENGINE_ASSERT(res_size >= com_size, "Commit size is greater than reserve size!");
-    std::memset(sl_bitmaps, 0, sizeof(sl_bitmaps));
-    std::memset(freelists, 0, sizeof(freelists));
+    ENGINE_ASSERT(res_size >= com_size && commit_size_ > 0, "Commit size is greater than reserve size!");
+    std::memset(sl_bitmaps_, 0, sizeof(sl_bitmaps_));
+    std::memset(freelists_, 0, sizeof(freelists_));
+    tail_free_ = false;
 
-    commit_size = VirtualMemory::align_to_commit_size(com_size, &res_size);
-    reserve_size = res_size;
-    addr = VirtualMemory::reserve_commit(reserve_size, commit_size);
-    ENGINE_ASSERT(addr, "Fail to reserve and commit memory!");
+    commit_size_ = VirtualMemory::align_to_commit_size(com_size, &res_size);
+    reserve_size_ = res_size;
+    addr_ = VirtualMemory::reserve_commit(reserve_size_, commit_size_);
+    ENGINE_ASSERT(addr_, "Fail to reserve and commit memory!");
+    Block *init_block = new (addr_) Block();
+    init_block->header_.size_ = calc_payload_size(commit_size_);
+    init_block->next_free_ = nullptr;
+    init_block->prev_free_ = nullptr;
+    insert_free_block(init_block);
 }
 
 void TLFS::destroy()
 {
 #ifdef VOID_DEBUG
-    if(alloc_count != 0)
+    if(alloc_count_ != 0)
     {
         print();
     }
 #endif // VOID_DEBUG
-    ENGINE_ASSERT(alloc_count == 0, "Allocator has not freed all resources!");
-    VirtualMemory::release(addr);
+    ENGINE_ASSERT(alloc_count_ == 0, "Allocator has not freed all resources!");
+    if (addr_)
+    {
+        VirtualMemory::release(addr_);
+        std::memset(sl_bitmaps_, 0, sizeof(sl_bitmaps_));
+        std::memset(freelists_, 0, sizeof(freelists_));
+        fl_bitmap_ = 0;
+        commit_size_ = 0;
+        reserve_size_ = 0;
+        tail_free_ = false;
+        alloc_count_ = 0;
+        alloc_size_ = 0;
+        addr_ = nullptr;
+    }
 }
 
 uint64_t TLFS::acquire_memory(uint64_t alloc_size)
 {
-    uint64_t aligned_alloc_size = VirtualMemory::align_to_commit_size(alloc_size, nullptr);
-    ENGINE_ASSERT(commit_size + aligned_alloc_size <= reserve_size,
+    // alloc_size is the padded payload size; the new block also needs its own header
+    ENGINE_ASSERT(alloc_size <= reserve_size_ - commit_size_ - sizeof(Header),
                   "Allocation size exceed reserve size!");
-    uint64_t next_commit_pos = std::max(commit_size * 2, aligned_alloc_size);
-    uint64_t new_block_size = next_commit_pos - commit_size;
-    void *new_block_addr = OFFSET_ADDR(addr, commit_size);
+    uint64_t aligned_alloc_size =
+        VirtualMemory::align_to_commit_size(alloc_size + sizeof(Header), nullptr);
+    ENGINE_ASSERT(aligned_alloc_size <= reserve_size_ - commit_size_,
+                  "Allocation size exceed reserve size!");
+    // grow by at least the request so the new block can hold it, clamped to the reserve
+    ENGINE_ASSERT(aligned_alloc_size <= MAX_BLOCK_SIZE, "Allocation size exceed max bin size!");
+    // the new free block must stay representable by the bins (see MAX_BLOCK_SIZE)
+    uint64_t next_commit_pos = std::min(
+        std::min(std::max(commit_size_ * 2, commit_size_ + aligned_alloc_size), reserve_size_),
+        commit_size_ + MAX_BLOCK_SIZE);
+    uint64_t new_block_size = next_commit_pos - commit_size_;
+    void *new_block_addr = OFFSET_ADDR(addr_, commit_size_);
     void *p = VirtualMemory::commit(new_block_addr, new_block_size);
     ENGINE_ASSERT(p, "Failed to commit!");
-    commit_size = next_commit_pos;
+    commit_size_ = next_commit_pos;
 
     Block *new_block = new (new_block_addr) Block();
-    new_block->next_free = nullptr;
-    new_block->prev_free = nullptr;
-    new_block->header.size = calc_payload_size(new_block_size);
+    new_block->next_free_ = nullptr;
+    new_block->prev_free_ = nullptr;
+    new_block->header_.size_ = calc_payload_size(new_block_size);
 
-    insert_free_block(new_block);
-    // TODO: coalease if last block is free
+    // The block that ended at the old commit end is free: merge it with the new block so that
+    // the invariant "no two adjacent free blocks" holds. The boundary tag is the last 8 bytes
+    // before new_block_addr. Skip the merge if the result would not fit the bin range.
+    Block *free_block = new_block;
+    if (tail_free_)
+    {
+        void *boundary_tag = OFFSET_T_ADDR(void *, new_block_addr, -sizeof(void *));
+        Block *prev = nullptr;
+        std::memcpy(&prev, boundary_tag, sizeof(void *));
+        ENGINE_ASSERT(prev && is_address_valid(prev), "Invalid tail boundary tag!");
+        ENGINE_ASSERT(!is_used_block(get_block_header(prev)), "Tail block must be free!");
+        ENGINE_ASSERT(RCAST(char *, prev) + sizeof(Header) + get_payload_size(prev) ==
+                          RCAST(char *, new_block_addr),
+                      "Tail block is not contiguous with the new block!");
 
-    return get_payload_size(new_block);
+        if (get_payload_size(prev) + new_block_size < MAX_BLOCK_SIZE)
+        {
+            remove_free_block(prev);
+            // prev's own prev-free bit is 0 because its predecessor is used (already coalesced)
+            free_block = coalesce(prev, new_block);
+            new_block->~Block();
+        }
+    }
+
+    insert_free_block(free_block);
+
+    return get_payload_size(free_block);
 }
 
 void *TLFS::get_payload(Block *block)
@@ -115,14 +165,14 @@ uint64_t TLFS::get_payload_size(Block *block)
 {
     ENGINE_ASSERT(block, "Block cannot be null!");
 
-    return block->header.size & ~3U;
+    return block->header_.size_ & ~3ULL;
 }
 
 uint64_t TLFS::get_payload_size(Header *header)
 {
     ENGINE_ASSERT(header, "Header cannot be null!");
 
-    return header->size & ~3U;
+    return header->size_ & ~3ULL;
 }
 
 TLFS::Index TLFS::round_down_to_bin(uint64_t size)
@@ -138,10 +188,15 @@ TLFS::Index TLFS::round_down_to_bin(uint64_t size)
     uint64_t exp = floor_log2(size);
     uint64_t fl_size_class = (1ULL << exp);
 
-    uint16_t fli = SCAST(uint16_t, exp - first_fli + 1);
+    uint64_t fli = exp - first_fli + 1;
+    if (fli >= FL_COUNT)
+    {
+        return INVALID_INDEX;
+    }
+
     uint16_t sli = SCAST(uint16_t, (size - fl_size_class) >> (exp - SL_BITSHIFT));
 
-    return {fli, sli};
+    return {SCAST(uint16_t, fli), sli};
 }
 
 TLFS::Index TLFS::round_up_to_bin(uint64_t size)
@@ -188,23 +243,23 @@ void TLFS::insert_free_block(Block *block)
 
     Index index = round_down_to_bin(get_payload_size(block));
 
-    Block *current = freelists[index.fli * SL_COUNT + index.sli];
-    block->next_free = current;
-    block->prev_free = nullptr;
+    Block *current = freelists_[index.fli_ * SL_COUNT + index.sli_];
+    block->next_free_ = current;
+    block->prev_free_ = nullptr;
 
 #ifdef VOID_DEBUG
-    block->header.debug_tag.magic = DEAD_MAGIC_NUMBER;
+    block->header_.debug_tag_.magic_ = DEAD_MAGIC_NUMBER;
 #endif // VOID_DEBUG
 
     if (current)
     {
-        current->prev_free = block;
+        current->prev_free_ = block;
     }
 
-    fl_bitmap |= (1U << index.fli);
-    sl_bitmaps[index.fli] |= (1U << index.sli);
+    fl_bitmap_ |= (1U << index.fli_);
+    sl_bitmaps_[index.fli_] |= (1U << index.sli_);
 
-    freelists[index.fli * SL_COUNT + index.sli] = block;
+    freelists_[index.fli_ * SL_COUNT + index.sli_] = block;
 
     mark_free(block);
 }
@@ -213,10 +268,10 @@ TLFS::Block *TLFS::acquire_block_from_freelist(Index index)
 {
     ENGINE_ASSERT(index != INVALID_INDEX, "Index cannot be invalid!");
 
-    Block *block = freelists[index.fli * SL_COUNT + index.sli];
+    Block *block = freelists_[index.fli_ * SL_COUNT + index.sli_];
 
 #ifdef VOID_DEBUG
-    if(block->header.debug_tag.magic != DEAD_MAGIC_NUMBER)
+    if(block && block->header_.debug_tag_.magic_ != DEAD_MAGIC_NUMBER)
     {
         //should never happen
         print();
@@ -234,33 +289,33 @@ void TLFS::remove_free_block(Block *block)
 
     Index index = round_down_to_bin(get_payload_size(block));
 
-    Block *next = block->next_free;
-    Block *prev = block->prev_free;
+    Block *next = block->next_free_;
+    Block *prev = block->prev_free_;
 
-    if (freelists[index.fli * SL_COUNT + index.sli] == block)
+    if (freelists_[index.fli_ * SL_COUNT + index.sli_] == block)
     {
         ENGINE_ASSERT(prev == nullptr, "");
-        freelists[index.fli * SL_COUNT + index.sli] = next;
+        freelists_[index.fli_ * SL_COUNT + index.sli_] = next;
         if (next == nullptr)
         {
-            sl_bitmaps[index.fli] &= ~(1U << index.sli);
-            if (sl_bitmaps[index.fli] == 0)
+            sl_bitmaps_[index.fli_] &= ~(1U << index.sli_);
+            if (sl_bitmaps_[index.fli_] == 0)
             {
-                fl_bitmap &= ~(1U << index.fli);
+                fl_bitmap_ &= ~(1U << index.fli_);
             }
         }
     }
 
     if (next)
     {
-        next->prev_free = prev;
+        next->prev_free_ = prev;
     }
     if (prev)
     {
-        prev->next_free = next;
+        prev->next_free_ = next;
     }
-    block->next_free = nullptr;
-    block->prev_free = nullptr;
+    block->next_free_ = nullptr;
+    block->prev_free_ = nullptr;
 }
 
 bool TLFS::can_split(Block *block, uint64_t size)
@@ -285,26 +340,27 @@ TLFS::Block *TLFS::split(Block *block, uint64_t size)
     ENGINE_ASSERT(get_payload_size(block) >= calc_payload_size(MIN_BLOCK_SIZE * 2),
                "Block size must be greater or equal to min block size");
 
-    uint64_t remainingSize = get_payload_size(block) - size;
+    uint64_t remaining_size = get_payload_size(block) - size;
 
-    ENGINE_ASSERT(remainingSize >= MIN_BLOCK_SIZE, "Remaining size must be greater or equal min block size");
+    ENGINE_ASSERT(remaining_size >= MIN_BLOCK_SIZE, "Remaining size must be greater or equal min block size");
 
-    void *blockPayLoadAddr = get_payload(block);
-    void *nextBlockAddr = OFFSET_ADDR(blockPayLoadAddr, size);
+    void *block_payLoad_addr = get_payload(block);
+    void *next_block_addr = OFFSET_ADDR(block_payLoad_addr, size);
 
-    Block *newBlock = new (nextBlockAddr) Block();
-    newBlock->header.size = calc_payload_size(remainingSize);
+    Block *new_block = new (next_block_addr) Block();
+    new_block->header_.size_ = calc_payload_size(remaining_size);
 #ifdef VOID_DEBUG
-    newBlock->header.debug_tag.magic = DEAD_MAGIC_NUMBER;
+    new_block->header_.debug_tag_.magic_ = DEAD_MAGIC_NUMBER;
 #endif // VOID_DEBUG
-    newBlock->next_free = nullptr;
-    newBlock->prev_free = nullptr;
+    new_block->next_free_ = nullptr;
+    new_block->prev_free_ = nullptr;
 
-    // dont need to retain flag because prev physical block must be used anyway
-    // if it is free then it is already coalesced
-    block->header.size = size;
+    // retain the prev-physical-free flag (bit 1); the used bit is 0 here by assertion.
+    // The aligned path in tlfs_alloc_internal frees the leading block right after splitting,
+    // so this block may be split a second time and must not lose the flag.
+    block->header_.size_ = size | (block->header_.size_ & (1ULL << 1));
 
-    return newBlock;
+    return new_block;
 }
 
 TLFS::Block *TLFS::coalesce(Block *prev_block, Block *block)
@@ -321,35 +377,40 @@ TLFS::Block *TLFS::coalesce(Block *prev_block, Block *block)
                "Prev and current block are not continguous!");
 
     uint64_t new_size = get_payload_size(prev_block) + get_payload_size(block) + sizeof(Header);
-    prev_block->header.size = new_size;
+    prev_block->header_.size_ = new_size;
 
     return prev_block;
 }
 
 TLFS::Index TLFS::find_next_free_index(Index start_index)
 {
-    ENGINE_ASSERT(start_index.fli < FL_COUNT, "FLI is out of bound!");
-    ENGINE_ASSERT(start_index.sli < SL_COUNT, "SLI is out of bound!");
+    ENGINE_ASSERT(start_index.fli_ < FL_COUNT, "FLI is out of bound!");
+    ENGINE_ASSERT(start_index.sli_ < SL_COUNT, "SLI is out of bound!");
 
     uint32_t sl_map = 0;
-    if (start_index.sli < SL_COUNT - 1)
+    if (start_index.sli_ < SL_COUNT - 1)
     {
-        sl_map = sl_bitmaps[start_index.fli] & (~0U << (start_index.sli + 1));
+        sl_map = sl_bitmaps_[start_index.fli_] & (~0U << (start_index.sli_ + 1));
     }
 
     if (sl_map > 0)
     {
         uint16_t sli = SCAST(uint16_t, std::countr_zero(sl_map));
 
-        return {start_index.fli, sli};
+        return {start_index.fli_, sli};
     }
 
-    uint32_t fl_map = fl_bitmap & (~0U << (start_index.fli + 1));
+    // shifting a 32-bit value by 32 is UB, so the last first-level class has no successor
+    uint32_t fl_map = 0;
+    if (start_index.fli_ < FL_COUNT - 1)
+    {
+        fl_map = fl_bitmap_ & (~0U << (start_index.fli_ + 1));
+    }
 
     if (fl_map > 0)
     {
         uint16_t fli = SCAST(uint16_t, std::countr_zero(fl_map));
-        uint16_t sli = SCAST(uint16_t, std::countr_zero(sl_bitmaps[fli]));
+        uint16_t sli = SCAST(uint16_t, std::countr_zero(sl_bitmaps_[fli]));
 
         return {fli, sli};
     }
@@ -361,26 +422,27 @@ void TLFS::mark_used(Block *block)
 {
     ENGINE_ASSERT(block, "Block cannot be null!");
 
-    block->header.size |= 1U;
+    block->header_.size_ |= 1UL;
     void *payload = get_payload(block);
     char *payload_end = OFFSET_T_ADDR(char *, payload, get_payload_size(block));
     Header *next_physical_header = RCAST(Header *, payload_end);
     if (is_header_deadend(next_physical_header))
     {
+        tail_free_ = false;
         return;
     }
 #ifdef VOID_DEBUG
-    ENGINE_ASSERT(next_physical_header->debug_tag.magic == MAGIC_NUMBER ||
-                    next_physical_header->debug_tag.magic == DEAD_MAGIC_NUMBER, "");
+    ENGINE_ASSERT(next_physical_header->debug_tag_.magic_ == MAGIC_NUMBER ||
+                    next_physical_header->debug_tag_.magic_ == DEAD_MAGIC_NUMBER, "");
 #endif                                        // VOID_DEBUG
-    next_physical_header->size &= ~(1U << 1); // second LSB
+    next_physical_header->size_ &= ~(1ULL << 1); // second LSB
 }
 
 void TLFS::mark_free(Block *block)
 {
     ENGINE_ASSERT(block, "Block cannot be null!");
 
-    block->header.size &= ~1U;
+    block->header_.size_ &= ~1UL;
 
     // add block address as boundary tag
     void *payload = get_payload(block);
@@ -395,14 +457,14 @@ void TLFS::mark_free(Block *block)
 
     if (is_header_deadend(next_physical_header))
     {
+        tail_free_ = true;
         return;
     }
 
 #ifdef VOID_DEBUG
-    ENGINE_ASSERT(next_physical_header->debug_tag.magic == MAGIC_NUMBER ||
-                      next_physical_header->debug_tag.magic == DEAD_MAGIC_NUMBER, "");
+    ENGINE_ASSERT(next_physical_header->debug_tag_.magic_ == MAGIC_NUMBER, "");
 #endif                                       // VOID_DEBUG
-    next_physical_header->size |= (1U << 1); // second LSB
+    next_physical_header->size_ |= (1ULL << 1); // second LSB
 }
 
 TLFS::Block *TLFS::get_block_from_payload(void *addr)
@@ -413,13 +475,13 @@ TLFS::Block *TLFS::get_block_from_payload(void *addr)
 bool TLFS::is_used_block(Header *header)
 {
     ENGINE_ASSERT(header, "Header cannot be null!");
-    return (header->size & 1U) > 0;
+    return (header->size_ & 1UL) > 0;
 }
 
 bool TLFS::is_prev_physical_free(Block *block)
 {
     ENGINE_ASSERT(block, "Block cannot be null!");
-    return (block->header.size & (1U << 1)) > 0;
+    return (block->header_.size_ & (1UL << 1)) > 0;
 }
 
 bool TLFS::is_next_physical_free(Block *block)
@@ -437,12 +499,12 @@ bool TLFS::is_next_physical_free(Block *block)
 
 bool TLFS::is_address_valid(void *ptr)
 {
-    return is_address_in_range(ptr, addr, reserve_size);
+    return is_address_in_range(ptr, addr_, reserve_size_);
 }
 
 bool TLFS::is_header_deadend(Header* header) const
 {
-    void *deadend = OFFSET_ADDR(addr, commit_size);
+    void *deadend = OFFSET_ADDR(addr_, commit_size_);
     return BYTE_OFFSET(deadend, header) == 0;
 }
 
@@ -453,76 +515,6 @@ TLFS::Header *TLFS::get_block_header(Block *block)
     return RCAST(Header *, block);
 }
 
-// void *Vallocator::valloc(uint64_t size, uint64_t align)
-// {
-//     ENGINE_ASSERT(size < pool_size, "Size must be less than pool size!");
-//     if (size == 0)
-//     {
-//         return nullptr;
-//     }
-//
-//     size = std::max(align_up(size, 8), SCAST(uint64_t, MIN_PAYLOAD_SIZE));
-//
-//     Index index = round_down_to_bin(size);
-//
-//     // size >= 512
-//     // [256, 512) offset between sl block is 8, so finding next free index is wasteful
-//     if (size >= (SMALL_BUCKET_SIZE * 2))
-//     {
-//         index = find_next_free_index(index);
-//     }
-//
-//     Block *block = nullptr;
-//
-//     do
-//     {
-//         if (index == INVALID_INDEX)
-//         {
-//             Pool *new_pool = allocate_pool();
-//             new_pool->next_pool = pool_head;
-//             pool_head = new_pool;
-//
-//             index = round_down_to_bin(calc_payload_size(pool_size - sizeof(Header) - sizeof(Pool)));
-//             continue;
-//         }
-//
-//         block = acquire_block_from_freelist(index);
-//
-//         if (block == nullptr)
-//         {
-//             index = find_next_free_index(index);
-//             continue;
-//         }
-//
-//         break;
-//
-//     } while (true);
-//
-//     ENGINE_ASSERT(block, "Block is null");
-//
-//     Block *allocatedBlock = block;
-//     ENGINE_ASSERT(get_payload_size(allocatedBlock) >= size,
-//                "Allocated block does not meet requested size!");
-//
-//     if (can_split(allocatedBlock, size))
-//     {
-//         Block *new_free_block = split(allocatedBlock, size);
-//         insert_free_block(new_free_block);
-//     }
-//
-//     ++alloc_count;
-//     alloc_size += (get_payload_size(allocatedBlock) + sizeof(Header));
-//
-//     mark_used(allocatedBlock);
-//
-//     if (std::strcmp(m_name, "ECS") == 0)
-//     {
-//         // Print();
-//     }
-//
-//     return get_payload(allocatedBlock);
-// }
-
 void *TLFS::tlfs_alloc_internal(uint64_t size, uint64_t align)
 {
     ENGINE_ASSERT(is_power_of_2(align), "Alignment must be power of 2!");
@@ -532,6 +524,7 @@ void *TLFS::tlfs_alloc_internal(uint64_t size, uint64_t align)
     }
 
     size = std::max(align_up(size, DEFAULT_ALIGNMENT), SCAST(uint64_t, MIN_PAYLOAD_SIZE));
+    ENGINE_ASSERT(size <= reserve_size_, "Size exceeds reserve size!");
     uint64_t padded_size = size;
 
     Index index = round_down_to_bin(size);
@@ -557,8 +550,7 @@ void *TLFS::tlfs_alloc_internal(uint64_t size, uint64_t align)
     {
         if (index == INVALID_INDEX)
         {
-            uint64_t expanded_size = acquire_memory(size);
-
+            uint64_t expanded_size = acquire_memory(padded_size);
             index = round_down_to_bin(expanded_size);
         }
 
@@ -575,6 +567,7 @@ void *TLFS::tlfs_alloc_internal(uint64_t size, uint64_t align)
     } while (true);
 
     ENGINE_ASSERT(block, "Block is null");
+    ENGINE_ASSERT(block->header_.debug_tag_.magic_ == DEAD_MAGIC_NUMBER, "Block is corrupted!");
 
     void *block_payload = get_payload(block);
     void *aligned = align_up(block_payload, align);
@@ -595,7 +588,6 @@ void *TLFS::tlfs_alloc_internal(uint64_t size, uint64_t align)
         while (byte_offset < MIN_BLOCK_SIZE)
         {
             aligned = align_up(RCAST(char *, aligned) + 1, align);
-
             byte_offset = BYTE_OFFSET(aligned, block_payload);
         }
 
@@ -620,8 +612,8 @@ void *TLFS::tlfs_alloc_internal(uint64_t size, uint64_t align)
         insert_free_block(new_free_block);
     }
 
-    ++alloc_count;
-    alloc_size += (get_payload_size(allocated_block) + sizeof(Header));
+    ++alloc_count_;
+    alloc_size_ += (get_payload_size(allocated_block) + sizeof(Header));
     mark_used(allocated_block);
 
     // Print();
@@ -629,39 +621,39 @@ void *TLFS::tlfs_alloc_internal(uint64_t size, uint64_t align)
     return get_payload(allocated_block);
 }
 
-void *TLFS::tlfs_realloc_internal(void *old_ptr, uint64_t old_size, uint64_t new_size, uint64_t align)
-{
-    ENGINE_ASSERT(old_ptr, "Old address must not be null!");
-    ENGINE_ASSERT(is_address_valid(old_ptr), "Address is not belonged to the allocator!");
-    Block *block = get_block_from_payload(old_ptr);
-    uint64_t size = get_payload_size(block);
-    if (size >= new_size)
-    {
-        return old_ptr;
-    }
-    bool is_next_free = is_next_physical_free(block);
-    if (!is_next_free)
-    {
-        return tlfs_alloc_internal(new_size, align);
-    }
-
-    void *payload = get_payload(block);
-    char *payload_end = OFFSET_T_ADDR(char *, payload, size);
-    Block *next = RCAST(Block *, payload_end);
-
-    uint64_t next_size = get_payload_size(next);
-    uint64_t total_size = size + next_size + sizeof(Header);
-    if (total_size < new_size)
-    {
-        return tlfs_alloc_internal(new_size, align);
-    }
-
-    remove_free_block(next);
-    Block *relloc_block = coalesce(block, next);
-    mark_used(relloc_block);
-
-    return get_payload(relloc_block);
-}
+// void *TLFS::tlfs_realloc_internal(void *old_ptr, uint64_t old_size, uint64_t new_size, uint64_t align)
+// {
+//     ENGINE_ASSERT(old_ptr, "Old address must not be null!");
+//     ENGINE_ASSERT(is_address_valid(old_ptr), "Address is not belonged to the allocator!");
+//     Block *block = get_block_from_payload(old_ptr);
+//     uint64_t size = get_payload_size(block);
+//     if (size >= new_size)
+//     {
+//         return old_ptr;
+//     }
+//     bool is_next_free = is_next_physical_free(block);
+//     if (!is_next_free)
+//     {
+//         return tlfs_alloc_internal(new_size, align);
+//     }
+//
+//     void *payload = get_payload(block);
+//     char *payload_end = OFFSET_T_ADDR(char *, payload, size);
+//     Block *next = RCAST(Block *, payload_end);
+//
+//     uint64_t next_size = get_payload_size(next);
+//     uint64_t total_size = size + next_size + sizeof(Header);
+//     if (total_size < new_size)
+//     {
+//         return tlfs_alloc_internal(new_size, align);
+//     }
+//
+//     remove_free_block(next);
+//     Block *relloc_block = coalesce(block, next);
+//     mark_used(relloc_block);
+//
+//     return get_payload(relloc_block);
+// }
 
 void TLFS::tlfs_free_internal(void *addr)
 {
@@ -673,17 +665,17 @@ void TLFS::tlfs_free_internal(void *addr)
     ENGINE_ASSERT(is_address_valid(addr), "Address is not belonged to the allocator!");
 
     Block *block = get_block_from_payload(addr);
-    block->header.size &= ~1U;
-    block->next_free = nullptr;
-    block->prev_free = nullptr;
+    block->header_.size_ &= ~1UL;
+    block->next_free_ = nullptr;
+    block->prev_free_ = nullptr;
 
     bool is_prev_free = is_prev_physical_free(block);
     bool is_next_free = is_next_physical_free(block);
 
     Block *new_free_block = block;
 
-    --alloc_count;
-    alloc_size -= (get_payload_size(block) + sizeof(Header));
+    --alloc_count_;
+    alloc_size_ -= (get_payload_size(block) + sizeof(Header));
 
     if (is_prev_free)
     {
@@ -724,28 +716,28 @@ void *TLFS::tlfs_alloc(uint64_t size, uint64_t align, std::source_location loc)
         return nullptr;
     }
     Block* block = get_block_from_payload(payload);
-    block->header.debug_tag.file = loc.file_name();
-    block->header.debug_tag.line = loc.line();
-    block->header.debug_tag.magic = MAGIC_NUMBER;
+    block->header_.debug_tag_.file_ = loc.file_name();
+    block->header_.debug_tag_.line_ = loc.line();
+    block->header_.debug_tag_.magic_ = MAGIC_NUMBER;
 
     return payload;
 }
 
-void *TLFS::tlfs_realloc(void *old_ptr, uint64_t old_size, uint64_t new_size, uint64_t align,
-                           std::source_location loc)
-{
-    void* payload = tlfs_realloc_internal(old_ptr, old_size, new_size, align);
-    if(!payload)
-    {
-        return nullptr;
-    }
-    Block* block = get_block_from_payload(payload);
-    block->header.debug_tag.file = loc.file_name();
-    block->header.debug_tag.line = loc.line();
-    block->header.debug_tag.magic = MAGIC_NUMBER;
-
-    return payload;
-}
+// void *TLFS::tlfs_realloc(void *old_ptr, uint64_t old_size, uint64_t new_size, uint64_t align,
+//                            std::source_location loc)
+// {
+//     void* payload = tlfs_realloc_internal(old_ptr, old_size, new_size, align);
+//     if(!payload)
+//     {
+//         return nullptr;
+//     }
+//     Block* block = get_block_from_payload(payload);
+//     block->header_.debug_tag_.file_ = loc.file_name();
+//     block->header_.debug_tag_.line_ = loc.line();
+//     block->header_.debug_tag_.magic_ = MAGIC_NUMBER;
+//
+//     return payload;
+// }
 
 void TLFS::tlfs_free(void *addr, std::source_location loc)
 {
@@ -756,8 +748,8 @@ void TLFS::tlfs_free(void *addr, std::source_location loc)
 
     ENGINE_ASSERT(is_address_valid(addr), "Address is not belonged to the allocator!");
     Block *block = get_block_from_payload(addr);
-    block->header.size &= ~1U;
-    if(block->header.debug_tag.magic != MAGIC_NUMBER)
+    block->header_.size_ &= ~1UL;
+    if(block->header_.debug_tag_.magic_ != MAGIC_NUMBER)
     {
         //double free
         print();
@@ -772,10 +764,10 @@ void *TLFS::tlfs_alloc(uint64_t size, uint64_t align)
     return tlfs_alloc_internal(size, align);
 }
 
-void *TLFS::tlfs_realloc(void *old_ptr, uint64_t old_size, uint64_t new_size, uint64_t align)
-{
-    return tlfs_realloc_internal(old_ptr, old_size, new_size, align);
-}
+// void *TLFS::tlfs_realloc(void *old_ptr, uint64_t old_size, uint64_t new_size, uint64_t align)
+// {
+//     return tlfs_realloc_internal(old_ptr, old_size, new_size, align);
+// }
 
 void TLFS::tlfs_free(void *addr)
 {
@@ -841,31 +833,33 @@ void Pool::acquire_page()
 void Vallocator::init(uint64_t tlfs_res_size, uint64_t tlfs_com_size, uint64_t arena_res_size,
           uint64_t arena_com_size)
 {
-    tlfs.init(tlfs_res_size, tlfs_com_size);
-    page_arena.init(arena_res_size, arena_com_size);
+    tlfs_.init(tlfs_res_size, tlfs_com_size);
+    page_arena_.init(arena_res_size, arena_com_size);
 
     uint64_t size_class = MIN_SIZE_CLASS;
     for (uint32_t idx = 0; idx < POOL_COUNT; ++idx)
     {
-        pools[idx].init(&page_arena, size_class);
+        pools_[idx].init(&page_arena_, size_class);
         size_class *= 2;
     }
 #ifdef VOID_DEBUG
-    debug_map = new FlatHashMap<uint64_t, std::source_location>();
-    debug_map->init(tlfs, 1024);
+    debug_map_ = new FlatHashMap<uint64_t, std::source_location>();
+    debug_map_->init(tlfs_, 1024);
 #endif // VOID_DEBUG
 }
 
 #ifdef VOID_DEBUG
 void *Vallocator::valloc(uint64_t size, uint64_t align, std::source_location loc)
 {
-    ++alloc_count;
+    ENGINE_ASSERT(size >= align && align > 0, "Alignment %llu must be smaller or equal to size %llu", to_ull(align),
+                  to_ull(size));
+    ++alloc_count_;
     if (size > MAX_SIZE_CLASS)
     {
-        void *addr = tlfs.tlfs_alloc(size, align, loc);
+        void *addr = tlfs_.tlfs_alloc(size, align, loc);
 #ifdef VOID_DEBUG
         uint64_t p_int = RCAST(uint64_t, addr);
-        debug_map->insert(tlfs, p_int, loc);
+        debug_map_->insert(tlfs_, p_int, loc);
 #endif // VOID_DEBUG
 
         return addr;
@@ -874,10 +868,10 @@ void *Vallocator::valloc(uint64_t size, uint64_t align, std::source_location loc
     // std::cout << loc.function_name() << ":" << loc.line() << " allocate " << size << std::endl;
     uint32_t idx = floor_log2(size) - floor_log2(MIN_SIZE_CLASS);
 
-    void *addr = pools[idx].pool_alloc();
+    void *addr = pools_[idx].pool_alloc();
 #ifdef VOID_DEBUG
         uint64_t p_int = RCAST(uint64_t, addr);
-        debug_map->insert(tlfs, p_int, loc);
+        debug_map_->insert(tlfs_, p_int, loc);
 #endif // VOID_DEBUG
 
         return addr;
@@ -892,24 +886,26 @@ void Vallocator::vfree(uint64_t size, void *addr,std::source_location loc)
 
 #ifdef VOID_DEBUG
     uint64_t p_int = RCAST(uint64_t, addr);
-    ENGINE_ASSERT(debug_map->contain_key(p_int), "Invalid address!");
-    debug_map->remove(p_int);
+    ENGINE_ASSERT(debug_map_->contain_key(p_int), "Invalid address!");
+    debug_map_->remove(p_int);
 #endif // VOID_DEBUG;
 
-    --alloc_count;
+    --alloc_count_;
     if (size > MAX_SIZE_CLASS)
     {
-        tlfs.tlfs_free(addr, loc);
+        tlfs_.tlfs_free(addr, loc);
         return;
     }
     size = std::max(next_power_of_2(size), MIN_SIZE_CLASS);
     // std::cout << loc.function_name() << ":" << loc.line() << " free " << size << std::endl;
     uint32_t idx = floor_log2(size) - floor_log2(MIN_SIZE_CLASS);
-    pools[idx].pool_free(addr);
+    pools_[idx].pool_free(addr);
 }
 #else
 void *Vallocator::valloc(uint64_t size, uint64_t align)
 {
+    ENGINE_ASSERT(size >= align, "Alignment %llu must be smaller or equal to size %llu", to_ull(align),
+                  to_ull(size));
     ++alloc_count;
     if (size > MAX_SIZE_CLASS)
     {
@@ -922,6 +918,10 @@ void *Vallocator::valloc(uint64_t size, uint64_t align)
 
 void Vallocator::vfree(uint64_t size, void *addr)
 {
+    if (!addr)
+    {
+        return;
+    }
     --alloc_count;
     if (size > MAX_SIZE_CLASS)
     {
@@ -936,12 +936,11 @@ void Vallocator::vfree(uint64_t size, void *addr)
 
 void Vallocator::destroy()
 {
-    // ENGINE_ASSERT(alloc_count == 0, "Allocation count is %" PRIu64 ". Free all resources!",
-    //               alloc_count);
+    ENGINE_ASSERT(alloc_count_ == 0, "Allocation count is %llu . Pls free all resources!", alloc_count_);
 #ifdef VOID_DEBUG
-    if (alloc_count != 0 || debug_map->get_count() != 0)
+    if (alloc_count_ != 0 || debug_map_->get_count() != 0)
     {
-        for (auto it = debug_map->begin(); it != debug_map->end(); ++it) {
+        for (auto it = debug_map_->begin(); it != debug_map_->end(); ++it) {
             if (it.is_occupied())
             {
                 const std::source_location &loc = it.get_val();
@@ -951,10 +950,10 @@ void Vallocator::destroy()
             }
         }
     }
-    debug_map->destroy(tlfs);
-    delete debug_map;
+    debug_map_->destroy(tlfs_);
+    delete debug_map_;
 #endif // VOID_DEBUG
-    tlfs.destroy();
-    page_arena.destroy();
+    tlfs_.destroy();
+    page_arena_.destroy();
 }
 } // namespace VoidEngine

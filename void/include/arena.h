@@ -11,23 +11,25 @@ constexpr uint64_t DEFAULT_COMMIT_SIZE = kib(16);
 class Arena
 {
 private:
-    uint64_t res_size;
-    uint64_t com_size;
-    uint64_t pos;
-    void *addr;
+    uint64_t reserve_size_;
+    uint64_t commit_size_;
+    uint64_t pos_;
+    void *addr_;
+
+    void ensure_committed(uint64_t next_pos);
 
 public:
-    Arena() : res_size(0), com_size(0), pos(0), addr(nullptr) {}
+    Arena() : reserve_size_(0), commit_size_(0), pos_(0), addr_(nullptr) {}
 
     NO_COPY_CTOR(Arena);
     NO_COPY_ASSIGNMENT(Arena);
 
-    Arena(Arena &&other) : res_size(other.res_size), com_size(other.com_size), pos(other.pos), addr(other.addr)
+    Arena(Arena &&other) : reserve_size_(other.reserve_size_), commit_size_(other.commit_size_), pos_(other.pos_), addr_(other.addr_)
     {
-        other.addr = nullptr;
-        other.com_size = 0;
-        other.res_size = 0;
-        other.pos = 0;
+        other.addr_ = nullptr;
+        other.commit_size_ = 0;
+        other.reserve_size_ = 0;
+        other.pos_ = 0;
     }
 
     void init(uint64_t reserve_size = DEFAULT_RESERVE_SIZE,
@@ -38,9 +40,9 @@ public:
     void clear();
     void destroy();
 
-    uint64_t get_pos() const { return pos; }
-    void *get_base_address() const { return addr; }
-    uint64_t get_commit_size() const { return com_size; }
+    uint64_t get_pos() const { return pos_; }
+    void *get_base_address() const { return addr_; }
+    uint64_t get_commit_size() const { return commit_size_; }
 };
 
 struct ScopedArenaTemp

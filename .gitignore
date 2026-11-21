@@ -43,3 +43,6 @@ resource/
 CppProperties.json
 CMakeSettings.json
 external/*
+
+./claude
+

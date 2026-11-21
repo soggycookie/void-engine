@@ -26,87 +26,87 @@ namespace Logger
 
 enum class LogSeverity : uint32_t
 {
-    TRACE_,
-    INFO_,
-    DEBUG_,
-    WARN_,
-    ERROR_,
-    FATAL_,
+    TRACE_LEVEL,
+    INFO_LEVEL,
+    DEBUG_LEVEL,
+    WARN_LEVEL,
+    ERROR_LEVEL,
+    FATAL_LEVEL,
 };
 
-constexpr uint32_t kMaxLogMsgLength = 1024;
+constexpr uint32_t MAX_LOG_MSG_LENGTH = 1024;
 
 struct LogEntry
 {
-    const char *channel;
-    const char *file;
-    uint32_t line;
-    LogSeverity severity;
-    char msg[kMaxLogMsgLength];
+    const char *channel_;
+    const char *file_;
+    uint32_t line_;
+    LogSeverity severity_;
+    char msg_[MAX_LOG_MSG_LENGTH];
 };
 
-constexpr uint32_t kLogCapacity = 32;
+constexpr uint32_t LOG_BUF_CAPACITY = 32;
 
 struct LogBuffer
 {
-    LogEntry entries[kLogCapacity];
-    uint32_t head;
-    uint32_t tail;
+    LogEntry entries_[LOG_BUF_CAPACITY];
+    uint32_t head_;
+    uint32_t tail_;
 };
 
-extern LogBuffer g_logBuffer;
+extern LogBuffer g_log_buffer;
+
+void set_window_handle(const void *window_handle);
 
 template <typename... Args>
-void WriteLog(LogSeverity severity_, const char *channel_, const char *file_, uint32_t line_,
-              const char *fmt, Args &&...args)
+void write_log(LogSeverity severity, const char *channel, const char *file, uint32_t line,
+               const char *fmt, Args &&...args)
 {
-    LogEntry &e = g_logBuffer.entries[g_logBuffer.head & (kLogCapacity - 1)];
+    LogEntry &e = g_log_buffer.entries_[g_log_buffer.head_ & (LOG_BUF_CAPACITY - 1)];
 
     e = {
-        .channel = channel_,
-        .file = file_,
-        .line = line_,
-        .severity = severity_,
+        .channel_ = channel,
+        .file_ = file,
+        .line_ = line,
+        .severity_ = severity,
     };
 
-    std::snprintf(e.msg, kMaxLogMsgLength, fmt, std::forward<Args>(args)...);
+    std::snprintf(e.msg_, MAX_LOG_MSG_LENGTH, fmt, std::forward<Args>(args)...);
 
-    ++g_logBuffer.head;
-
-    if ((g_logBuffer.head - g_logBuffer.tail) > kLogCapacity)
+    ++g_log_buffer.head_;
+    if ((g_log_buffer.head_ - g_log_buffer.tail_) > LOG_BUF_CAPACITY)
     {
-        ++g_logBuffer.tail;
+        ++g_log_buffer.tail_;
     }
 }
 
-void PrintLog();
+void print_log();
 
-void FlushLog();
+void flush_log();
 
-inline const char *GetLogSeverityString(LogSeverity severity)
+inline const char *get_log_severity_string(LogSeverity severity)
 {
     switch (severity)
     {
-    case LogSeverity::TRACE_:
+    case LogSeverity::TRACE_LEVEL:
         return "TRACE";
-    case LogSeverity::INFO_:
+    case LogSeverity::INFO_LEVEL:
         return "INFO";
-    case LogSeverity::DEBUG_:
+    case LogSeverity::DEBUG_LEVEL:
         return "DEBUG";
-    case LogSeverity::WARN_:
+    case LogSeverity::WARN_LEVEL:
         return "WARN";
-    case LogSeverity::ERROR_:
+    case LogSeverity::ERROR_LEVEL:
         return "ERROR";
-    case LogSeverity::FATAL_:
+    case LogSeverity::FATAL_LEVEL:
         return "FATAL";
     }
-
     return nullptr;
 }
 
 struct ContextFieldPrinter
 {
-    char msg[kMaxLogMsgLength] = "";
+    char msg[MAX_LOG_MSG_LENGTH] = "";
     uint32_t count = 0;
     bool first = true;
 
@@ -123,35 +123,35 @@ struct ContextFieldPrinter
         uint32_t writeSize = 0;
         if (first)
         {
-            writeSize = std::snprintf(&msg[count], kMaxLogMsgLength - count, "%s = ", fieldLabel);
+            writeSize = std::snprintf(&msg[count], MAX_LOG_MSG_LENGTH - count, "%s = ", fieldLabel);
         }
         else
         {
-            writeSize = std::snprintf(&msg[count], kMaxLogMsgLength - count, ", %s = ", fieldLabel);
+            writeSize = std::snprintf(&msg[count], MAX_LOG_MSG_LENGTH - count, ", %s = ", fieldLabel);
         }
 
         count += writeSize;
 
-        if (count >= kMaxLogMsgLength)
+        if (count >= MAX_LOG_MSG_LENGTH)
         {
-            count = kMaxLogMsgLength - 1;
+            count = MAX_LOG_MSG_LENGTH - 1;
             return;
         }
 
         if constexpr (std::is_same_v<Arg, std::string> || std::is_same_v<Arg, std::string_view> ||
                       std::is_convertible_v<Arg, const char *>)
         {
-            writeSize = std::snprintf(&msg[count], kMaxLogMsgLength - count, "\"%s\"",
+            writeSize = std::snprintf(&msg[count], MAX_LOG_MSG_LENGTH - count, "\"%s\"",
                                       std::string(val).c_str());
         }
         else if constexpr (std::is_floating_point_v<Arg>)
         {
-            writeSize = std::snprintf(&msg[count], kMaxLogMsgLength - count, "%g",
-                                      static_cast<double>(val));
+            writeSize =
+                std::snprintf(&msg[count], MAX_LOG_MSG_LENGTH - count, "%g", static_cast<double>(val));
         }
         else if constexpr (std::is_integral_v<Arg>)
         {
-            writeSize = std::snprintf(&msg[count], kMaxLogMsgLength - count, "%lld",
+            writeSize = std::snprintf(&msg[count], MAX_LOG_MSG_LENGTH - count, "%lld",
                                       static_cast<int64_t>(val));
         }
         else
@@ -163,112 +163,108 @@ struct ContextFieldPrinter
 
         count += writeSize;
 
-        if (count >= kMaxLogMsgLength)
+        if (count >= MAX_LOG_MSG_LENGTH)
         {
 
-            count = kMaxLogMsgLength - 1;
+            count = MAX_LOG_MSG_LENGTH - 1;
             return;
         }
     }
 
-    void Print() const { std::cout << "Context:\n" << msg << std::endl; }
+    void Print() const
+    {
+        std::cout << "Context:\n" << msg << std::endl;
+    }
 };
 
-inline void ShowErrorDialog(void *windowHandle, const char *caption, const char *content)
-{
-#ifdef _WIN32
-    MessageBoxEx(static_cast<HWND>(windowHandle), content, caption, MB_OK | MB_ICONERROR, 0);
-#else
-
-#endif
-}
+void show_fatal_mbox(const char *caption, const char *content);
 
 } // namespace Logger
-#define PRINT_LOG() Logger::PrintLog();
-#define FLUSH_LOG() Logger::FlushLog();
+#define PRINT_LOG() Logger::print_log();
+#define FLUSH_LOG() Logger::flush_log();
 
-#define LOG_TRACE(channel, fmt, ...)                                                               \
-    Logger::WriteLog(Logger::LogSeverity::TRACE_, channel, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_TRACE(channel, fmt, ...)                                                                    \
+    Logger::write_log(Logger::LogSeverity::TRACE_LEVEL, channel, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
 
-#define LOG_INFO(channel, fmt, ...)                                                                \
-    Logger::WriteLog(Logger::LogSeverity::INFO_, channel, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_INFO(channel, fmt, ...)                                                                     \
+    Logger::write_log(Logger::LogSeverity::INFO_LEVEL, channel, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
 
-#define LOG_DEBUG(channel, fmt, ...)                                                               \
-    Logger::WriteLog(Logger::LogSeverity::DEBUG_, channel, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_DEBUG(channel, fmt, ...)                                                                    \
+    Logger::write_log(Logger::LogSeverity::DEBUG_LEVEL, channel, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
 
-#define LOG_WARN(channel, fmt, ...)                                                                \
-    Logger::WriteLog(Logger::LogSeverity::WARN_, channel, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_WARN(channel, fmt, ...)                                                                     \
+    Logger::write_log(Logger::LogSeverity::WARN_LEVEL, channel, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
 
-#define LOG_ERROR(channel, fmt, ...)                                                               \
-    Logger::WriteLog(Logger::LogSeverity::ERROR_, channel, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_ERROR(channel, fmt, ...)                                                                    \
+    Logger::write_log(Logger::LogSeverity::ERROR_LEVEL, channel, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
 
-#define LOG_FATAL(channel, fmt, ...)                                                               \
-    Logger::WriteLog(Logger::LogSeverity::FATAL_, channel, __FILE__, __LINE__, fmt,                \
-                     ##__VA_ARGS__);                                                               \
-    Logger::FlushLog();                                                                            \
+#define LOG_FATAL(channel, fmt, ...)                                                                    \
+    Logger::write_log(Logger::LogSeverity::FATAL_LEVEL, channel, __FILE__, __LINE__,                    \
+                      fmt, ##__VA_ARGS__);                                                              \
+    Logger::flush_log();                                                                                \
     std::abort();
 
-#define LOG_FATAL_EX(channel, file, line, fmt, ...)                                                \
-    Logger::WriteLog(Logger::LogSeverity::FATAL_, channel, file, line, fmt, ##__VA_ARGS__);        \
-    Logger::FlushLog();                                                                            \
+#define LOG_FATAL_EX(channel, file, line, fmt, ...)                                                     \
+    Logger::write_log(Logger::LogSeverity::FATAL_LEVEL, channel, file, line, fmt, ##__VA_ARGS__);            \
+    Logger::flush_log();                                                                                \
     std::abort();
 
 #define CONTEXT(...) [](Logger::ContextFieldPrinter &fp) { fp.AddField(__VA_ARGS__); }
 
-#define LOG_ASSERT(cond, msg, ...)                                                                 \
-    while (true)                                                                                   \
-    {                                                                                              \
-        if (cond)                                                                                  \
-            break;                                                                                 \
-        Logger::WriteLog(Logger::LogSeverity::ERROR_, "ASSERT", __FILE__, __LINE__, msg,           \
-                         ##__VA_ARGS__);                                                           \
-        FLUSH_LOG();                                                                               \
-        DEBUG_BREAK();                                                                             \
+#define LOG_ASSERT(cond, msg, ...)                                                                      \
+    while (true)                                                                                        \
+    {                                                                                                   \
+        if (cond)                                                                                       \
+            break;                                                                                      \
+        Logger::write_log(Logger::LogSeverity::ERROR_, "ASSERT", __FILE__, __LINE__,                    \
+                          msg, ##__VA_ARGS__);                                                          \
+        FLUSH_LOG();                                                                                    \
+        DEBUG_BREAK();                                                                                  \
     }
 
-#define ENGINE_ASSERT(cond, msg, ...)                                                              \
-    do                                                                                             \
-    {                                                                                              \
-        if (cond)                                                                                  \
-            break;                                                                                 \
-        FLUSH_LOG();                                                                               \
-        char buffer[512];                                                                          \
-        std::snprintf(buffer, 512, msg, ##__VA_ARGS__);                                            \
-        std::cerr << buffer << std::endl;                                                          \
-        DEBUG_BREAK();                                                                             \
-        std::abort();                                                                              \
+#define ENGINE_ASSERT(cond, msg, ...)                                                                   \
+    do                                                                                                  \
+    {                                                                                                   \
+        if (cond)                                                                                       \
+            break;                                                                                      \
+        FLUSH_LOG();                                                                                    \
+        char buffer[512];                                                                               \
+        std::snprintf(buffer, 512, msg, ##__VA_ARGS__);                                                 \
+        std::cerr << buffer << std::endl;                                                               \
+        DEBUG_BREAK();                                                                                  \
+        std::abort();                                                                                   \
     } while (0)
 
-#define LOG_ASSERT_CTX(cond, ctx, msg, ...)                                                        \
-    while (true)                                                                                   \
-    {                                                                                              \
-        if (cond)                                                                                  \
-            break;                                                                                 \
-        Logger::WriteLog(Logger::LogSeverity::ERROR_, "ASSERT", __FILE__, __LINE__, msg,           \
-                         ##__VA_ARGS__);                                                           \
-        Logger::ContextFieldPrinter fp;                                                            \
-        ctx(fp);                                                                                   \
-        FLUSH_LOG();                                                                               \
-        fp.Print();                                                                                \
-        DEBUG_BREAK();                                                                             \
+#define LOG_ASSERT_CTX(cond, ctx, msg, ...)                                                             \
+    while (true)                                                                                        \
+    {                                                                                                   \
+        if (cond)                                                                                       \
+            break;                                                                                      \
+        Logger::write_log(Logger::LogSeverity::ERROR_, "ASSERT", __FILE__, __LINE__,                    \
+                          msg, ##__VA_ARGS__);                                                          \
+        Logger::ContextFieldPrinter fp;                                                                 \
+        ctx(fp);                                                                                        \
+        FLUSH_LOG();                                                                                    \
+        fp.Print();                                                                                     \
+        DEBUG_BREAK();                                                                                  \
     }
 
 #ifdef VOID_WIN32
-#define ENGINE_ASSERT_WIN32(cond)                                                                  \
-    do                                                                                             \
-    {                                                                                              \
-        if (cond)                                                                                  \
-            break;                                                                                 \
-        DWORD error = GetLastError();                                                              \
-        LPSTR message = nullptr;                                                                   \
-        FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |               \
-                           FORMAT_MESSAGE_IGNORE_INSERTS,                                          \
-                       nullptr, error, 0, message, 0, nullptr);                                    \
-        std::cout << message << std::endl;                                                         \
-        FLUSH_LOG();                                                                               \
-        LocalFree(message);                                                                        \
-        DEBUG_BREAK();                                                                             \
-        std::abort();                                                                              \
+#define ENGINE_ASSERT_WIN32(cond)                                                                       \
+    do                                                                                                  \
+    {                                                                                                   \
+        if (cond)                                                                                       \
+            break;                                                                                      \
+        DWORD error = GetLastError();                                                                   \
+        LPSTR message = nullptr;                                                                        \
+        FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |                    \
+                           FORMAT_MESSAGE_IGNORE_INSERTS,                                               \
+                       nullptr, error, 0, message, 0, nullptr);                                         \
+        std::cout << message << std::endl;                                                              \
+        FLUSH_LOG();                                                                                    \
+        LocalFree(message);                                                                             \
+        DEBUG_BREAK();                                                                                  \
+        std::abort();                                                                                   \
     } while (0)
 
 #endif // VOID_WIN32

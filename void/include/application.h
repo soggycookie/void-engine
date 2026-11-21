@@ -16,7 +16,7 @@ namespace VoidEngine
 class Application
 {
 private:
-    static Application *s_Instance;
+    static Application *s_Instance_;
     Vallocator vallocator_;
 
     EngineConfig config_;
@@ -26,15 +26,14 @@ private:
     // VulkanBackend vulkan_backend;
     JobSystem job_system;
     ResourceSystem resource_system_;
-    String pwd_;
     bool running_;
     bool resizing_;
 
 public:
     Application()
     {
-        ENGINE_ASSERT(!s_Instance, "Can not create another instance of app!");
-        s_Instance = this;
+        ENGINE_ASSERT(!s_Instance_, "Can not create another instance of app!");
+        s_Instance_ = this;
     }
 
     virtual ~Application() = default;
@@ -71,8 +70,8 @@ public:
 
     static Application &get_app()
     {
-        ENGINE_ASSERT(s_Instance, "App instance is null");
-        return *s_Instance;
+        ENGINE_ASSERT(s_Instance_, "App instance is null");
+        return *s_Instance_;
     }
 
     // VulkanBackend &get_vulkand_backend() { return vulkan_backend; }

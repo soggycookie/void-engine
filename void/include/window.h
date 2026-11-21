@@ -43,8 +43,7 @@ public:
     virtual bool init() = 0;
     virtual void begin_time_elapse() = 0;
     virtual void end_time_elapse(double &out_time) = 0;
-    virtual void *get_display_window() = 0;
-    virtual void *get_window_handle() const = 0;
+    virtual void *get_window_handle() = 0;
     virtual ClientDimension get_framebuffer_size() const = 0;
 
     double get_delta_time() const

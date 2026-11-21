@@ -32,10 +32,30 @@ struct IOContext
     std::atomic<bool> running;
 };
 
+
+const File INVALID_FILE = nullptr;
+
+struct IO_Request
+{
+    IO_Request()
+        : buffer_size_(0), buffer_(nullptr), callback_(nullptr), user_data_(nullptr),
+          vallocator_(nullptr)
+    {
+    }
+
+    OVERLAPPED data_;
+    uint64_t buffer_size_;
+    void *buffer_;
+    void (*callback_)(void *, void *);
+    void *user_data_;
+    Vallocator *vallocator_;
+};
+
 static ULONG_PTR SHUTDOWN_KEY = 0xDEAD;
 
 static IOContext g_ctx;
 
+// always return wchar with null terminator
 wchar_t *utf8_to_utf16(Arena *arena, const char8_t *utf8, uint32_t path_len)
 {
     ENGINE_ASSERT(utf8, "Utf8 string is null!");
@@ -52,6 +72,9 @@ wchar_t *utf8_to_utf16(Arena *arena, const char8_t *utf8, uint32_t path_len)
     return buf;
 }
 
+// always assume wchar has null terminator
+// return char8_t with null terminator
+// out_len exclude null terminator
 char8_t *utf16_to_utf8(Arena &arena, const wchar_t *utf16, int32_t *out_len)
 {
     ENGINE_ASSERT(utf16, "Wide string is null!");
@@ -236,7 +259,7 @@ File open(StringView path, FileOptionFlags flags)
     temp.end_scratch();
     if (handle == INVALID_HANDLE_VALUE)
     {
-        return nullptr;
+        return INVALID_FILE;
     }
 
     bool expected = true;
@@ -359,6 +382,11 @@ void write(File file, const void *data, uint64_t num_bytes_to_write)
     }
 }
 
+void flush(File file)
+{
+    FlushFileBuffers(file->handle);
+}
+
 void seek(File file, uint64_t offset, FileAnchor anchor)
 {
     DWORD move_method = 0;
@@ -474,7 +502,7 @@ StringView get_file_ext(StringView path)
     return nullptr;
 }
 
-void find_children(Arena &arena, DynamicArray<DirectoryInfo> &info, StringView path)
+DynamicArray<DirectoryInfo> find_children(Arena &arena, StringView path)
 {
     ENGINE_ASSERT(!path.is_empty(), "Path cannot be null!");
     Arena *scratch = t_scratches.get_scratch(&arena);
@@ -491,10 +519,11 @@ void find_children(Arena &arena, DynamicArray<DirectoryInfo> &info, StringView p
     WIN32_FIND_DATAW data;
     HANDLE handle = FindFirstFileW(utf16, &data);
 
+    DynamicArray<DirectoryInfo> info;
     if (handle == INVALID_HANDLE_VALUE)
     {
         temp.end_scratch();
-        return;
+        return info;
     }
 
     info.init(arena, 32);
@@ -519,12 +548,14 @@ void find_children(Arena &arena, DynamicArray<DirectoryInfo> &info, StringView p
         node.abs_path.assign(arena, path);
         node.abs_path.append(arena, u8"\\");
         node.abs_path.append(arena, utf8_path_name);
-        node.path_name = StringView(node.abs_path.data() + (path.get_length() + 1), dir_len);
+        node.dir_name = StringView(node.abs_path.data() + (path.get_length() + 1), dir_len);
         info.push_back(arena, std::move(node));
 
     } while (FindNextFileW(handle, &data));
     FindClose(handle);
     temp.end_scratch();
+
+    return info;
 }
 
 void poll_io_completions(void *, void *)
@@ -563,61 +594,81 @@ void poll_io_completions(void *, void *)
     }
 }
 
-void get_absolute_path(Arena &arena, StringView path, String &out_abs_path)
+String get_absolute_path(Arena &arena, StringView path)
 {
     ENGINE_ASSERT(path.is_empty(), "Path must not be null!");
     Arena *scratch = t_scratches.get_scratch(&arena);
     ScopedScratchTemp temp;
     temp.start_scratch(scratch);
+
     wchar_t *utf16 = utf8_to_utf16(scratch, path.data(), path.get_length());
     DWORD size = GetFullPathNameW(utf16, 0, nullptr, nullptr);
     ENGINE_ASSERT(size, "Failed to get absolute path!");
-    // TODO: remove the null terminator
     wchar_t *abs_path = arena_push_array<wchar_t>(*scratch, size);
-    DWORD len = GetFullPathNameW(utf16, size, abs_path, nullptr);
-    char8_t *utf8_abs_path = utf16_to_utf8(*scratch, abs_path, nullptr);
-    temp.end_scratch();
+    DWORD written = GetFullPathNameW(utf16, size, abs_path, nullptr);
+    if (written != size)
+    {
+        temp.end_scratch();
+        return String();
+    }
+    int32_t utf8_len;
+    char8_t *utf8_abs_path = utf16_to_utf8(*scratch, abs_path, &utf8_len);
+    String out_abs_path;
+    out_abs_path.init(arena, utf8_len);
     out_abs_path.assign(arena, utf8_abs_path);
+
+    temp.end_scratch();
+    return out_abs_path;
 }
 
-void get_current_directory(Arena &arena, String &out_dir)
+String get_current_directory(Arena &arena)
 {
     DWORD char_count = GetCurrentDirectoryW(0, nullptr);
     if (char_count == 0)
     {
-        out_dir.clear();
-        return;
+        return String();
     }
     Arena *scratch = t_scratches.get_scratch(&arena);
     ScopedScratchTemp temp;
     temp.start_scratch(scratch);
-    // TODO: remove the null terminator
+
     wchar_t *dir = arena_push_array<wchar_t>(*scratch, char_count);
     DWORD written = GetCurrentDirectoryW(char_count, dir);
     ENGINE_ASSERT(written, "Failed to get current directory!");
-    char8_t *utf8_dir = utf16_to_utf8(*scratch, dir, nullptr);
+    int32_t utf8_len = 0;
+    char8_t *utf8 = utf16_to_utf8(*scratch, dir, &utf8_len);
+
+    String out_dir;
+    out_dir.init(arena, utf8_len);
+    out_dir.assign(arena, utf8);
+
     temp.end_scratch();
-    out_dir.assign(arena, utf8_dir);
+    return out_dir;
 }
 
-void get_current_directory(Vallocator &vallocator, String &out_dir)
+String get_current_directory(Vallocator &vallocator)
 {
     DWORD char_count = GetCurrentDirectoryW(0, nullptr);
     if (char_count == 0)
     {
-        out_dir.clear();
-        return;
+        return String();
     }
     Arena *scratch = t_scratches.get_scratch(nullptr);
     ScopedScratchTemp temp;
     temp.start_scratch(scratch);
-    // TODO: remove the null terminator
+
     wchar_t *dir = arena_push_array<wchar_t>(*scratch, char_count);
     DWORD written = GetCurrentDirectoryW(char_count, dir);
     ENGINE_ASSERT(written, "Failed to get current directory!");
-    char8_t *utf8_dir = utf16_to_utf8(*scratch, dir, nullptr);
+    int32_t utf8_len = 0;
+    char8_t *utf8 = utf16_to_utf8(*scratch, dir, &utf8_len);
+
+    String out_dir;
+    out_dir.init(vallocator, utf8_len);
+    out_dir.assign(vallocator, utf8);
+
     temp.end_scratch();
-    out_dir.assign(vallocator, utf8_dir);
+    return out_dir;
 }
 } // namespace VoidEngine::FS
 #endif // VOID_WIN32

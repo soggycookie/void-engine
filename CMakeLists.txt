@@ -86,69 +86,28 @@ if(WIN32)
 
 endif()
 
-# set(VOID_ECS_LIB "ecs")
-# set(VOID_ECS_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/ecs/src")
-# set(VOID_ECS_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/ecs/include/ecs")
-# set(VOID_ECS_API_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/ecs/include/public_api")
-# set(VOID_ECS_PRECOMPILED_HEADER "${VOID_ECS_INCLUDE}/ecs_pch.h")
-#
-# file(GLOB_RECURSE VOID_ECS_FILES CONFIGURE_DEPENDS
-#     "${VOID_ECS_SRC}/*.cpp"  
-#     "${VOID_ECS_INCLUDE}/*.h"
-#     "${VOID_ECS_INCLUDE}/*.hpp"
-# )
-#
-# add_library(${VOID_ECS_LIB} STATIC ${VOID_ECS_FILES})
-#
-# set_target_properties(${VOID_ECS_LIB} PROPERTIES
-#     RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
-#     LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
-#     ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
-#     VS_GLOBAL_IntDir         "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
-#     PDB_OUTPUT_DIRECTORY     "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
-# )
-#
-# target_precompile_headers(${VOID_ECS_LIB} PRIVATE ${VOID_ECS_PRECOMPILED_HEADER})
-#
-# target_compile_definitions(${VOID_ECS_LIB}
-#     PUBLIC
-#         $<$<CONFIG:Debug>:ECS_DEBUG>
-# 	PUBLIC
-# 		"ECS_STATIC"
-# )
-#
-# target_include_directories(${VOID_ECS_LIB} 
-#   PRIVATE ${VOID_ECS_INCLUDE}
-#   PUBLIC ${VOID_ECS_API_INCLUDE}
-# )
-
-# set(VOID_LOGGER_LIB "logger")
-# set(VOID_LOGGER_SRC "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/logger/src")
-# set(VOID_LOGGER_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/void-engine/logger/include")
-#
-# file(GLOB_RECURSE VOID_LOGGER_FILES CONFIGURE_DEPENDS
-#     "${VOID_LOGGER_SRC}/*.cpp"  
-#     "${VOID_LOGGER_INCLUDE}/*.h"
-#     "${VOID_LOGGER_INCLUDE}/*.hpp"
-# )
-#
-# add_library(${VOID_LOGGER_LIB} STATIC ${VOID_LOGGER_FILES})
-#
-# set_target_properties(${VOID_LOGGER_LIB} PROPERTIES
-#     RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
-#     LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
-#     ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<CONFIG>"
-#     VS_GLOBAL_IntDir         "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
-#     PDB_OUTPUT_DIRECTORY     "${PROJECT_SOURCE_DIR}/bin/intermediate/$<CONFIG>"
-# )
-#
-# target_include_directories(${VOID_LOGGER_LIB}
-#     PUBLIC ${VOID_LOGGER_INCLUDE}
-# )
-
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 
 find_package(Vulkan REQUIRED)
+
+find_path(SLANG_INCLUDE_DIR
+    NAMES slang.h
+    HINTS $ENV{VULKAN_SDK}/Include/slang
+    REQUIRED
+)
+
+find_library(SLANG_LIBRARY
+    NAMES slang
+    HINTS $ENV{VULKAN_SDK}/Lib
+    REQUIRED
+)
+
+add_library(slang::slang UNKNOWN IMPORTED)
+
+set_target_properties(slang::slang PROPERTIES
+    IMPORTED_LOCATION "${SLANG_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${SLANG_INCLUDE_DIR}"
+)
 
 find_program(SLANGC_EXECUTABLE
     NAMES slangc
@@ -224,6 +183,7 @@ FetchContent_Declare(
     SOURCE_DIR "${VOID_ENGINE_EXTERNAL}/vma"
     UPDATE_DISCONNECTED TRUE
 )
+
 FetchContent_Declare(
     stb
     GIT_REPOSITORY https://github.com/nothings/stb.git
@@ -233,7 +193,32 @@ FetchContent_Declare(
     UPDATE_DISCONNECTED TRUE
 )
 
-FetchContent_MakeAvailable(glm stb vma)
+FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG docking
+    SOURCE_DIR "${VOID_ENGINE_EXTERNAL}/imgui"
+    UPDATE_DISCONNECTED TRUE
+)
+
+FetchContent_MakeAvailable(glm stb vma imgui)
+
+FetchContent_GetProperties(imgui)
+add_library(imgui STATIC
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
+)
+
+target_include_directories(imgui PUBLIC
+    ${imgui_SOURCE_DIR}
+)
+
+target_link_libraries(imgui PUBLIC Vulkan::Vulkan)
+
 add_library(vma INTERFACE)
 target_include_directories(vma INTERFACE
     "${vma_SOURCE_DIR}/include"
@@ -246,13 +231,8 @@ target_link_libraries(${VOID_ENGINE_EXEC}
     glm::glm
     vma
     stb
+    slang::slang
 )
-
-# target_link_libraries(${VOID_ECS_LIB} 
-# 	PRIVATE
-# 	${VOID_LOGGER_LIB}
-# 	${VOID_MATH_LIB}
-# )
 
 # --- Embed per-file copy script into binary dir at configure time ---
 file(WRITE "${CMAKE_BINARY_DIR}/copy_changed.cmake" [[

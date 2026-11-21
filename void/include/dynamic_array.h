@@ -172,6 +172,15 @@ public:
         capacity_ = 0;
     }
 
+    //use this only when the data is populated through raw ptr
+    //let the interface hanlde count otherwise
+    void set_count(uint64_t count)
+    {
+        ENGINE_ASSERT(data_, "Dynamic array is not initialized!");
+        ENGINE_ASSERT(count <= capacity_, "Count exceeds capacity!");
+        count_ = count;
+    }
+
     template <typename U>
     void push_back(Arena &arena, U &&value)
     {
@@ -290,6 +299,11 @@ public:
         }
         T *element = data_ + index;
         return *element;
+    }
+
+    T *mut_data()
+    {
+        return data_;
     }
 
     Iterator begin()

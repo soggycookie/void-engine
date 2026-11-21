@@ -47,7 +47,7 @@ constexpr uint32_t MAX_OPENED_FILE = 1024;
 struct DirectoryInfo
 {
     String abs_path;
-    StringView path_name;
+    StringView dir_name;
     FileMeta meta;
     DirectoryType type;
 
@@ -57,7 +57,7 @@ struct DirectoryInfo
 
     DirectoryInfo(DirectoryInfo &&other)
         : abs_path(std::move(other.abs_path)), meta(std::move(other.meta)), type(other.type),
-          path_name(other.path_name)
+          dir_name(other.dir_name)
     {
     }
 };
@@ -71,25 +71,7 @@ enum FileErrorCode
 };
 
 DEFINE_HANDLE(File);
-
-struct IO_Request
-{
-    IO_Request()
-        : buffer_size_(0), buffer_(nullptr), callback_(nullptr), user_data_(nullptr),
-          vallocator_(nullptr)
-    {
-    }
-
-#ifdef VOID_WIN32
-    OVERLAPPED data_;
-#endif // VOID_WIN32
-
-    uint64_t buffer_size_;
-    void *buffer_;
-    void (*callback_)(void *, void *);
-    void *user_data_;
-    Vallocator *vallocator_;
-};
+extern const File INVALID_FILE;
 
 void startup(uint32_t max_concurrency = 0);
 void shutdown();
@@ -121,17 +103,18 @@ bool rename(StringView old_path, StringView new_path);
 
 StringView get_file_ext(StringView path);
 
-void find_children(Arena &arena, DynamicArray<DirectoryInfo> &info, StringView path);
+DynamicArray<DirectoryInfo> find_children(Arena &arena, StringView path);
 
-void write(File handle, const void *data, uint64_t num_bytes_to_write);
+void write(File file, const void *data, uint64_t num_bytes_to_write);
+void flush(File file);
 
-void seek(File handle, uint64_t offset, FileAnchor anchor);
+void seek(File file, uint64_t offset, FileAnchor anchor);
 
-uint64_t get_file_offset(File handle);
+uint64_t get_file_offset(File file);
 
-void get_absolute_path(Arena &arena, StringView path, String &out_abs_path);
+String get_absolute_path(Arena &arena, StringView path);
 
-void get_current_directory(Arena &arena, String &out_dir);
-void get_current_directory(Vallocator &vallocator, String &out_dir);
+String get_current_directory(Arena &arena);
+String get_current_directory(Vallocator &vallocator);
 
 } // namespace VoidEngine::FS

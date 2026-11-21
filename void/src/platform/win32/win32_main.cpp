@@ -2,8 +2,6 @@
 #include <windows.h>
 #include <winuser.h>
 
-// belong to game layer
-// but platform dependent
 #include "application.h"
 #include "logger/log.h"
 
@@ -16,37 +14,17 @@ int main()
     using namespace VoidEngine;
 
     Application *app = nullptr;
-    try
-    {
-        app = new Application();
+    app = new Application();
 
-        if (app->startup())
-        {
-            app->update();
-        }
-        app->shutdown();
-    }
-    catch (const std::runtime_error &e)
+    if (app->startup())
     {
-        if (app)
-        {
-            Logger::ShowErrorDialog(app->get_window()->get_window_handle(), "Error", e.what());
-        }
-        else
-        {
-            Logger::ShowErrorDialog(nullptr, "Error", e.what());
-        }
+        app->update();
     }
-    catch (...)
-    {
-    }
-
-    if (app)
-    {
-        delete app;
-    }
+    app->shutdown();
 
     FLUSH_LOG();
+    delete app;
+
     return 0;
 }
 
@@ -56,13 +34,17 @@ int main()
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hInstPrev, PSTR cmdline, int cmdshow)
 {
     using namespace VoidEngine;
-    Application *app = new Application();
 
-    if (app->StartUp())
+    Application *app = nullptr;
+    app = new Application();
+
+    if (app->startup())
     {
-        app->Update();
+        app->update();
     }
-    app->ShutDown();
+    app->shutdown();
+
+    FLUSH_LOG();
     delete app;
 
     return 0;

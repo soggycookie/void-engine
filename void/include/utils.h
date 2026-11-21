@@ -17,6 +17,11 @@ namespace VoidEngine
 
 constexpr uint64_t DEFAULT_ALIGNMENT = 8;
 
+inline unsigned long long to_ull(uint64_t n)
+{
+    return SCAST(unsigned long long, n);
+}
+
 inline uint32_t str_len(const char8_t *s)
 {
     return std::strlen(RCAST(const char *, s));

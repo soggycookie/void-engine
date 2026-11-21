@@ -6,7 +6,7 @@
 
 namespace VoidEngine
 {
-Application *Application::s_Instance = nullptr;
+Application *Application::s_Instance_ = nullptr;
 
 bool Application::startup()
 {
@@ -15,6 +15,9 @@ bool Application::startup()
     vallocator_.init(gib(64), mib(4), gib(64), mib(4));
 
     window_ = Window::create(vallocator_, WindowProperty(), [this](InputEvent &e) { on_event(e); });
+
+    Logger::set_window_handle(window_->get_window_handle());
+
     Layer *game_layer = construct<GameLayer>(vallocator_, this);
     layer_stack_.push_layer(game_layer);
 
@@ -36,23 +39,15 @@ bool Application::startup()
     IOCompletionPollingJob.context_ = this;
 
     JobSystem::get().schedule(IOCompletionPollingJob, JobPriority::CRITICAL);
-    FS::get_current_directory(vallocator_, pwd_);
+    String pwd = FS::get_current_directory(vallocator_);
     String resource_path;
     resource_path.init(vallocator_, 64);
-    resource_path.assign(vallocator_, pwd_);
+    resource_path.assign(vallocator_, pwd);
     resource_path.append(vallocator_, u8"\\resource");
-    resource_system_.startup(resource_path.mut_data());
-
-    String test_write;
-    test_write.init(vallocator_, 128);
-    test_write.append(vallocator_, resource_path);
-    test_write.append(vallocator_, u8"\\test.txt");
-    FS::create(test_write);
-    FS::File test_handle = FS::open(test_write, FS::WRITE_APPEND | FS::WRITE_ACCESS_FLAG);
-    FS::write(test_handle, "Hello", 6);
+    resource_system_.startup(resource_path.data());
 
     resource_path.destroy(vallocator_);
-    test_write.destroy(vallocator_);
+    pwd.destroy(vallocator_);
     return true;
 }
 
@@ -60,7 +55,6 @@ void Application::shutdown()
 {
     running_ = false;
     resource_system_.shutdown();
-    pwd_.destroy(vallocator_);
     FS::shutdown();
     job_system.shutdown();
     layer_stack_.destroy();

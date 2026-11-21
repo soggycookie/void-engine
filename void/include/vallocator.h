@@ -12,13 +12,13 @@ private:
 #ifdef VOID_DEBUG
     struct DebugTag
     {
-        DebugTag() : file(nullptr), line(0), magic(DEAD_MAGIC_NUMBER)
+        DebugTag() : file_(nullptr), line_(0), magic_(DEAD_MAGIC_NUMBER)
         {
         }
 
-        const char *file;
-        int32_t line;
-        int32_t magic;
+        const char *file_;
+        int32_t line_;
+        int32_t magic_;
     };
 
     static constexpr uint32_t MAGIC_NUMBER = 0xA7F3C91D;
@@ -27,11 +27,11 @@ private:
 
     struct Header
     {
-        uint64_t size;
+        uint64_t size_;
 #ifdef VOID_DEBUG
-        DebugTag debug_tag;
+        DebugTag debug_tag_;
 
-        Header() : size(0), debug_tag()
+        Header() : size_(0), debug_tag_()
         {
         }
 #else
@@ -43,15 +43,15 @@ private:
 
     struct Block
     {
-        Header header;
-        Block *next_free;
-        Block *prev_free;
+        Header header_;
+        Block *next_free_;
+        Block *prev_free_;
     };
 
     struct Index
     {
-        uint16_t fli;
-        uint16_t sli;
+        uint16_t fli_;
+        uint16_t sli_;
 
         DEFAULT_COMPARABLE(Index);
     };
@@ -66,25 +66,31 @@ private:
     static constexpr uint32_t SMALL_BUCKET_SIZE = 256; // bucket 1
     static constexpr uint32_t SL_BITSHIFT = 5;
     static constexpr uint32_t SL_COUNT = 1U << SL_BITSHIFT;
-    static constexpr uint32_t FL_COUNT = 24;
+    // fl_bitmap_ is uint32_t, so FL_COUNT must not exceed 32
+    static constexpr uint32_t FL_COUNT = 32;
+    static_assert(FL_COUNT <= 32, "fl_bitmap_ is 32 bits wide!");
     static constexpr uint32_t FREELIST_COUNT = FL_COUNT * SL_COUNT;
+    // fli = exp - floor_log2(SMALL_BUCKET_SIZE) + 1, so the last fli (FL_COUNT - 1) covers
+    // [2^(first_fli + FL_COUNT - 1), 2^(first_fli + FL_COUNT)). Any block (header included) of at
+    // most 2^(first_fli + FL_COUNT - 1) bytes has a payload the bins can represent.
+    static constexpr uint64_t MAX_BLOCK_SIZE = 1ULL << (floor_log2(SMALL_BUCKET_SIZE) + FL_COUNT - 1);
     static constexpr Index INVALID_INDEX = {FL_COUNT, SL_COUNT};
 
-    static const Header POOL_SENTINEL;
-
-    void *addr;
-    uint32_t sl_bitmaps[FL_COUNT];
-    Block *freelists[FREELIST_COUNT];
-    uint32_t fl_bitmap;
-    uint32_t alloc_count;
-    uint64_t alloc_size;
-    uint64_t commit_size;
-    uint64_t reserve_size;
+    void *addr_;
+    uint32_t sl_bitmaps_[FL_COUNT];
+    Block *freelists_[FREELIST_COUNT];
+    uint32_t fl_bitmap_;
+    uint32_t alloc_count_;
+    uint64_t alloc_size_;
+    uint64_t commit_size_;
+    uint64_t reserve_size_;
+    // true when the last physical block (the one ending at the commit dead-end) is free
+    bool tail_free_;
 #ifdef VOID_DEBUG
     char name[64];
 #endif
 public:
-    TLFS() : fl_bitmap(0), alloc_count(0), alloc_size(0), freelists(nullptr), commit_size(0), reserve_size(0), addr(nullptr)
+    TLFS() : fl_bitmap_(0), alloc_count_(0), alloc_size_(0), freelists_(nullptr), commit_size_(0), reserve_size_(0), tail_free_(false), addr_(nullptr)
     {
     }
 
@@ -93,23 +99,29 @@ public:
 
     TLFS(TLFS &&other) noexcept
     {
-        std::memcpy(sl_bitmaps, other.sl_bitmaps, sizeof(sl_bitmaps));
-        std::memcpy(freelists, other.freelists, sizeof(freelists));
+        std::memcpy(sl_bitmaps_, other.sl_bitmaps_, sizeof(sl_bitmaps_));
+        std::memcpy(freelists_, other.freelists_, sizeof(freelists_));
 
-        fl_bitmap = other.fl_bitmap;
-        alloc_count = other.alloc_count;
-        alloc_size = other.alloc_size;
-        commit_size = other.commit_size;
-        reserve_size = other.reserve_size;
+        fl_bitmap_ = other.fl_bitmap_;
+        alloc_count_ = other.alloc_count_;
+        alloc_size_ = other.alloc_size_;
+        commit_size_ = other.commit_size_;
+        reserve_size_ = other.reserve_size_;
+        tail_free_ = other.tail_free_;
+#ifdef VOID_DEBUG
         std::memcpy(name, other.name, 64);
+#endif // VOID_DEBUG
+        addr_ = other.addr_;
 
-        std::memset(other.sl_bitmaps, 0, sizeof(sl_bitmaps));
-        std::memset(other.freelists, 0, sizeof(freelists));
-
-        alloc_count = 0;
-        alloc_size = 0;
-        addr = other.addr;
-        other.addr = nullptr;
+        std::memset(other.sl_bitmaps_, 0, sizeof(sl_bitmaps_));
+        std::memset(other.freelists_, 0, sizeof(freelists_));
+        other.fl_bitmap_ = 0;
+        other.commit_size_ = 0;
+        other.reserve_size_ = 0;
+        other.tail_free_ = false;
+        other.alloc_count_ = 0;
+        other.alloc_size_ = 0;
+        other.addr_ = nullptr;
     }
 
     // Vallocator &operator=(Vallocator &&other)
@@ -140,23 +152,23 @@ public:
 #ifdef VOID_DEBUG
     void *tlfs_alloc(uint64_t size, uint64_t align, std::source_location loc = std::source_location::current());
     void tlfs_free(void *addr, std::source_location loc = std::source_location::current());
-    void *tlfs_realloc(void *old_ptr, uint64_t old_size, uint64_t new_size, uint64_t align,
-                       std::source_location loc = std::source_location::current());
+    // void *tlfs_realloc(void *old_ptr, uint64_t old_size, uint64_t new_size, uint64_t align,
+    //                    std::source_location loc = std::source_location::current());
     void set_name(const char *name);
     void print();
 #else
     void *tlfs_alloc(uint64_t size, uint64_t align);
-    void *tlfs_realloc(void *old_ptr, uint64_t old_size, uint64_t new_size, uint64_t align);
+    // void *tlfs_realloc(void *old_ptr, uint64_t old_size, uint64_t new_size, uint64_t align);
     void tlfs_free(void *addr);
 #endif // VOID_DEBUG
 
     uint32_t get_alloc_count() const
     {
-        return alloc_count;
+        return alloc_count_;
     }
     uint64_t get_alloc_size() const
     {
-        return alloc_size;
+        return alloc_size_;
     }
     uint64_t get_min_alloc_size() const
     {
@@ -168,7 +180,8 @@ public:
 
 private:
     void *tlfs_alloc_internal(uint64_t size, uint64_t align);
-    void *tlfs_realloc_internal(void *old_ptr, uint64_t old_size, uint64_t new_size, uint64_t align);
+    // disabled: see review 2026-11-21 finding 14
+    // void *tlfs_realloc_internal(void *old_ptr, uint64_t old_size, uint64_t new_size, uint64_t align);
     void tlfs_free_internal(void *addr);
 
     uint64_t acquire_memory(uint64_t alloc_size);
@@ -240,18 +253,18 @@ private:
     constexpr static uint64_t MIN_SIZE_CLASS = 16;
     constexpr static uint64_t MAX_SIZE_CLASS = 4096;
     constexpr static uint64_t POOL_COUNT = floor_log2(MAX_SIZE_CLASS) - floor_log2(MIN_SIZE_CLASS) + 1;
-    TLFS tlfs;
-    Arena page_arena;
-    Pool pools[POOL_COUNT];
-    uint64_t alloc_count;
+    TLFS tlfs_;
+    Arena page_arena_;
+    Pool pools_[POOL_COUNT];
+    uint64_t alloc_count_;
 #ifdef VOID_DEBUG
-    FlatHashMap<uint64_t, std::source_location> *debug_map;
+    FlatHashMap<uint64_t, std::source_location> *debug_map_;
 #endif // VOID_DEBUG
 
 public:
-    Vallocator() : tlfs(), page_arena(), alloc_count(0)
+    Vallocator() : tlfs_(), page_arena_(), alloc_count_(0)
 #ifdef VOID_DEBUG
-        , debug_map(nullptr)
+        , debug_map_(nullptr)
 #endif // VOID_DEBUG
     {
     }
@@ -269,11 +282,11 @@ public:
 
     TLFS &get_tlfs()
     {
-        return tlfs;
+        return tlfs_;
     }
     Arena &get_arena()
     {
-        return page_arena;
+        return page_arena_;
     }
 };
 
@@ -313,20 +326,6 @@ void destruct(Vallocator &allocator, T *data)
     }
     data->~T();
     allocator.vfree(sizeof(T), data);
-}
-
-template <typename T>
-T *tlfs_alloc_array(TLFS &allocator, uint64_t count, std::source_location loc = std::source_location::current())
-{
-    void *addr = allocator.tlfs_alloc(sizeof(T) * count, alignof(T), loc);
-    ENGINE_ASSERT(addr, "Failed to allocate array!");
-    return SCAST(T *, addr);
-}
-
-template <typename T>
-void tlfs_free_array(TLFS &allocator, T *addr, std::source_location loc = std::source_location::current())
-{
-    allocator.tlfs_free(addr, loc);
 }
 
 template <typename T>

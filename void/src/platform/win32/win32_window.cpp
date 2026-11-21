@@ -1,7 +1,6 @@
 #ifdef VOID_WIN32
 #include "win32_window.h"
 #include "vallocator.h"
-// #include "renderer.h"
 #include "window.h"
 
 #include "input/win32_vk_mapper.h"
@@ -368,15 +367,15 @@ bool Win32_Window::init()
     property_.width_ *= scale;
     property_.height_ *= scale;
 
-    window_handle_ =
-        CreateWindowEx(0, class_name, "Void-engine", WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT,
-                       CW_USEDEFAULT, property_.width_, property_.height_, NULL, NULL, hinstance_, this);
+    hwnd_ = CreateWindowEx(0, class_name, "Void-engine", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                                   CW_USEDEFAULT, CW_USEDEFAULT, property_.width_, property_.height_,
+                                   NULL, NULL, hinstance_, this);
 
     // LOG_INFO("Win32", "Window: %u - %u", m_property.width, m_property.height);
     // LOG_INFO("Win32", "Rect: %u - %u", GetClientDimension(m_windowHandle).width,
     //          GetClientDimension(m_windowHandle).height);
 
-    if (!window_handle_)
+    if (!hwnd_)
     {
         DWORD err = GetLastError();
         char msg[256];
@@ -387,11 +386,6 @@ bool Win32_Window::init()
     }
 
     return true;
-}
-
-void *Win32_Window::get_display_window()
-{
-    return SCAST(void *, window_handle_);
 }
 
 } // namespace VoidEngine

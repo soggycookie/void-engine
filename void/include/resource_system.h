@@ -8,18 +8,28 @@
 namespace VoidEngine
 {
 
-constexpr uint32_t MAX_FILE_SOURCE = 16;
+struct Reader
+{
+    const char *p_;
+    const char *end_;
 
-constexpr const char8_t *SUPPORTED_EXTS[] = {
-    u8"jpg",
-    u8"png",
-    u8"txt",
+    void init(const void *buf, uint64_t len);
+    void read_uint64(uint64_t &out);
+    void read_byte(char &out);
+    uint64_t reader_remaining();
 };
 
-constexpr const char8_t *META_FILE_EXT = u8"meta";
-constexpr uint64_t META_FILE_EXT_LENGTH = 4;
+struct Writer
+{
+    char *p_;
+    const char *end_;
+    uint64_t written_;
 
-constexpr uint64_t SUPPORTED_EXT_COUNT = sizeof(SUPPORTED_EXTS) / sizeof(SUPPORTED_EXTS[0]);
+    void init(void *buf, uint64_t len);
+    void write_uint64(uint64_t data);
+    void write_byte(char data);
+    uint64_t writer_remaining();
+};
 
 template <typename T>
 void array_to_deque(Arena &arena, DynamicArray<T> &&array, Deque<T> &deque)
@@ -53,17 +63,7 @@ public:
 class ResourceSystem
 {
 private:
-    struct MetaCreation
-    {
-        StringView resource_path_;
-        StringView ext_;
-
-        MetaCreation() : resource_path_(), ext_()
-        {
-        }
-    };
-
-    Vallocator resource_vallocator_;
+    Vallocator vallocator_;
     // DynamicArray<IFileSource *> file_sources_;
     DynamicArray<String> sub_resource_paths;
     FlatHashMap<AssetId, ResourceData> resource_registry_;
@@ -76,7 +76,7 @@ private:
 
     ResourceSystem()
         : sub_resource_paths(), resource_path_(), assets_(), resource_registry_(), asset_id_generator_(),
-          resource_vallocator_()
+          vallocator_()
     {
     }
 
@@ -90,9 +90,28 @@ private:
 
     void query_asset(const String &sub_resource_path);
     bool is_supported_ext(StringView ext) const;
-    bool has_associated_metadata_file(StringView path) const;
-    void create_metadata_file(MetaCreation &mt);
-    void parse_resource(StringView path, StringView ext);
+    bool has_associated_meta_file(StringView abs_rpath) const;
+    void create_meta_for_sole_file(StringView abs_rpath);
+    void parse_resource(StringView abs_rpath);
+    ResourceType ext_to_resource_type(StringView ext) const;
+    bool is_bundle_file(StringView ext) const;
+    String get_sole_meta_file_path(Arena &arena, StringView abs_rpath);
+
+    //meta file reading funcs
+    // a = parse_type_header()
+    // open meta file 
+    // Asset asset = ...
+    // push into array
+    //
+    // if a == 1
+    // read guid, resource type + extra info -> resource data
+    // close meta file
+    // else
+    //  while (parse_bundle)
+    //  out offset
+    //  jump to offset -> read guid resource type +extra info -> resource data
+    //  asset data_ref_count ++
+    //   not close file because bundle file has no meta
 
 public:
     bool has(AssetId id);
