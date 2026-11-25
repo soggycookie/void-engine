@@ -90,24 +90,54 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 
 find_package(Vulkan REQUIRED)
 
+# --- Slang runtime library (compile API + reflection) ---
+# slang.lib is the import lib for slang.dll, a thin shim that loads slang-compiler.dll at runtime.
+# The release build is used for every config: the API is COM/C, so it does not share CRT state with us.
 find_path(SLANG_INCLUDE_DIR
     NAMES slang.h
-    HINTS $ENV{VULKAN_SDK}/Include/slang
+    HINTS "$ENV{VULKAN_SDK}/Include/slang"
     REQUIRED
 )
 
 find_library(SLANG_LIBRARY
     NAMES slang
-    HINTS $ENV{VULKAN_SDK}/Lib
+    HINTS "$ENV{VULKAN_SDK}/Lib"
     REQUIRED
 )
 
-add_library(slang::slang UNKNOWN IMPORTED)
+find_file(SLANG_DLL
+    NAMES slang.dll
+    PATHS "$ENV{VULKAN_SDK}/Bin"
+    NO_DEFAULT_PATH
+    REQUIRED
+)
+
+find_file(SLANG_COMPILER_DLL
+    NAMES slang-compiler.dll
+    PATHS "$ENV{VULKAN_SDK}/Bin"
+    NO_DEFAULT_PATH
+    REQUIRED
+)
+
+# Loaded on demand by slang-compiler.dll (GLSL module / glslang SPIR-V path). Optional.
+find_file(SLANG_GLSLANG_DLL       NAMES slang-glslang.dll     PATHS "$ENV{VULKAN_SDK}/Bin" NO_DEFAULT_PATH)
+find_file(SLANG_GLSL_MODULE_DLL   NAMES slang-glsl-module.dll PATHS "$ENV{VULKAN_SDK}/Bin" NO_DEFAULT_PATH)
+
+set(SLANG_RUNTIME_DLLS "${SLANG_DLL}" "${SLANG_COMPILER_DLL}")
+foreach(_dll IN ITEMS SLANG_GLSLANG_DLL SLANG_GLSL_MODULE_DLL)
+    if(${_dll})
+        list(APPEND SLANG_RUNTIME_DLLS "${${_dll}}")
+    endif()
+endforeach()
+
+add_library(slang::slang SHARED IMPORTED)
 
 set_target_properties(slang::slang PROPERTIES
-    IMPORTED_LOCATION "${SLANG_LIBRARY}"
+    IMPORTED_IMPLIB               "${SLANG_LIBRARY}"
+    IMPORTED_LOCATION             "${SLANG_DLL}"
     INTERFACE_INCLUDE_DIRECTORIES "${SLANG_INCLUDE_DIR}"
 )
+message(STATUS "Found slang: ${SLANG_LIBRARY}")
 
 find_program(SLANGC_EXECUTABLE
     NAMES slangc
@@ -209,6 +239,7 @@ add_library(imgui STATIC
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/imgui_demo.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
 )
@@ -232,6 +263,14 @@ target_link_libraries(${VOID_ENGINE_EXEC}
     vma
     stb
     slang::slang
+    imgui
+)
+
+# --- Slang DLLs next to the executable ---
+add_custom_command(TARGET ${VOID_ENGINE_EXEC} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${SLANG_RUNTIME_DLLS} "$<TARGET_FILE_DIR:${VOID_ENGINE_EXEC}>"
+    COMMENT "Copying Slang runtime DLLs..."
+    VERBATIM
 )
 
 # --- Embed per-file copy script into binary dir at configure time ---

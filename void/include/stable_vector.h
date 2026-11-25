@@ -84,6 +84,7 @@ public:
 
         StableHandle &operator=(StableHandle &&other)
         {
+            ENGINE_ASSERT(this != &other, "Self-move is not allowed!");
             m_vector = other.m_vector;
             m_pageIndex = other.m_pageIndex;
             m_blockIndex = other.m_blockIndex;
@@ -341,6 +342,7 @@ public:
 
     StableVector &operator=(StableVector &&other) noexcept
     {
+        ENGINE_ASSERT(this != &other, "Self-move is not allowed!");
         Destroy();
 
         m_pages = other.m_pages;

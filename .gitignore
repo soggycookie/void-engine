@@ -45,4 +45,5 @@ CMakeSettings.json
 external/*
 
 ./claude
+docs/*
 

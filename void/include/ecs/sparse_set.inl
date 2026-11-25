@@ -289,7 +289,7 @@ void SparseSet<T>::remove(uint64_t id)
 
     if constexpr (!std::is_trivially_destructible_v<T>)
     {
-        T *data = get(low_id);
+        T *data = get(id);
         data->~T();
     }
 
@@ -378,7 +378,7 @@ void SparseSet<T>::destroy(Vallocator &vallocator)
 {
     if constexpr (!std::is_trivially_destructible_v<T>)
     {
-        for (uint64_t idx = 1; idx <= alive_count; idx++)
+        for (uint64_t idx = 1; idx < alive_count; idx++)
         {
             uint64_t id = dense_array[idx];
             T *data = get(id);

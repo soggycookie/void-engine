@@ -15,6 +15,12 @@ void LayerStack::destroy()
 void LayerStack::push_layer(Layer *layer)
 {
     ENGINE_ASSERT(layer, "Layer must not be null!");
+    ENGINE_ASSERT(count < MAX_LAYERS, "Layer stack is full!");
+    // layers live in [0, index), overlays in [index, count): shift overlays up to make room
+    for (uint32_t idx = count; idx > index; --idx)
+    {
+        layers[idx] = layers[idx - 1];
+    }
     layers[index] = layer;
     ++index;
     ++count;
@@ -24,6 +30,7 @@ void LayerStack::push_layer(Layer *layer)
 void LayerStack::push_overlay(Layer *layer)
 {
     ENGINE_ASSERT(layer, "Overlayer must not be null!");
+    ENGINE_ASSERT(count < MAX_LAYERS, "Layer stack is full!");
     layers[count] = layer;
     ++count;
     layer->on_attach();

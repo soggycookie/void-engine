@@ -1,5 +1,5 @@
 #pragma once
-
+#include "utils.h"
 #ifdef VOID_WIN32
 #define NOMINMAX
 #include <windows.h>
@@ -52,6 +52,36 @@ public:
         return hinstance_;
     }
 
+    // Feed one UTF-16 unit from WM_CHAR. Returns the code point, or 0 when the unit is a high
+    // surrogate waiting for its pair (characters outside the BMP arrive as two WM_CHARs).
+    uint32_t decode_utf16(wchar_t unit)
+    {
+        if (IS_HIGH_SURROGATE(unit))
+        {
+            high_surrogate_ = unit;
+            return 0;
+        }
+        if (IS_LOW_SURROGATE(unit))
+        {
+            const wchar_t high = high_surrogate_;
+            high_surrogate_ = 0;
+            if (high == 0)
+            {
+                return 0xFFFD; // lone low surrogate
+            }
+            return 0x10000 + ((SCAST(uint32_t, high) - 0xD800) << 10) +
+                   (SCAST(uint32_t, unit) - 0xDC00);
+        }
+        high_surrogate_ = 0;
+        return unit;
+    }
+
+    // Drop a half-received surrogate pair (e.g. on focus loss).
+    void reset_text_state()
+    {
+        high_surrogate_ = 0;
+    }
+
 private:
     bool init() override;
 
@@ -65,6 +95,8 @@ private:
 
     int64_t stop_watch_curr_count_;
     int64_t stop_watch_prev_count_;
+
+    wchar_t high_surrogate_ = 0;
 };
 
 } // namespace VoidEngine

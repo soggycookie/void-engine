@@ -10,7 +10,7 @@
 namespace VoidEngine::ECS
 {
 
-thread_local int32_t World::t_scratch_idx = -1;
+thread_local int32_t World::t_Scratch_idx = -1;
 
 void World::WorkerScratch::init()
 {
@@ -32,15 +32,25 @@ void World::WorkerScratch::push_entity_cmd(EntityCommand &&cmd)
     void *addr = push(sizeof(EntityCommandNode), alignof(EntityCommandNode));
     ENGINE_ASSERT(addr, "Address is null!");
     EntityCommandNode *node = new (addr) EntityCommandNode();
-    node->next = head;
-    head = node;
+    node->next = nullptr;
     node->command = std::move(cmd);
+    // Append so the flush replays commands in the order they were queued (FIFO) per worker.
+    if (tail)
+    {
+        tail->next = node;
+    }
+    else
+    {
+        head = node;
+    }
+    tail = node;
 }
 
 void World::WorkerScratch::reset()
 {
     scratch_arena.pop_to(0);
     head = nullptr;
+    tail = nullptr;
 }
 
 void World::run_system(void *w, void *batch)
@@ -49,15 +59,15 @@ void World::run_system(void *w, void *batch)
     ENGINE_ASSERT(ecs_batch, "Batch must not be null!");
     World* world = SCAST(World *, w);
     ENGINE_ASSERT(world, "World must not be null!");
-    World::t_scratch_idx = (world->get_worker_round_robin().fetch_add(1) % world->get_worker_count()) + 1;
+    World::t_Scratch_idx = (world->get_worker_round_robin().fetch_add(1) % world->get_worker_count()) + 1;
 
     uint32_t idx = 0;
     while((idx = ecs_batch->cursor.fetch_add(1, std::memory_order_relaxed)) < ecs_batch->count)
     {
         ecs_batch->systems[idx]->execute();
     }
-    World::t_scratch_idx = -1;
-    ecs_batch->remaining.fetch_sub(1, std::memory_order_release);
+    World::t_Scratch_idx = -1;
+    ecs_batch->work_finish_count.fetch_add(1, std::memory_order_release);
 }
 
 void World::run_system_main(void *w, void* batch)
@@ -72,7 +82,7 @@ void World::run_system_main(void *w, void* batch)
     {
         ecs_batch->systems[idx]->execute();
     }
-    ecs_batch->remaining.fetch_sub(1, std::memory_order_release);
+    ecs_batch->work_finish_count.fetch_add(1, std::memory_order_release);
 }
 
 World *create_world(Vallocator &vallocator)
@@ -92,25 +102,25 @@ void World::startup()
 {
     static_assert(std::is_move_constructible_v<TypeInfo>);
 
-    t_scratch_idx = 0; //main thread
-    vallocator.init(gib(64), mib(16), gib(64), mib(16));
+    t_Scratch_idx = 0; //main thread
+    vallocator_.init(gib(64), mib(16), gib(64), mib(16));
     // InitAllocators();
-    entity_records.init(vallocator, 256);
-    archetypes.init(vallocator, 64);
-    type_metas.init(vallocator, 64);
-    cached_queries.init(vallocator, 32);
-    type_infos.init(vallocator, 64);
-    archetype_map.init(vallocator, 64);
-    type_ids.init(vallocator, 64);
-    worker_scratches.init(vallocator, 16);
+    entity_records_.init(vallocator_, 256);
+    archetypes_.init(vallocator_, 64);
+    type_metas_.init(vallocator_, 64);
+    cached_queries_.init(vallocator_, 32);
+    type_infos_.init(vallocator_, 64);
+    archetype_map_.init(vallocator_, 64);
+    type_ids_.init(vallocator_, 64);
+    worker_scratches_.init(vallocator_, 16);
 
 
-    deferred = false;
-    first_frame = true;
+    deferred_ = false;
+    first_frame_ = true;
 
-    worker_scratches.emplace_back(vallocator);
-    worker_scratches[0].init();
-    loop_pipeline.init(vallocator);
+    worker_scratches_.emplace_back(vallocator_);
+    worker_scratches_[0].init();
+    loop_pipeline_.init(vallocator_);
 
     register_internal_components();
     init_pipeline_phase();
@@ -121,38 +131,8 @@ void World::register_internal_components()
 {
     component<Name>().id(NAME_ID).register_type();
     component<EcsInherit>().id(EcsInheritId).register_type();
-    component<System>()
-        .id(SYSTEM_ID)
-        .move_ctor(
-            [](void *dest, void *src)
-            {
-                auto s = new (dest) System(std::move(*SCAST(System *, src)));
-                SCAST(System *, src)->query = nullptr;
-            })
-        .dtor(
-            [](void *src)
-            {
-                System *s = SCAST(System *, src);
-                s->~System();
-            })
-        .register_type();
-
-    component<Query>()
-        .id(QUERY_ID)
-        .move_ctor(
-            [](void *dest, void *src)
-            {
-                new (dest) Query(std::move(*SCAST(Query *, src)));
-                SCAST(System *, src)->query = nullptr;
-            })
-        .dtor(
-            [](void *src)
-            {
-                Query *s = SCAST(Query *, src);
-                s->~Query();
-            })
-        .register_type();
-
+    component<System>().id(SYSTEM_ID).register_type();
+    component<Query>().id(QUERY_ID).register_type();
     component<Time>().id(TIME_ID).singleton().register_type();
 
     tag<Phase>().id(PHASE_ID).register_type();
@@ -169,24 +149,24 @@ void World::register_internal_components()
 void World::set_worker_count(uint32_t desired_worker_count)
 {
     uint32_t max_worker_count = JobSystem::get().get_desired_worker_count();
-    if (max_worker_count == 1)
+    if (max_worker_count <= 1)
     {
         desired_worker_count = 0;
         return;
     }
-    multithread = true;
-    worker_count = std::min(desired_worker_count, max_worker_count - 1);
+    multithread_ = true;
+    worker_count_ = std::min(desired_worker_count, max_worker_count - 1);
 
-    for (uint64_t idx = 1; idx < worker_count + 1; ++idx)
+    for (uint64_t idx = 1; idx < worker_count_ + 1; ++idx)
     {
-        worker_scratches.emplace_back(vallocator);
-        worker_scratches[worker_scratches.get_count() - 1].init();
+        worker_scratches_.emplace_back(vallocator_);
+        worker_scratches_[worker_scratches_.get_count() - 1].init();
     }
 }
 
 World::WorkerScratch& World::get_current_scratch()
 {
-    return worker_scratches[t_scratch_idx];
+    return worker_scratches_[t_Scratch_idx];
 }
 
 void World::init_pipeline_phase()
@@ -251,14 +231,15 @@ void World::register_relationship(EntityId relation_id, EntityId target_id, cons
 {
     ENGINE_ASSERT(relation_meta, "");
     ENGINE_ASSERT(target_id != ENTITY_INVALID_ID && relation_id != ENTITY_INVALID_ID, "");
-    ENGINE_ASSERT(is_entity_existing(target_id) && is_entity_existing(relation_id), "");
+    ENGINE_ASSERT(
+        is_entity_existing_skip_version(target_id) && is_entity_existing_skip_version(relation_id), "");
 
     EntityId relationship_id = make_relationship(relation_id, target_id);
 
     TypeInfo type_info;
 #ifdef VOID_DEBUG
-    const Name &relName = get_mut<Name>(relation_id);
-    const Name &targetName = get_mut<Name>(target_id);
+    const Name &relName = get<Name>(relation_id);
+    const Name &targetName = get<Name>(target_id);
 
     uint64_t rel_name_size = std::strlen(relName.name);
     uint64_t target_name_size = std::strlen(targetName.name);
@@ -280,36 +261,33 @@ void World::register_relationship(EntityId relation_id, EntityId target_id, cons
         }
     }
 
-    std::memcpy(type_info.name, relName.name, rel_name_size);
+    std::memcpy(type_info.name_, relName.name, rel_name_size);
     if (target_name_size != 0)
     {
-        type_info.name[rel_name_size] = ' ';
-        std::memcpy(type_info.name + rel_name_size + 1, targetName.name, target_name_size);
-        type_info.name[rel_name_size + 1 + target_name_size] = '\0';
+        type_info.name_[rel_name_size] = ' ';
+        std::memcpy(type_info.name_ + rel_name_size + 1, targetName.name, target_name_size);
+        type_info.name_[rel_name_size + 1 + target_name_size] = '\0';
     }
     else
     {
-        type_info.name[rel_name_size] = '\0';
+        type_info.name_[rel_name_size] = '\0';
     }
-
-    Entity e = entity_builder().name(type_info.name).build();
-#else
-    Entity e = create_entity_builder().Build();
 #endif //VOID_DEBUG
-    type_info.init(vallocator, relation_meta);
-    type_infos.insert(vallocator, relationship_id, std::move(type_info));
+    // A relationship pair is only a type_infos_ key (no entity record), so it must not spawn an entity.
+    type_info.init(vallocator_, relation_meta);
+    type_infos_.insert(vallocator_, relationship_id, std::move(type_info));
 }
 
 Entity World::create_base_entity(LowEntityId eid)
 {
-    ENGINE_ASSERT(!entity_records.is_existing_skip_version(eid), "Id already exists!");
+    ENGINE_ASSERT(!entity_records_.is_existing_skip_version(eid), "Id already exists!");
     bool try_reuse = false;
     if (eid == ENTITY_INVALID_ID)
     {
         eid = get_free_id();
         try_reuse = true;
     }
-    uint64_t returned_id = entity_records.push(vallocator, eid, EntityRecord(), try_reuse);
+    uint64_t returned_id = entity_records_.push(vallocator_, eid, EntityRecord(), try_reuse);
     // new id is accepted
     if (try_reuse && SCAST(EntityId, eid) == returned_id)
     {
@@ -326,36 +304,45 @@ EntityBuilder World::create_entity(const char *name, EntityId parent_eid)
 
 EntityBuilder World::create_entity(EntityId eid, const char *name, EntityId parent_eid)
 {
-    auto& builder = entity_builder().name(name).id(eid);
+    auto builder = entity_builder();
+    builder.name(name).id(eid);
     if(parent_eid != ENTITY_INVALID_ID)
     {
         builder.add_relationship<ChildOf>(parent_eid);
     }
-    return std::move(builder);
+    return builder;
 }
 
-EntityBuilder World::entity_builder() { return EntityBuilder(this); }
+EntityBuilder World::entity_builder()
+{
+    return EntityBuilder(this);
+}
 
 bool World::is_entity_existing(EntityId eid) const
 {
-    return entity_records.is_existing(eid);
+    return entity_records_.is_existing(eid);
+}
+
+bool World::is_entity_existing_skip_version(LowEntityId eid) const
+{
+    return entity_records_.is_existing_skip_version(eid);
 }
 
 bool World::is_type_registerd(EntityId tid) const
 {
-    return type_infos.contain_key(tid) && entity_records.is_existing_skip_version(tid);
+    return type_infos_.contain_key(tid) && entity_records_.is_existing_skip_version(tid);
 }
 
 EntityId World::get_entity_full_id(LowEntityId low_eid)
 {
-    ENGINE_ASSERT(entity_records.is_existing_skip_version(low_eid), "Entity with this low id does not exist!");
-    return entity_records.get_full_id(low_eid);
+    ENGINE_ASSERT(entity_records_.is_existing_skip_version(low_eid), "Entity with this low id does not exist!");
+    return entity_records_.get_full_id(low_eid);
 }
 
 LowEntityId World::get_free_id()
 {
-    LowEntityId next_id = next_free_eid;
-    while (entity_records.is_existing(next_id))
+    LowEntityId next_id = next_free_eid_;
+    while (entity_records_.is_existing_skip_version(next_id))
     {
         ENGINE_ASSERT(next_id != UINT32_MAX, "Reach maximum id value!");
         ++next_id;
@@ -366,7 +353,7 @@ LowEntityId World::get_free_id()
 
 void World::consume_free_id(LowEntityId new_id)
 {
-    next_free_eid = ++new_id;
+    next_free_eid_ = ++new_id;
 }
 
 Entity World::get_entity_from_id(EntityId eid)
@@ -378,17 +365,17 @@ Entity World::get_entity_from_id(EntityId eid)
 EntityRecord &World::get_entity_record(EntityId eid)
 {
     ENGINE_ASSERT(is_entity_existing(eid), "Entity does not exist!");
-    return entity_records[eid];
+    return entity_records_[eid];
 }
 
 void World::set_child_of(EntityId child_id, EntityId parent_id)
 {
     ENGINE_ASSERT(is_entity_existing(child_id), "Child entity does not exist!");
     ENGINE_ASSERT(is_entity_existing(parent_id), "Parent entity does not exist!");
-    EntityRecord &r = entity_records[child_id];
+    EntityRecord &r = entity_records_[child_id];
     if (r.archetype)
     {
-        ENGINE_ASSERT(!r.archetype->type_set.has(make_relationship(CHILD_OF_ID, WILDCARD_ID)),
+        ENGINE_ASSERT(!r.archetype->type_set_.has(make_relationship(CHILD_OF_ID, WILDCARD_ID)),
             "Entity already has a parent!");
     }
     add_relationship(child_id, CHILD_OF_ID, parent_id);
@@ -397,13 +384,91 @@ void World::set_child_of(EntityId child_id, EntityId parent_id)
 EntityId World::get_parent(EntityId child_id)
 {
     ENGINE_ASSERT(is_entity_existing(child_id), "Child entity does not exist!");
-    EntityRecord &r = entity_records[child_id];
-    int32_t cs_idx = r.archetype->type_set.search(make_relationship(CHILD_OF_ID, WILDCARD_ID));
+    EntityRecord &r = entity_records_[child_id];
+    ENGINE_ASSERT(r.archetype, "Archetype of child is null!");
+    int32_t cs_idx = r.archetype->type_set_.search(make_relationship(CHILD_OF_ID, WILDCARD_ID));
     if (cs_idx == TypeSet::NOT_FOUND_IDX)
     {
         return ENTITY_INVALID_ID;
     }
-    return high_32bit(r.archetype->type_set[cs_idx]);
+    LowEntityId pid = high_32bit(r.archetype->type_set_[cs_idx]);
+    ENGINE_ASSERT(entity_records_.is_existing_skip_version(pid), "Parent does not exist!");
+    return get_entity_full_id(pid);
+}
+
+bool World::would_create_cycle(EntityId eid, EntityId relation_id, EntityId target_id)
+{
+    ENGINE_ASSERT(is_entity_existing(eid), "Entity does not exist!");
+    ENGINE_ASSERT(is_entity_existing(target_id), "Target entity does not exist!");
+
+    const LowEntityId eid_low = low_32bit(eid);
+    const LowEntityId relation_low = low_32bit(relation_id);
+    if (low_32bit(target_id) == eid_low)
+    {
+        return true;
+    }
+
+    // Iterative DFS over every target reachable through relation_id (non-exclusive relations can have
+    // several targets). The visited list guarantees termination even if the graph is already cyclic.
+    ScopedArenaTemp stemp;
+    Arena *scratch = t_scratches.get_scratch(nullptr);
+    stemp.start_scratch(scratch);
+
+    DynamicArray<LowEntityId> stack;
+    DynamicArray<LowEntityId> visited;
+    stack.init(*scratch, 16);
+    visited.init(*scratch, 16);
+    stack.push_back(*scratch, low_32bit(target_id));
+    visited.push_back(*scratch, low_32bit(target_id));
+
+    bool found = false;
+    while (!found && !stack.is_empty())
+    {
+        LowEntityId cur = stack[stack.get_count() - 1];
+        stack.pop_back();
+        if (!entity_records_.is_existing_skip_version(cur))
+        {
+            continue;
+        }
+        const EntityRecord &r = entity_records_[cur];
+        if (!r.archetype)
+        {
+            continue;
+        }
+        const TypeSet &ts = r.archetype->type_set_;
+        for (uint32_t i = 0; i < ts.count_ && !found; ++i)
+        {
+            EntityId pair = ts.ids_[i];
+            LowEntityId next = high_32bit(pair);
+            // plain (non pair) ids have no high part
+            if (next == 0 || low_32bit(pair) != relation_low)
+            {
+                continue;
+            }
+            if (next == eid_low)
+            {
+                found = true;
+                break;
+            }
+            bool seen = false;
+            for (uint64_t v = 0; v < visited.get_count(); ++v)
+            {
+                if (visited[v] == next)
+                {
+                    seen = true;
+                    break;
+                }
+            }
+            if (!seen)
+            {
+                visited.push_back(*scratch, next);
+                stack.push_back(*scratch, next);
+            }
+        }
+    }
+
+    stemp.end_scratch();
+    return found;
 }
 
 // HotArray<EntityId> World::GetChildren(EntityId eId)
@@ -431,31 +496,56 @@ EntityId World::get_parent(EntityId child_id)
 void World::remove_entity(EntityId eid)
 {
     ENGINE_ASSERT(is_entity_existing(eid), "Entity does not exist!");
-    EntityRecord &r = entity_records[eid];
-    ENGINE_ASSERT(r.archetype, "Entity archetype must not be null!");
+    EntityRecord &r = entity_records_[eid];
 
-    swap_back_entity(r);
-    for (uint64_t idx = 0; idx < r.archetype->column_count; ++idx)
+    if (deferred_)
     {
-        Column &col = r.archetype->columns[idx];
-        const TypeMetadata *ti = col.type_meta;
-        ENGINE_ASSERT(ti, "Type info must not be null!");
-
-        if (ti->hook.dtor)
-        {
-            void *src = OFFSET_ADDR(col.data, ti->size * (r.archetype->count - 1));
-            ti->hook.dtor(src);
-        }
+        EntityCommand cmd;
+        cmd.eid = eid;
+        cmd.mode = EntityCommandMode::ENTITY_DELETE;
+        resolve_entity_cmd(cmd);
     }
-    --r.archetype->count;
-    entity_records.remove(eid);
+    else if (!r.archetype)
+    {
+        entity_records_.remove(eid);
+    }
+    else
+    {
+        swap_back_entity(r);
+        for (uint64_t idx = 0; idx < r.archetype->column_count_; ++idx)
+        {
+            Column &col = r.archetype->columns_[idx];
+            const TypeMetadata *ti = col.type_meta;
+            ENGINE_ASSERT(ti, "Type info must not be null!");
+
+            if (ti->hook.dtor)
+            {
+                void *src = OFFSET_ADDR(col.data, ti->size * (r.archetype->count_ - 1));
+                ti->hook.dtor(src);
+            }
+        }
+        --r.archetype->count_;
+        entity_records_.remove(eid);
+    }
 }
 
 void World::resolve_entity_cmd(EntityCommand &command)
 {
-    if (deferred)
+    if (deferred_)
     {
         get_current_scratch().push_entity_cmd(std::move(command));
+        return;
+    }
+
+    // Spawn commands create their entity here; everything else needs a live target.
+    if (command.mode != EntityCommandMode::ENTITY_SPAWN && !is_entity_existing(command.eid))
+    {
+        return;
+    }
+
+    if (command.mode == EntityCommandMode::ENTITY_DELETE)
+    {
+        remove_entity(command.eid);
         return;
     }
 
@@ -474,7 +564,7 @@ void World::resolve_entity_cmd(EntityCommand &command)
         }
     }
 
-    EntityRecord &r = entity_records[command.eid];
+    EntityRecord &r = entity_records_[command.eid];
     Archetype *src_archetype = r.archetype;
     Archetype *dst_archetype = r.archetype;
 
@@ -483,7 +573,7 @@ void World::resolve_entity_cmd(EntityCommand &command)
         AddCommand &cmd = command.add_cmds[idx];
         if (cmd.type_meta->is_relation())
         {
-            if (!type_infos.contain_key(cmd.tid))
+            if (!type_infos_.contain_key(cmd.tid))
             {
                 register_relationship(low_32bit(cmd.tid), high_32bit(cmd.tid), cmd.type_meta);
             }
@@ -501,9 +591,9 @@ void World::resolve_entity_cmd(EntityCommand &command)
         return;
     }
 
-    if (dst_archetype && dst_archetype->count == dst_archetype->capacity)
+    if (dst_archetype && dst_archetype->count_ == dst_archetype->capacity_)
     {
-        dst_archetype->resize(vallocator);
+        dst_archetype->resize(vallocator_);
     }
 
     if (src_archetype)
@@ -511,8 +601,8 @@ void World::resolve_entity_cmd(EntityCommand &command)
         swap_back_entity(r);
     }
 
-    uint64_t src_tset_count = (src_archetype == nullptr) ? 0 : src_archetype->type_set.count;
-    uint64_t dst_tset_count = (dst_archetype == nullptr) ? 0 : dst_archetype->type_set.count;
+    uint64_t src_tset_count = (src_archetype == nullptr) ? 0 : src_archetype->type_set_.count_;
+    uint64_t dst_tset_count = (dst_archetype == nullptr) ? 0 : dst_archetype->type_set_.count_;
     uint64_t max_ts_count = std::max(src_tset_count, dst_tset_count);
 
     uint64_t src_idx = 0;
@@ -535,14 +625,14 @@ void World::resolve_entity_cmd(EntityCommand &command)
         EntityId src_tset_id = ENTITY_INVALID_ID;
         if (src_idx < src_tset_count)
         {
-            src_tset_id = src_archetype->type_set[src_idx];
+            src_tset_id = src_archetype->type_set_[src_idx];
             s = true;
         }
 
         EntityId dst_tset_id = ENTITY_INVALID_ID;
         if (dst_idx < dst_tset_count)
         {
-            dst_tset_id = dst_archetype->type_set[dst_idx];
+            dst_tset_id = dst_archetype->type_set_[dst_idx];
             d = true;
         }
 
@@ -554,7 +644,7 @@ void World::resolve_entity_cmd(EntityCommand &command)
         // same type -> move
         if (src_tset_id == dst_tset_id && src_tset_id != ENTITY_INVALID_ID)
         {
-            int32_t dst_col_idx = dst_archetype->column_map[dst_idx];
+            int32_t dst_col_idx = dst_archetype->column_map_[dst_idx];
 
             // no data type -> skip to next type
             if (dst_col_idx == TypeSet::NOT_FOUND_IDX)
@@ -564,15 +654,15 @@ void World::resolve_entity_cmd(EntityCommand &command)
                 continue;
             }
 
-            Column &dst_col = dst_archetype->columns[dst_col_idx];
+            Column &dst_col = dst_archetype->columns_[dst_col_idx];
             const TypeMetadata *ti = dst_col.type_meta;
             ENGINE_ASSERT(ti, "");
-            void *dest = OFFSET_ADDR(dst_col.data, ti->size * dst_archetype->count);
+            void *dest = OFFSET_ADDR(dst_col.data, ti->size * dst_archetype->count_);
 
-            int32_t src_col_idx = src_archetype->column_map[src_idx];
+            int32_t src_col_idx = src_archetype->column_map_[src_idx];
             ENGINE_ASSERT(src_col_idx != TypeSet::NOT_FOUND_IDX, "Index does not exist!");
-            Column &src_col = src_archetype->columns[src_col_idx];
-            void *src = OFFSET_ADDR(src_col.data, ti->size * (src_archetype->count - 1));
+            Column &src_col = src_archetype->columns_[src_col_idx];
+            void *src = OFFSET_ADDR(src_col.data, ti->size * (src_archetype->count_ - 1));
 
             move_to(dest, src, ti);
 
@@ -592,7 +682,7 @@ void World::resolve_entity_cmd(EntityCommand &command)
                 ENGINE_ASSERT(dst_tset_id == command.add_cmds[add_idx].tid, "Wrong add type!");
                 AddCommand &cmd = command.add_cmds[add_idx];
 
-                int32_t col_idx = dst_archetype->column_map[dst_idx];
+                int32_t col_idx = dst_archetype->column_map_[dst_idx];
 
                 if (col_idx == TypeSet::NOT_FOUND_IDX)
                 {
@@ -601,10 +691,10 @@ void World::resolve_entity_cmd(EntityCommand &command)
                     continue;
                 }
 
-                Column &col = dst_archetype->columns[col_idx];
+                Column &col = dst_archetype->columns_[col_idx];
                 const TypeMetadata *ti = col.type_meta;
                 ENGINE_ASSERT(ti, "");
-                void *dst = OFFSET_ADDR(col.data, ti->size * dst_archetype->count);
+                void *dst = OFFSET_ADDR(col.data, ti->size * dst_archetype->count_);
 
                 switch (cmd.type)
                 {
@@ -639,7 +729,7 @@ void World::resolve_entity_cmd(EntityCommand &command)
                 ENGINE_ASSERT(src_archetype, "Source archetype must not be null!");
                 ENGINE_ASSERT(del_idx < command.del_count, "Exceed del cmd count!");
                 ENGINE_ASSERT(src_tset_id == command.del_cmds[del_idx].tid, "Wrong del type!");
-                int32_t col_idx = src_archetype->column_map[src_idx];
+                int32_t col_idx = src_archetype->column_map_[src_idx];
 
                 if (col_idx == TypeSet::NOT_FOUND_IDX)
                 {
@@ -648,11 +738,11 @@ void World::resolve_entity_cmd(EntityCommand &command)
                     continue;
                 }
 
-                Column &col = src_archetype->columns[col_idx];
+                Column &col = src_archetype->columns_[col_idx];
                 const TypeMetadata *ti = col.type_meta;
                 ENGINE_ASSERT(ti, "");
 
-                void *src = OFFSET_ADDR(col.data, ti->size * (src_archetype->count - 1));
+                void *src = OFFSET_ADDR(col.data, ti->size * (src_archetype->count_ - 1));
                 if (ti->hook.dtor)
                 {
                     ti->hook.dtor(src);
@@ -674,24 +764,24 @@ void World::resolve_entity_cmd(EntityCommand &command)
 
     if (src_archetype)
     {
-        --src_archetype->count;
+        --src_archetype->count_;
         // std::cout << srcArchetype->name << " move 1 entity, remaining: " << srcArchetype->count << std::endl;
         // for (uint64_t i = 0; i < srcArchetype->count; ++i)
         // {
         //     std::cout << srcArchetype->entities[i] << " | ";
         // }
         // std::cout << std::endl;
-        revalidate_cached_query_entity_filter(src_archetype, src_archetype->count,
+        revalidate_cached_query_entity_filter(src_archetype, src_archetype->count_,
                                            EntityRevalidationMode::ON_REMOVED);
     }
 
     if (dst_archetype)
     {
-        dst_archetype->entities[dst_archetype->count] = command.eid;
-        r.row = dst_archetype->count;
-        revalidate_cached_query_entity_filter(dst_archetype, dst_archetype->count,
+        dst_archetype->entities_[dst_archetype->count_] = command.eid;
+        r.row = dst_archetype->count_;
+        revalidate_cached_query_entity_filter(dst_archetype, dst_archetype->count_,
                                            EntityRevalidationMode::ON_ADDED);
-        ++dst_archetype->count;
+        ++dst_archetype->count_;
         // std::cout << destArchetype->name << " obtain 1 entity, total: " << destArchetype->count << std::endl;
         // for (uint64_t i = 0; i < destArchetype->count; ++i)
         // {
@@ -750,19 +840,20 @@ void World::add_component(EntityId eid, EntityId tid)
 {
     ENGINE_ASSERT(is_entity_existing(eid), "Entity does not exist!");
     ENGINE_ASSERT(is_type_registerd(tid), "Type is not registered!");
-    EntityRecord &r = entity_records[eid];
-    const TypeMetadata *tm = type_infos[tid].meta;
+    EntityRecord &r = entity_records_[eid];
+    const TypeMetadata *tm = type_infos_[tid].meta_;
 
     ENGINE_ASSERT(tm->is_component(), "");
     ENGINE_ASSERT(!tm->is_singleton(), "");
     if (r.archetype)
     {
-        ENGINE_ASSERT(!r.archetype->type_set.has(tid), "Component already exist in set!");
+        ENGINE_ASSERT(!r.archetype->type_set_.has(tid), "Component already exist in set!");
     }
 
-    if (deferred)
+    if (deferred_)
     {
         EntityCommand cmd;
+        cmd.id(eid);
         cmd.add(this, tid);
         cmd.mode = EntityCommandMode::ENTITY_PATCH;
         get_current_scratch().push_entity_cmd(std::move(cmd));
@@ -779,19 +870,20 @@ void World::assign_component_move(EntityId eid, EntityId tid, void *data)
 {
     ENGINE_ASSERT(is_entity_existing(eid), "Entity does not exist!");
     ENGINE_ASSERT(is_type_registerd(tid), "Type is not registered!");
-    EntityRecord &r = entity_records[eid];
-    const TypeMetadata *tm = type_infos[tid].meta;
+    EntityRecord &r = entity_records_[eid];
+    const TypeMetadata *tm = type_infos_[tid].meta_;
 
     ENGINE_ASSERT(tm->is_component(), "");
     ENGINE_ASSERT(!tm->is_singleton(), "");
     if (r.archetype)
     {
-        ENGINE_ASSERT(!r.archetype->type_set.has(tid), "Component already exist in set!");
+        ENGINE_ASSERT(!r.archetype->type_set_.has(tid), "Component already exist in set!");
     }
 
-    if (deferred)
+    if (deferred_)
     {
         EntityCommand cmd;
+        cmd.id(eid);
         cmd.assign_move(this, tid, data);
         cmd.mode = EntityCommandMode::ENTITY_PATCH;
         get_current_scratch().push_entity_cmd(std::move(cmd));
@@ -807,19 +899,20 @@ void World::assign_component_copy(EntityId eid, EntityId tid, const void *data)
 {
     ENGINE_ASSERT(is_entity_existing(eid), "Entity does not exist!");
     ENGINE_ASSERT(is_type_registerd(tid), "Type is not registered!");
-    EntityRecord &r = entity_records[eid];
-    const TypeMetadata *tm = type_infos[tid].meta;
+    EntityRecord &r = entity_records_[eid];
+    const TypeMetadata *tm = type_infos_[tid].meta_;
 
     ENGINE_ASSERT(tm->is_component(), "");
     ENGINE_ASSERT(!tm->is_singleton(), "");
     if (r.archetype)
     {
-        ENGINE_ASSERT(!r.archetype->type_set.has(tid), "Component already exist in set!");
+        ENGINE_ASSERT(!r.archetype->type_set_.has(tid), "Component already exist in set!");
     }
 
-    if (deferred)
+    if (deferred_)
     {
         EntityCommand cmd;
+        cmd.id(eid);
         cmd.assign_copy(this, tid, data);
         cmd.mode = EntityCommandMode::ENTITY_PATCH;
         get_current_scratch().push_entity_cmd(std::move(cmd));
@@ -838,30 +931,33 @@ void World::add_relationship(EntityId eid, EntityId relation_id, EntityId target
     ENGINE_ASSERT(is_type_registerd(relation_id), "Type is not registered!");
 
     EntityId relationship_id = make_relationship(relation_id, target_eid);
-    EntityRecord &r = entity_records[eid];
-    const TypeMetadata *tm = type_infos[relation_id].meta;
+    EntityRecord &r = entity_records_[eid];
+    const TypeMetadata *tm = type_infos_[relation_id].meta_;
     ENGINE_ASSERT(tm->is_relation(), "");
     ENGINE_ASSERT(!tm->is_singleton(), "");
+    ENGINE_ASSERT(tm->is_allow_cycle() || !would_create_cycle(eid, relation_id, target_eid),
+                  "Relationship would create a cycle!");
     if (r.archetype)
     {
-        ENGINE_ASSERT(!r.archetype->type_set.has(relationship_id), "Relationship already exist in set!");
+        ENGINE_ASSERT(!r.archetype->type_set_.has(relationship_id), "Relationship already exist in set!");
         if (tm->is_exclusive())
         {
-            ENGINE_ASSERT(!r.archetype->type_set.has(make_relationship(relationship_id, WILDCARD_ID)),
+            ENGINE_ASSERT(!r.archetype->type_set_.has(make_relationship(relationship_id, WILDCARD_ID)),
                           "Relation already exists in set!");
         }
     }
 
-    if (deferred)
+    if (deferred_)
     {
         EntityCommand cmd;
+        cmd.id(eid);
         cmd.add(this, relationship_id);
         cmd.mode = EntityCommandMode::ENTITY_PATCH;
         get_current_scratch().push_entity_cmd(std::move(cmd));
     }
     else
     {
-        if (!type_infos.contain_key(relationship_id))
+        if (!type_infos_.contain_key(relationship_id))
         {
             register_relationship(relation_id, target_eid, tm);
         }
@@ -879,31 +975,34 @@ void World::assign_relationship_move(EntityId eid, EntityId relation_id, EntityI
 
     EntityId relationship_id = make_relationship(relation_id, target_eid);
 
-    EntityRecord &r = entity_records[eid];
-    const TypeMetadata *tm = type_infos[relation_id].meta;
+    EntityRecord &r = entity_records_[eid];
+    const TypeMetadata *tm = type_infos_[relation_id].meta_;
     ENGINE_ASSERT(tm->is_relation(), "");
     ENGINE_ASSERT(tm->has_data(), "");
     ENGINE_ASSERT(!tm->is_singleton(), "");
+    ENGINE_ASSERT(tm->is_allow_cycle() || !would_create_cycle(eid, relation_id, target_eid),
+                  "Relationship would create a cycle!");
     if (r.archetype)
     {
-        ENGINE_ASSERT(!r.archetype->type_set.has(relationship_id), "Relationship already exist in set!");
+        ENGINE_ASSERT(!r.archetype->type_set_.has(relationship_id), "Relationship already exist in set!");
         if (tm->is_exclusive())
         {
-            ENGINE_ASSERT(!r.archetype->type_set.has(make_relationship(relationship_id, WILDCARD_ID)),
+            ENGINE_ASSERT(!r.archetype->type_set_.has(make_relationship(relationship_id, WILDCARD_ID)),
                           "Relation already exists in set!");
         }
     }
 
-    if (deferred)
+    if (deferred_)
     {
         EntityCommand cmd;
+        cmd.id(eid);
         cmd.assign_move(this, relationship_id, data);
         cmd.mode = EntityCommandMode::ENTITY_PATCH;
         get_current_scratch().push_entity_cmd(std::move(cmd));
     }
     else
     {
-        if (!type_infos.contain_key(relationship_id))
+        if (!type_infos_.contain_key(relationship_id))
         {
             register_relationship(relation_id, target_eid, tm);
         }
@@ -920,31 +1019,34 @@ void World::assign_relationship_copy(EntityId eid, EntityId relation_id, EntityI
 
     EntityId relationship_id = make_relationship(relation_id, target_eid);
 
-    EntityRecord &r = entity_records[eid];
-    const TypeMetadata *tm = type_infos[relation_id].meta;
+    EntityRecord &r = entity_records_[eid];
+    const TypeMetadata *tm = type_infos_[relation_id].meta_;
     ENGINE_ASSERT(tm->is_relation(), "");
     ENGINE_ASSERT(tm->has_data(), "");
     ENGINE_ASSERT(!tm->is_singleton(), "");
+    ENGINE_ASSERT(tm->is_allow_cycle() || !would_create_cycle(eid, relation_id, target_eid),
+                  "Relationship would create a cycle!");
     if (r.archetype)
     {
-        ENGINE_ASSERT(!r.archetype->type_set.has(relationship_id), "Relationship already exist in set!");
+        ENGINE_ASSERT(!r.archetype->type_set_.has(relationship_id), "Relationship already exist in set!");
         if (tm->is_exclusive())
         {
-            ENGINE_ASSERT(!r.archetype->type_set.has(make_relationship(relationship_id, WILDCARD_ID)),
+            ENGINE_ASSERT(!r.archetype->type_set_.has(make_relationship(relationship_id, WILDCARD_ID)),
                           "Relation already exists in set!");
         }
     }
 
-    if (deferred)
+    if (deferred_)
     {
         EntityCommand cmd;
+        cmd.id(eid);
         cmd.assign_copy(this, relationship_id, data);
         cmd.mode = EntityCommandMode::ENTITY_PATCH;
         get_current_scratch().push_entity_cmd(std::move(cmd));
     }
     else
     {
-        if (!type_infos.contain_key(relationship_id))
+        if (!type_infos_.contain_key(relationship_id))
         {
             register_relationship(relation_id, target_eid, tm);
         }
@@ -957,18 +1059,19 @@ void World::add_tag(EntityId eid, EntityId tid)
 {
     ENGINE_ASSERT(is_entity_existing(eid), "Entity does not exist!");
     ENGINE_ASSERT(is_type_registerd(tid), "Type is not registered!");
-    EntityRecord &r = entity_records[eid];
-    const TypeMetadata *tm = type_infos[tid].meta;
+    EntityRecord &r = entity_records_[eid];
+    const TypeMetadata *tm = type_infos_[tid].meta_;
     ENGINE_ASSERT(tm->is_tag(), "");
     ENGINE_ASSERT(!tm->is_singleton(), "");
     if (r.archetype)
     {
-        ENGINE_ASSERT(!r.archetype->type_set.has(tid), "Component already exist in set!");
+        ENGINE_ASSERT(!r.archetype->type_set_.has(tid), "Component already exist in set!");
     }
 
-    if (deferred)
+    if (deferred_)
     {
         EntityCommand cmd;
+        cmd.id(eid);
         cmd.add(this, tid);
         cmd.mode = EntityCommandMode::ENTITY_PATCH;
         get_current_scratch().push_entity_cmd(std::move(cmd));
@@ -989,15 +1092,16 @@ void World::remove_type(EntityId eid, EntityId tid)
 {
     ENGINE_ASSERT(is_entity_existing(eid), "Entity does not exist!");
     ENGINE_ASSERT(is_type_registerd(tid), "Type is not registered!");
-    EntityRecord &r = entity_records[eid];
-    const TypeMetadata *tm = type_infos[tid].meta;
+    EntityRecord &r = entity_records_[eid];
+    const TypeMetadata *tm = type_infos_[tid].meta_;
     ENGINE_ASSERT(r.archetype, "");
-    ENGINE_ASSERT(r.archetype->type_set.has(tid), "");
+    ENGINE_ASSERT(r.archetype->type_set_.has(tid), "");
 
-    if (deferred)
+    if (deferred_)
     {
         EntityCommand cmd;
-        cmd.remove(this, eid);
+        cmd.id(eid);
+        cmd.remove(this, tid);
         cmd.mode = EntityCommandMode::ENTITY_PATCH;
         get_current_scratch().push_entity_cmd(std::move(cmd));
     }
@@ -1023,23 +1127,23 @@ bool World::has_type(EntityId eid, EntityId tid)
     {
         ENGINE_ASSERT(is_type_registerd(tid), "Type is not registered!");
     }
-    EntityRecord &r = entity_records[eid];
+    EntityRecord &r = entity_records_[eid];
     ENGINE_ASSERT(r.archetype, "Entity archetype must not be null!");
 
-    return r.archetype->type_set.has(tid);
+    return r.archetype->type_set_.has(tid);
 }
 
-void World::set_move(EntityId eid, EntityId cid, void *data)
+void World::set_move(EntityId eid, EntityId tid, void *data)
 {
     ENGINE_ASSERT(is_entity_existing(eid), "Entity does not exist!");
-    ENGINE_ASSERT(is_type_registerd(cid), "Type is not registered!");
-    EntityRecord &r = entity_records[eid];
+    ENGINE_ASSERT(is_type_registerd(tid), "Type is not registered!");
+    EntityRecord &r = entity_records_[eid];
     ENGINE_ASSERT(r.archetype, "Entity archetype must not be null!");
-    int32_t idx = r.archetype->type_set.search(cid);
+    int32_t idx = r.archetype->type_set_.search(tid);
     ENGINE_ASSERT(idx != TypeSet::NOT_FOUND_IDX, "Type does not exist in set!");
-    int32_t col_idx = r.archetype->column_map[idx];
+    int32_t col_idx = r.archetype->column_map_[idx];
     ENGINE_ASSERT(col_idx != Archetype::INVALID_COLUMN, "Type does not contain data!");
-    Column &col = r.archetype->columns[col_idx];
+    Column &col = r.archetype->columns_[col_idx];
     const TypeMetadata *ti = col.type_meta;
     ENGINE_ASSERT(ti, "Type info must not be null!");
     void *dst = OFFSET_ADDR(col.data, ti->size * r.row);
@@ -1047,20 +1151,23 @@ void World::set_move(EntityId eid, EntityId cid, void *data)
 
     revalidate_cached_query_entity_filter(r.archetype, r.row, EntityRevalidationMode::ON_MODIFIED);
 
-    ti->hook.on_set(dst, this);
+    if (ti->hook.on_set)
+    {
+        ti->hook.on_set(dst, this);
+    }
 }
 
-void World::set_copy(EntityId eid, EntityId cid, const void *data)
+void World::set_copy(EntityId eid, EntityId tid, const void *data)
 {
     ENGINE_ASSERT(is_entity_existing(eid), "Entity does not exist!");
-    ENGINE_ASSERT(is_type_registerd(cid), "Type is not registered!");
-    EntityRecord &r = entity_records[eid];
+    ENGINE_ASSERT(is_type_registerd(tid), "Type is not registered!");
+    EntityRecord &r = entity_records_[eid];
     ENGINE_ASSERT(r.archetype, "Entity archetype must not be null!");
-    int32_t idx = r.archetype->type_set.search(cid);
+    int32_t idx = r.archetype->type_set_.search(tid);
     ENGINE_ASSERT(idx != TypeSet::NOT_FOUND_IDX, "Type does not exist in set!");
-    int32_t col_idx = r.archetype->column_map[idx];
+    int32_t col_idx = r.archetype->column_map_[idx];
     ENGINE_ASSERT(col_idx != Archetype::INVALID_COLUMN, "Type does not contain data!");
-    Column &col = r.archetype->columns[col_idx];
+    Column &col = r.archetype->columns_[col_idx];
     const TypeMetadata *ti = col.type_meta;
     ENGINE_ASSERT(ti, "Type info must not be null!");
     void *dst = OFFSET_ADDR(col.data, ti->size * r.row);
@@ -1068,23 +1175,44 @@ void World::set_copy(EntityId eid, EntityId cid, const void *data)
 
     revalidate_cached_query_entity_filter(r.archetype, r.row, EntityRevalidationMode::ON_MODIFIED);
 
-    ti->hook.on_set(dst, this);
+    if (ti->hook.on_set)
+    {
+        ti->hook.on_set(dst, this);
+    }
 }
 
-void *World::get(EntityId eid, EntityId cid)
+void *World::get_mut(EntityId eid, EntityId tid)
 {
     ENGINE_ASSERT(is_entity_existing(eid), "Entity does not exist!");
-    ENGINE_ASSERT(is_type_registerd(cid), "Type is not registered!");
-    EntityRecord &r = entity_records[eid];
+    ENGINE_ASSERT(is_type_registerd(tid), "Type is not registered!");
+    EntityRecord &r = entity_records_[eid];
     ENGINE_ASSERT(r.archetype, "Entity archetype must not be null!");
-    int32_t idx = r.archetype->type_set.search(cid);
+    int32_t idx = r.archetype->type_set_.search(tid);
     ENGINE_ASSERT(idx != TypeSet::NOT_FOUND_IDX, "Type does not exist in set!");
-    int32_t col_idx = r.archetype->column_map[idx];
+    int32_t col_idx = r.archetype->column_map_[idx];
     ENGINE_ASSERT(col_idx != Archetype::INVALID_COLUMN, "Type does not contain data!");
-    Column &col = r.archetype->columns[col_idx];
+    Column &col = r.archetype->columns_[col_idx];
     const TypeMetadata *ti = col.type_meta;
     ENGINE_ASSERT(ti, "Type info must not be null!");
     void *component = OFFSET_ADDR(col.data, ti->size * r.row);
+
+    return component;
+}
+
+const void *World::get(EntityId eid, EntityId tid) const
+{
+    ENGINE_ASSERT(is_entity_existing(eid), "Entity does not exist!");
+    ENGINE_ASSERT(is_type_registerd(tid), "Type is not registered!");
+    const EntityRecord &r = entity_records_[eid];
+    ENGINE_ASSERT(r.archetype, "Entity archetype must not be null!");
+    int32_t idx = r.archetype->type_set_.search(tid);
+    ENGINE_ASSERT(idx != TypeSet::NOT_FOUND_IDX, "Type does not exist in set!");
+    int32_t col_idx = r.archetype->column_map_[idx];
+    ENGINE_ASSERT(col_idx != Archetype::INVALID_COLUMN, "Type does not contain data!");
+    const Column &col = r.archetype->columns_[col_idx];
+    const TypeMetadata *ti = col.type_meta;
+    ENGINE_ASSERT(ti, "Type info must not be null!");
+    const void *component = OFFSET_ADDR(col.data, ti->size * r.row);
 
     return component;
 }
@@ -1093,24 +1221,28 @@ void World::swap_back_entity(EntityRecord &r)
 {
     ENGINE_ASSERT(r.archetype, "Entity archetype must not be null!");
     Archetype &archetype = *r.archetype;
-    if (archetype.count == 0 || (archetype.count == r.row + 1))
+    if (archetype.count_ == 0 || (archetype.count_ == r.row + 1))
     {
         return;
     }
 
-    EntityId swap_id = archetype.entities[r.row];
-    EntityId back_id = archetype.entities[archetype.count - 1];
-    EntityRecord *back_record = entity_records.get(back_id);
+    ScopedArenaTemp stemp;
+    Arena *scratch = t_scratches.get_scratch(nullptr);
+    stemp.start_scratch(scratch);
+
+    EntityId swap_id = archetype.entities_[r.row];
+    EntityId back_id = archetype.entities_[archetype.count_ - 1];
+    EntityRecord *back_record = entity_records_.get(back_id);
     ENGINE_ASSERT(back_record, "");
-    archetype.entities[r.row] = back_id;
-    archetype.entities[archetype.count - 1] = swap_id;
-    for (uint64_t idx = 0; idx < r.archetype->column_count; idx++)
+    archetype.entities_[r.row] = back_id;
+    archetype.entities_[archetype.count_ - 1] = swap_id;
+    for (uint64_t idx = 0; idx < r.archetype->column_count_; idx++)
     {
-        Column &col = r.archetype->columns[idx];
+        Column &col = r.archetype->columns_[idx];
         const TypeMetadata &meta = *col.type_meta;
         void *swap = OFFSET_ADDR(col.data, meta.size * r.row);
-        void *back = OFFSET_ADDR(col.data, meta.size * (archetype.count - 1));
-        void *temp = get_current_scratch().push(meta.size, meta.alignment);
+        void *back = OFFSET_ADDR(col.data, meta.size * (archetype.count_ - 1));
+        void *temp = scratch->push(meta.size, meta.alignment);
         ENGINE_ASSERT(temp, "");
 
         if (meta.is_trivial())
@@ -1141,10 +1273,14 @@ void World::swap_back_entity(EntityRecord &r)
         {
             meta.hook.dtor(temp);
         }
+
+        stemp.end_scratch();
     }
 
     back_record->row = r.row;
-    r.row = archetype.count - 1;
+    r.row = archetype.count_ - 1;
+
+    stemp.end_scratch();
 }
 
 void World::update_type_info_tracked_queries(Query_T *query)
@@ -1161,8 +1297,8 @@ void World::update_type_info_tracked_queries(Query_T *query)
             {
                 EntityId high_id = high_32bit(term.tid);
                 EntityId tid = high_id == WILDCARD_ID ? low_32bit(term.tid) : term.tid;
-                TypeInfo &ti = type_infos[tid];
-                ti.tracked_queries.push_back(vallocator, query->eid);
+                TypeInfo &ti = type_infos_[tid];
+                ti.tracked_queries_.push_back(vallocator_, query->eid);
                 break;
             }
             case UP:
@@ -1171,8 +1307,8 @@ void World::update_type_info_tracked_queries(Query_T *query)
                 EntityId tid = term.trav_target == WILDCARD_ID
                                    ? term.trav_relation
                                    : make_relationship(term.trav_relation, term.trav_target);
-                TypeInfo &ti = type_infos[tid];
-                ti.tracked_queries.push_back(vallocator, query->eid);
+                TypeInfo &ti = type_infos_[tid];
+                ti.tracked_queries_.push_back(vallocator_, query->eid);
                 break;
             }
             default:
@@ -1186,8 +1322,8 @@ void World::update_type_info_tracked_queries(Query_T *query)
 
 Query_T *World::create_query(uint32_t query_id)
 {
-    cached_queries.push(vallocator, query_id, Query_T());
-    Query_T * q = cached_queries.get(query_id);
+    cached_queries_.push(vallocator_, query_id, Query_T());
+    Query_T * q = cached_queries_.get(query_id);
     q->init(this);
     return q;
 }
@@ -1196,9 +1332,9 @@ Archetype *World::create_archetype(TypeSet &&type_set)
 {
     ArchetypeId id = get_archetype_id();
     Archetype archetype;
-    archetype.init(vallocator, id, std::move(type_set), type_infos);
-    archetypes.push(vallocator, id, std::move(archetype));
-    Archetype &new_archetype = archetypes[id];
+    archetype.init(vallocator_, id, std::move(type_set), type_infos_);
+    archetypes_.push(vallocator_, id, std::move(archetype));
+    Archetype &new_archetype = archetypes_[id];
 
     // Add newly created archetype to component record for query purpose
     // if component record is relationship,
@@ -1208,40 +1344,40 @@ Archetype *World::create_archetype(TypeSet &&type_set)
 
     ++sweep_val;
 
-    const TypeSet &tset = new_archetype.type_set;
-    for (uint32_t idx = 0; idx < tset.count; idx++)
+    const TypeSet &tset = new_archetype.type_set_;
+    for (uint32_t idx = 0; idx < tset.count_; idx++)
     {
-        TypeInfo &ti = type_infos[tset[idx]];
+        TypeInfo &ti = type_infos_[tset[idx]];
         revalidate_cached_query_archetype_filter(ti, &new_archetype, true);
         // base relation
-        if (ti.meta->is_relation())
+        if (ti.meta_->is_relation())
         {
-            TypeInfo &base_info = type_infos[low_32bit(tset[idx])];
+            TypeInfo &base_info = type_infos_[low_32bit(tset[idx])];
             revalidate_cached_query_archetype_filter(base_info, &new_archetype, true);
-            base_info.archetypes.push_back(vallocator, archetypes.get(id));
+            //TODO: handle multiple relationship with the same relation
+            base_info.archetypes_.push_back(vallocator_, archetypes_.get(id));
         }
-        ti.archetypes.push_back(vallocator, archetypes.get(id));
+        ti.archetypes_.push_back(vallocator_, archetypes_.get(id));
     }
     // shallow copy
-    archetype_map.insert(vallocator, new_archetype.type_set, archetypes.get(id));
+    archetype_map_.insert(vallocator_, new_archetype.type_set_, archetypes_.get(id));
 
     return &new_archetype;
 }
 
-Archetype *World::get_archetype(const TypeSet &componentSet)
+Archetype *World::get_archetype(const TypeSet &type_set)
 {
-    if (archetype_map.contain_key(componentSet))
+    if (archetype_map_.contain_key(type_set))
     {
-        return archetype_map[componentSet];
+        return archetype_map_[type_set];
     }
-
     return nullptr;
 }
 
 const Archetype *World::get_entity_archetype(EntityId eid) const
 {
-    ENGINE_ASSERT(is_entity_existing(eid), "Entity does not exist!");
-    return entity_records[eid].archetype;
+    ENGINE_ASSERT(is_entity_existing_skip_version(low_32bit(eid)), "Entity does not exist!");
+    return entity_records_[eid].archetype;
 }
 
 Archetype *World::get_or_create_archetype_add(Archetype *src_arch, EntityId tid)
@@ -1250,14 +1386,14 @@ Archetype *World::get_or_create_archetype_add(Archetype *src_arch, EntityId tid)
     // find or create edge
     if (src_arch)
     {
-        if (src_arch->add_edges.contain_key(tid))
+        if (src_arch->add_edges_.contain_key(tid))
         {
-            dst_arch = src_arch->add_edges[tid];
+            dst_arch = src_arch->add_edges_[tid];
         }
         else
         {
             TypeSet type_set;
-            type_set.init_add(vallocator, &src_arch->type_set, tid);
+            type_set.init_add(vallocator_, &src_arch->type_set_, tid);
             dst_arch = get_archetype(type_set);
             if (!dst_arch)
             {
@@ -1265,15 +1401,15 @@ Archetype *World::get_or_create_archetype_add(Archetype *src_arch, EntityId tid)
             }
             else
             {
-                type_set.destroy(vallocator);
+                type_set.destroy(vallocator_);
             }
-            src_arch->add_edges.insert(vallocator, tid, dst_arch);
+            src_arch->add_edges_.insert(vallocator_, tid, dst_arch);
         }
     }
     else
     {
         TypeSet type_set;
-        type_set.init_add(vallocator, nullptr, tid);
+        type_set.init_add(vallocator_, nullptr, tid);
         dst_arch = get_archetype(type_set);
         if (!dst_arch)
         {
@@ -1281,7 +1417,7 @@ Archetype *World::get_or_create_archetype_add(Archetype *src_arch, EntityId tid)
         }
         else
         {
-            type_set.destroy(vallocator);
+            type_set.destroy(vallocator_);
         }
     }
     return dst_arch;
@@ -1291,27 +1427,25 @@ Archetype *World::get_or_create_archetype_remove(Archetype *src_arch, EntityId t
 {
     ENGINE_ASSERT(src_arch, "Source archetype must not be null!");
     Archetype *dst_arch = nullptr;
-    if (src_arch->del_edges.contain_key(tid))
+    if (src_arch->del_edges_.contain_key(tid))
     {
-        dst_arch = src_arch->del_edges[tid];
+        dst_arch = src_arch->del_edges_[tid];
     }
     else
     {
         TypeSet type_set;
-        type_set.init_remove(vallocator, &src_arch->type_set, tid);
+        type_set.init_remove(vallocator_, &src_arch->type_set_, tid);
         dst_arch = get_archetype(type_set);
-        if (!dst_arch)
+        if (!dst_arch && src_arch->type_set_.count_ > 1)
         {
             dst_arch = create_archetype(std::move(type_set));
         }
         else
         {
-            type_set.destroy(vallocator);
+            type_set.destroy(vallocator_);
         }
-
-        src_arch->del_edges.insert(vallocator, tid, dst_arch);
+        src_arch->del_edges_.insert(vallocator_, tid, dst_arch);
     }
-
     return dst_arch;
 }
 
@@ -1320,20 +1454,20 @@ void World::move_archetype_add_op(EntityId eid, EntityRecord &r, Archetype *dst_
     Archetype *src_arch = r.archetype;
     ENGINE_ASSERT(dst_arch, "Destination archetype is null!");
 
-    if (dst_arch->count == dst_arch->capacity)
+    if (dst_arch->count_ == dst_arch->capacity_)
     {
-        dst_arch->resize(vallocator);
+        dst_arch->resize(vallocator_);
     }
 
     if (!src_arch)
     {
-        ENGINE_ASSERT(dst_arch->type_set.count == 1,
+        ENGINE_ASSERT(dst_arch->type_set_.count_ == 1,
                    "Destination archetype has more than 1 component!");
-        if (dst_arch->column_count == 1)
+        if (dst_arch->column_count_ == 1)
         {
-            const TypeMetadata *ti = dst_arch->columns[0].type_meta;
+            const TypeMetadata *ti = dst_arch->columns_[0].type_meta;
             void *dest =
-                OFFSET_ADDR(dst_arch->columns[0].data, dst_arch->count * ti->size);
+                OFFSET_ADDR(dst_arch->columns_[0].data, dst_arch->count_ * ti->size);
             ti->hook.ctor(dest);
             if (ti->hook.on_add)
             {
@@ -1345,14 +1479,14 @@ void World::move_archetype_add_op(EntityId eid, EntityRecord &r, Archetype *dst_
     {
         // SWAP BACK IN SRC ARCHETYPE
         swap_back_entity(r);
-        for (uint64_t idx = 0; idx < dst_arch->column_count; ++idx)
+        for (uint64_t idx = 0; idx < dst_arch->column_count_; ++idx)
         {
-            Column &dst_col = dst_arch->columns[idx];
+            Column &dst_col = dst_arch->columns_[idx];
             const TypeMetadata *ti = dst_col.type_meta;
             ENGINE_ASSERT(ti, "");
-            void *dst = OFFSET_ADDR(dst_col.data, ti->size * dst_arch->count);
-            int32_t set_idx = dst_arch->column_map[dst_arch->type_set.count + idx];
-            int32_t src_idx = src_arch->type_set.search(dst_arch->type_set[idx]);
+            void *dst = OFFSET_ADDR(dst_col.data, ti->size * dst_arch->count_);
+            int32_t set_idx = dst_arch->column_map_[dst_arch->type_set_.count_ + idx];
+            int32_t src_idx = src_arch->type_set_.search(dst_arch->type_set_[set_idx]);
 
             if (src_idx == TypeSet::NOT_FOUND_IDX)
             {
@@ -1364,8 +1498,8 @@ void World::move_archetype_add_op(EntityId eid, EntityRecord &r, Archetype *dst_
             }
             else
             {
-                ENGINE_ASSERT(src_arch->column_map[src_idx] != Archetype::INVALID_COLUMN, "");
-                Column &src_col = src_arch->columns[src_arch->column_map[src_idx]];
+                ENGINE_ASSERT(src_arch->column_map_[src_idx] != Archetype::INVALID_COLUMN, "");
+                Column &src_col = src_arch->columns_[src_arch->column_map_[src_idx]];
                 void *src = OFFSET_ADDR(src_col.data, ti->size * r.row);
 
                 move_to(dst, src, ti);
@@ -1375,16 +1509,16 @@ void World::move_archetype_add_op(EntityId eid, EntityRecord &r, Archetype *dst_
                 }
             }
         }
-        --src_arch->count;
+        --src_arch->count_;
     }
     uint32_t remove_row = r.row;
-    dst_arch->entities[dst_arch->count] = eid;
+    dst_arch->entities_[dst_arch->count_] = eid;
     r.archetype = dst_arch;
-    r.row = dst_arch->count;
-    ++dst_arch->count;
+    r.row = dst_arch->count_;
+    ++dst_arch->count_;
 
     revalidate_cached_query_entity_filter(src_arch, remove_row, EntityRevalidationMode::ON_REMOVED);
-    revalidate_cached_query_entity_filter(dst_arch, dst_arch->count - 1,
+    revalidate_cached_query_entity_filter(dst_arch, dst_arch->count_ - 1,
                                        EntityRevalidationMode::ON_ADDED);
 }
 
@@ -1394,20 +1528,20 @@ void World::move_archetype_move_op(EntityId eid, EntityRecord &r, Archetype *dst
     ENGINE_ASSERT(data, "Data must not be null!");
     Archetype *src_arch = r.archetype;
 
-    if (dst_arch->count == dst_arch->capacity)
+    if (dst_arch->count_ == dst_arch->capacity_)
     {
-        dst_arch->resize(vallocator);
+        dst_arch->resize(vallocator_);
     }
 
     if (!src_arch)
     {
-        ENGINE_ASSERT(dst_arch->type_set.count == 1,
+        ENGINE_ASSERT(dst_arch->type_set_.count_ == 1,
                    "Destination archetype must have only 1 component!");
-        if (dst_arch->column_count == 1)
+        if (dst_arch->column_count_ == 1)
         {
-            const TypeMetadata *ti = dst_arch->columns[0].type_meta;
+            const TypeMetadata *ti = dst_arch->columns_[0].type_meta;
             ENGINE_ASSERT(ti, "");
-            void *dest = OFFSET_ADDR(dst_arch->columns[0].data, dst_arch->count * ti->size);
+            void *dest = OFFSET_ADDR(dst_arch->columns_[0].data, dst_arch->count_ * ti->size);
 
             move_to(dest, data, ti);
             if (ti->hook.on_add)
@@ -1424,14 +1558,14 @@ void World::move_archetype_move_op(EntityId eid, EntityRecord &r, Archetype *dst
     {
         // SWAP BACK IN SRC ARCHETYPE
         swap_back_entity(r);
-        for(uint64_t idx = 0; idx < dst_arch->column_count; ++idx)
+        for(uint64_t idx = 0; idx < dst_arch->column_count_; ++idx)
         {
-            Column& dst_col = dst_arch->columns[idx];
+            Column& dst_col = dst_arch->columns_[idx];
             const TypeMetadata* ti = dst_col.type_meta;
             ENGINE_ASSERT(ti, "");
-            void* dst = OFFSET_ADDR(dst_col.data, ti->size * dst_arch->count);
-            int32_t set_idx = dst_arch->column_map[dst_arch->type_set.count + idx];
-            int32_t src_idx = src_arch->type_set.search(dst_arch->type_set[set_idx]);
+            void* dst = OFFSET_ADDR(dst_col.data, ti->size * dst_arch->count_);
+            int32_t set_idx = dst_arch->column_map_[dst_arch->type_set_.count_ + idx];
+            int32_t src_idx = src_arch->type_set_.search(dst_arch->type_set_[set_idx]);
 
             if(src_idx == TypeSet::NOT_FOUND_IDX)
             {
@@ -1447,8 +1581,8 @@ void World::move_archetype_move_op(EntityId eid, EntityRecord &r, Archetype *dst
             }
             else
             {
-                ENGINE_ASSERT(src_arch->column_map[src_idx] != Archetype::INVALID_COLUMN, "");
-                Column &src_col = src_arch->columns[src_arch->column_map[src_idx]];
+                ENGINE_ASSERT(src_arch->column_map_[src_idx] != Archetype::INVALID_COLUMN, "");
+                Column &src_col = src_arch->columns_[src_arch->column_map_[src_idx]];
                 void *src = OFFSET_ADDR(src_col.data, ti->size * r.row);
 
                 move_to(dst, src, ti);
@@ -1458,18 +1592,18 @@ void World::move_archetype_move_op(EntityId eid, EntityRecord &r, Archetype *dst
                 }
             }
         }
-        --src_arch->count;
+        --src_arch->count_;
     }
 
     uint32_t remove_row = r.row;
-    dst_arch->entities[dst_arch->count] = eid;
+    dst_arch->entities_[dst_arch->count_] = eid;
     r.archetype = dst_arch;
-    r.row = dst_arch->count;
-    ++dst_arch->count;
+    r.row = dst_arch->count_;
+    ++dst_arch->count_;
 
     revalidate_cached_query_entity_filter(src_arch, remove_row,
                                        EntityRevalidationMode::ON_REMOVED);
-    revalidate_cached_query_entity_filter(dst_arch, dst_arch->count - 1,
+    revalidate_cached_query_entity_filter(dst_arch, dst_arch->count_ - 1,
                                        EntityRevalidationMode::ON_ADDED);
 }
 
@@ -1478,20 +1612,20 @@ void World::move_archetype_copy_op(EntityId eid, EntityRecord &r, Archetype *dst
     Archetype *src_arch = r.archetype;
     ENGINE_ASSERT(dst_arch, "Destination archetype must not be null!");
 
-    if (dst_arch->count == dst_arch->capacity)
+    if (dst_arch->count_ == dst_arch->capacity_)
     {
-        dst_arch->resize(vallocator);
+        dst_arch->resize(vallocator_);
     }
 
     // empty entity
     if (!src_arch)
     {
         ENGINE_ASSERT(dst_arch, "Destination archeytype is null!");
-        if (dst_arch->column_count == 1)
+        if (dst_arch->column_count_ == 1)
         {
-            const TypeMetadata *ti = dst_arch->columns[0].type_meta;
+            const TypeMetadata *ti = dst_arch->columns_[0].type_meta;
             ENGINE_ASSERT(ti, "");
-            void *dst = OFFSET_ADDR(dst_arch->columns[0].data, dst_arch->count * ti->size);
+            void *dst = OFFSET_ADDR(dst_arch->columns_[0].data, dst_arch->count_ * ti->size);
 
             copy_to(dst, data, ti);
             if (ti->hook.on_add)
@@ -1508,14 +1642,14 @@ void World::move_archetype_copy_op(EntityId eid, EntityRecord &r, Archetype *dst
     {
         // SWAP BACK IN SRC ARCHETYPE
         swap_back_entity(r);
-        for (uint64_t idx = 0; idx < dst_arch->column_count; ++idx)
+        for (uint64_t idx = 0; idx < dst_arch->column_count_; ++idx)
         {
-            Column &dst_col = dst_arch->columns[idx];
+            Column &dst_col = dst_arch->columns_[idx];
             const TypeMetadata *ti = dst_col.type_meta;
             ENGINE_ASSERT(ti, "");
-            void *dst = OFFSET_ADDR(dst_col.data, ti->size * dst_arch->count);
-            int32_t set_idx = dst_arch->column_map[dst_arch->type_set.count + idx];
-            int32_t src_idx = src_arch->type_set.search(dst_arch->type_set[set_idx]);
+            void *dst = OFFSET_ADDR(dst_col.data, ti->size * dst_arch->count_);
+            int32_t set_idx = dst_arch->column_map_[dst_arch->type_set_.count_ + idx];
+            int32_t src_idx = src_arch->type_set_.search(dst_arch->type_set_[set_idx]);
 
             if (src_idx == TypeSet::NOT_FOUND_IDX)
             {
@@ -1531,8 +1665,8 @@ void World::move_archetype_copy_op(EntityId eid, EntityRecord &r, Archetype *dst
             }
             else
             {
-                ENGINE_ASSERT(src_arch->column_map[src_idx] != Archetype::INVALID_COLUMN, "");
-                Column &src_col = src_arch->columns[src_arch->column_map[src_idx]];
+                ENGINE_ASSERT(src_arch->column_map_[src_idx] != Archetype::INVALID_COLUMN, "");
+                Column &src_col = src_arch->columns_[src_arch->column_map_[src_idx]];
                 void *src = OFFSET_ADDR(src_col.data, ti->size * r.row);
 
                 move_to(dst, src, ti);
@@ -1542,17 +1676,17 @@ void World::move_archetype_copy_op(EntityId eid, EntityRecord &r, Archetype *dst
                 }
             }
         }
-        --src_arch->count;
+        --src_arch->count_;
     }
 
     uint32_t remove_row = r.row;
-    dst_arch->entities[dst_arch->count] = eid;
+    dst_arch->entities_[dst_arch->count_] = eid;
     r.archetype = dst_arch;
-    r.row = dst_arch->count;
-    ++dst_arch->count;
+    r.row = dst_arch->count_;
+    ++dst_arch->count_;
 
     revalidate_cached_query_entity_filter(src_arch, remove_row, EntityRevalidationMode::ON_REMOVED);
-    revalidate_cached_query_entity_filter(dst_arch, dst_arch->count - 1,
+    revalidate_cached_query_entity_filter(dst_arch, dst_arch->count_ - 1,
                                        EntityRevalidationMode::ON_ADDED);
 }
 
@@ -1563,13 +1697,13 @@ void World::move_archetype_remove_op(EntityId eid, EntityRecord &r, Archetype *d
     uint32_t remove_row = r.row;
     if (!dst_arch)
     {
-        ENGINE_ASSERT(src_arch->type_set.count == 1, "Source archetype must have only 1 component!");
-        if (src_arch->column_count == 1)
+        ENGINE_ASSERT(src_arch->type_set_.count_ == 1, "Source archetype must have only 1 component!");
+        if (src_arch->column_count_ == 1)
         {
-            Column &src_col = src_arch->columns[0];
+            Column &src_col = src_arch->columns_[0];
             const TypeMetadata *ti = src_col.type_meta;
             ENGINE_ASSERT(ti, "");
-            void *src = OFFSET_ADDR(src_col.data, ti->size * (src_arch->count - 1));
+            void *src = OFFSET_ADDR(src_col.data, ti->size * (src_arch->count_ - 1));
 
             if (ti->hook.on_remove)
             {
@@ -1582,29 +1716,29 @@ void World::move_archetype_remove_op(EntityId eid, EntityRecord &r, Archetype *d
         }
         r.row = 0;
         r.archetype = nullptr;
-        --src_arch->count;
+        --src_arch->count_;
     }
     else
     {
-        if (dst_arch->count == dst_arch->capacity)
+        if (dst_arch->count_ == dst_arch->capacity_)
         {
-            dst_arch->resize(vallocator);
+            dst_arch->resize(vallocator_);
         }
 
-        for (uint64_t idx = 0; idx < src_arch->column_count; ++idx)
+        for (uint64_t idx = 0; idx < src_arch->column_count_; ++idx)
         {
-            Column &src_col = src_arch->columns[idx];
+            Column &src_col = src_arch->columns_[idx];
             const TypeMetadata *ti = src_col.type_meta;
             ENGINE_ASSERT(ti, "");
             void *src = OFFSET_ADDR(src_col.data, ti->size * r.row);
-            int32_t set_idx = src_arch->column_map[src_arch->type_set.count + idx];
-            int32_t dst_idx = dst_arch->type_set.search(src_arch->type_set[set_idx]);
+            int32_t set_idx = src_arch->column_map_[src_arch->type_set_.count_ + idx];
+            int32_t dst_idx = dst_arch->type_set_.search(src_arch->type_set_[set_idx]);
             if (dst_idx != TypeSet::NOT_FOUND_IDX)
             {
-                int32_t dst_col_idx = dst_arch->column_map[dst_idx];
+                int32_t dst_col_idx = dst_arch->column_map_[dst_idx];
                 ENGINE_ASSERT(dst_col_idx != TypeSet::NOT_FOUND_IDX, "");
-                Column &dst_col = dst_arch->columns[dst_col_idx];
-                void *dst = OFFSET_ADDR(dst_col.data, ti->size * dst_arch->count);
+                Column &dst_col = dst_arch->columns_[dst_col_idx];
+                void *dst = OFFSET_ADDR(dst_col.data, ti->size * dst_arch->count_);
 
                 move_to(dst, src, src_col.type_meta);
                 if (ti->hook.dtor)
@@ -1625,15 +1759,15 @@ void World::move_archetype_remove_op(EntityId eid, EntityRecord &r, Archetype *d
             }
         }
 
-        dst_arch->entities[dst_arch->count] = eid;
+        dst_arch->entities_[dst_arch->count_] = eid;
         r.archetype = dst_arch;
-        r.row = dst_arch->count;
-        --src_arch->count;
-        ++dst_arch->count;
+        r.row = dst_arch->count_;
+        --src_arch->count_;
+        ++dst_arch->count_;
     }
 
     revalidate_cached_query_entity_filter(src_arch, remove_row, EntityRevalidationMode::ON_REMOVED);
-    revalidate_cached_query_entity_filter(dst_arch, dst_arch == nullptr ? 0 : dst_arch->count - 1,
+    revalidate_cached_query_entity_filter(dst_arch, dst_arch == nullptr ? 0 : dst_arch->count_ - 1,
                                        EntityRevalidationMode::ON_ADDED);
 }
 
@@ -1647,19 +1781,19 @@ void World::revalidate_cached_query_entity_filter(Archetype *archetype, uint32_t
 
     // TODO: should query/system an entity, yes? it needs to build a dependency graph
     // should the entity own system/query directly or ptr
-    for (uint64_t idx = 0; idx < archetype->tracked_queries.get_count(); ++idx)
+    for (uint64_t idx = 0; idx < archetype->tracked_queries_.get_count(); ++idx)
     {
-        TrackedQuery &tracked_query = archetype->tracked_queries[idx];
-        EntityId id = entity_records.get_full_id(tracked_query.id);
+        TrackedQuery &tracked_query = archetype->tracked_queries_[idx];
+        EntityId id = entity_records_.get_full_id(tracked_query.id);
 
         Query_T *query = nullptr;
         if (has_type<Query>(id))
         {
-            query = get_mut<Query>(id).query;
+            query = get_mut<Query>(id).query_;
         }
         else if (has_type<System>(id))
         {
-            query = get_mut<System>(id).query;
+            query = get_mut<System>(id).query_;
         }
         else
         {
@@ -1685,9 +1819,9 @@ void World::revalidate_cached_query_entity_filter(Archetype *archetype, uint32_t
         {
             // Swap bitmask at count idx and remove idx (count is probably
             // minus 1 at this point)
-            bool bit = matched.get_mask(matched.archetype->count - 1);
-            matched.set_mask(vallocator, matched.archetype->count - 1, false);
-            matched.set_mask(vallocator, affected_row, bit);
+            bool bit = matched.get_mask(matched.archetype->count_ - 1);
+            matched.set_mask(vallocator_, matched.archetype->count_ - 1, false);
+            matched.set_mask(vallocator_, affected_row, bit);
             break;
         }
         case World::EntityRevalidationMode::ON_MODIFIED:
@@ -1704,17 +1838,17 @@ void World::revalidate_cached_query_archetype_filter(TypeInfo &type_info, Archet
 {
     if (is_new_archetype)
     {
-        for (uint64_t idx = 0; idx < type_info.tracked_queries.get_count(); ++idx)
+        for (uint64_t idx = 0; idx < type_info.tracked_queries_.get_count(); ++idx)
         {
 
             Query_T *query = nullptr;
-            if (has_type<Query>(type_info.tracked_queries[idx]))
+            if (has_type<Query>(type_info.tracked_queries_[idx]))
             {
-                query = get_mut<Query>(type_info.tracked_queries[idx]).query;
+                query = get_mut<Query>(type_info.tracked_queries_[idx]).query_;
             }
-            else if (has_type<System>(type_info.tracked_queries[idx]))
+            else if (has_type<System>(type_info.tracked_queries_[idx]))
             {
-                query = get_mut<System>(type_info.tracked_queries[idx]).query;
+                query = get_mut<System>(type_info.tracked_queries_[idx]).query_;
             }
             ENGINE_ASSERT(query, "");
 
@@ -1745,84 +1879,83 @@ PhaseDependencyBuilder World::create_loop_phase_dependency()
 
 void World::flush_deferred_cmds()
 {
-    for (uint64_t idx = 0; idx < worker_scratches.get_count(); ++idx)
+    for (uint64_t idx = 0; idx < worker_scratches_.get_count(); ++idx)
     {
-        EntityCommandNode *node = worker_scratches[idx].get_cmds();
+        EntityCommandNode *node = worker_scratches_[idx].get_cmds();
         while(node)
         {
             resolve_entity_cmd(node->command);
             node = node->next;
         }
-        worker_scratches[idx].reset();
+        worker_scratches_[idx].reset();
     }
     system_batch.cursor.store(0);
-    system_batch.remaining.store(0);
+    system_batch.work_finish_count.store(0);
     system_batch.count = 0;
 }
 
 void World::tick()
 {
     start_defer();
-    if (first_frame)
+    if (first_frame_)
     {
         Pipeline boot_pipeline;
-        boot_pipeline.init(vallocator);
+        boot_pipeline.init(vallocator_);
         boot_pipeline.build_from_base_phase(this, ON_BOOT_ID);
         boot_pipeline.progress(this);
 
-        loop_pipeline.build_from_base_phase(this, ON_LOOP_ID);
-        first_frame = false;
-        boot_pipeline.destroy(vallocator);
+        loop_pipeline_.build_from_base_phase(this, ON_LOOP_ID);
+        first_frame_ = false;
+        boot_pipeline.destroy(vallocator_);
     }
     else
     {
-        loop_pipeline.progress(this);
+        loop_pipeline_.progress(this);
     }
-
+    flush_deferred_cmds();
     end_defer();
 }
 
 void World::shutdown()
 {
-    loop_pipeline.destroy(vallocator);
+    loop_pipeline_.destroy(vallocator_);
+    archetype_map_.destroy(vallocator_);
 
-    archetype_map.destroy(vallocator);
-
-    for (uint64_t idx = 1; idx < cached_queries.get_count(); idx++)
+    for (uint64_t idx = 1; idx < cached_queries_.get_count(); idx++)
     {
-        uint64_t id = cached_queries.get_dense_array()[idx];
-        Query_T *query = cached_queries.get(id);
+        uint64_t id = cached_queries_.get_dense_array()[idx];
+        Query_T *query = cached_queries_.get(id);
         query->destroy();
     }
-    cached_queries.destroy(vallocator);
-    for (auto it = type_infos.begin(); it != type_infos.end(); ++it)
+    cached_queries_.destroy(vallocator_);
+    for (auto it = type_infos_.begin(); it != type_infos_.end(); ++it)
     {
         if(it.is_occupied())
         {
-            it.get_val().destroy(vallocator);
+            it.get_val().destroy(vallocator_);
         }
     }
-    type_infos.destroy(vallocator);
-    type_metas.destroy(vallocator);
-    type_ids.destroy(vallocator);
+    type_infos_.destroy(vallocator_);
+    type_metas_.destroy(vallocator_);
+    type_ids_.destroy(vallocator_);
 
-    for (uint64_t idx = 1; idx < archetypes.get_count(); idx++)
+    for (uint64_t idx = 1; idx < archetypes_.get_count(); idx++)
     {
-        uint64_t id = archetypes.get_dense_array()[idx];
-        Archetype *archetype = archetypes.get(id);
+        uint64_t id = archetypes_.get_dense_array()[idx];
+        Archetype *archetype = archetypes_.get(id);
         ENGINE_ASSERT(archetype, "");
-        archetype->destroy(vallocator);
+        archetype->destroy(vallocator_);
     }
-    archetypes.destroy(vallocator);
-    entity_records.destroy(vallocator);
+    archetypes_.destroy(vallocator_);
+    entity_records_.destroy(vallocator_);
 
-    for (uint64_t idx = 0; idx < worker_scratches.get_count(); ++idx)
+    for (uint64_t idx = 0; idx < worker_scratches_.get_count(); ++idx)
     {
-        worker_scratches[idx].destroy();
+        worker_scratches_[idx].destroy();
     }
-    worker_scratches.destroy(vallocator);
+    worker_scratches_.destroy(vallocator_);
 
-    vallocator.destroy();
+    vallocator_.destroy();
 }
 
 } // namespace VoidEngine::ECS

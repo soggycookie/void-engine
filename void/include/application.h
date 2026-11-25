@@ -1,6 +1,7 @@
 #pragma once
 #include "engine_config.h"
 #include "input_event.h"
+#include "input_manager.h"
 #include "layer_stack.h"
 #include "logger/log.h"
 #include "window.h"
@@ -8,10 +9,17 @@
 #include "job_system.h"
 #include "profiler.h"
 #include "resource_system.h"
-// #include "vulkan_backend.h"
+#include "imgui_host.h"
+
+// Forward declared so application.h does not pull in vulkan.h / windows.h.
+namespace VoidEngine::Vulkan
+{
+class VulkanBackend;
+}
 
 namespace VoidEngine
 {
+class GameLayer;
 
 class Application
 {
@@ -21,9 +29,14 @@ private:
 
     EngineConfig config_;
     LayerStack layer_stack_;
-    Window *window_;
+    InputManager input_;
+    Window *window_ = nullptr;
 
-    // VulkanBackend vulkan_backend;
+    // Owned layers, kept by real type so destruct() frees the right size.
+    GameLayer *game_layer_ = nullptr;
+
+    Vulkan::VulkanBackend *vulkan_ = nullptr;
+    ImGuiHost imgui_host_;
     JobSystem job_system;
     ResourceSystem resource_system_;
     bool running_;
@@ -63,6 +76,11 @@ public:
     Window *get_window() const
     {
         return window_;
+    }
+
+    const InputManager &get_input() const
+    {
+        return input_;
     }
 
     // void PushLayer(Layer* layer);

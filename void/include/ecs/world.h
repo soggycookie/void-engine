@@ -16,7 +16,7 @@ struct EcsBatch
     World *world;
     uint32_t count;
     std::atomic<uint32_t> cursor;
-    std::atomic<uint32_t> remaining;
+    std::atomic<uint32_t> work_finish_count; // runners (workers + main) that have exited their loop
 };
 
 class World
@@ -33,16 +33,18 @@ private:
     private:
         Arena scratch_arena;
         EntityCommandNode *head;
+        EntityCommandNode *tail;
 
     public:
-        WorkerScratch() : scratch_arena(), head(nullptr)
+        WorkerScratch() : scratch_arena(), head(nullptr), tail(nullptr)
         {
         }
 
         WorkerScratch(WorkerScratch &&other)
-            : scratch_arena(std::move(other.scratch_arena)), head(other.head)
+            : scratch_arena(std::move(other.scratch_arena)), head(other.head), tail(other.tail)
         {
             other.head = nullptr;
+            other.tail = nullptr;
         }
 
         void init();
@@ -56,34 +58,34 @@ private:
         }
     };
 
-    static thread_local int32_t t_scratch_idx;
+    static thread_local int32_t t_Scratch_idx;
 
-    Vallocator vallocator;
-    SparseSet<EntityRecord> entity_records;
-    SparseSet<Archetype> archetypes;
-    SparseSet<Query_T> cached_queries;
-    SparseSet<TypeMetadata> type_metas;
+    Vallocator vallocator_;
+    SparseSet<EntityRecord> entity_records_;
+    SparseSet<Archetype> archetypes_;
+    SparseSet<Query_T> cached_queries_;
+    SparseSet<TypeMetadata> type_metas_;
 
-    FlatHashMap<EntityId, TypeInfo> type_infos;
-    FlatHashMap<TypeSet, Archetype *> archetype_map; // value hold a ref to key, does not
+    FlatHashMap<EntityId, TypeInfo> type_infos_;
+    FlatHashMap<TypeSet, Archetype *> archetype_map_; // value hold a ref to key, does not
                                                      // change the value's key ref
-    DynamicArray<EntityId> type_ids;
-    DynamicArray<WorkerScratch> worker_scratches; // scratch at 0 is reserved for main thread
+    DynamicArray<EntityId> type_ids_;
+    DynamicArray<WorkerScratch> worker_scratches_; // scratch at 0 is reserved for main thread
     EcsBatch system_batch;
-    Pipeline loop_pipeline;
+    Pipeline loop_pipeline_;
     uint32_t sweep_val; // use to re-evaluate cached queries
-    LowEntityId next_free_eid;
-    uint32_t worker_count;
-    std::atomic<uint32_t> worker_round_robin;
-    bool deferred;
-    bool multithread;
-    bool first_frame;
+    LowEntityId next_free_eid_;
+    uint32_t worker_count_;
+    std::atomic<uint32_t> worker_round_robin_;
+    bool deferred_;
+    bool multithread_;
+    bool first_frame_;
 
 public:
     World()
-        : next_free_eid(200), deferred(false), first_frame(false), multithread(false), sweep_val(0),
-          vallocator(), type_infos(), archetype_map(), type_ids(), loop_pipeline(), worker_scratches(),
-          worker_round_robin(0), worker_count(0)
+        : next_free_eid_(200), deferred_(false), first_frame_(false), multithread_(false), sweep_val(0),
+          vallocator_(), type_infos_(), archetype_map_(), type_ids_(), loop_pipeline_(), worker_scratches_(),
+          worker_round_robin_(0), worker_count_(0)
     {
         system_batch.world = this;
     }
@@ -99,15 +101,15 @@ public:
     void set_worker_count(uint32_t worker_count);
     bool is_multithread() const
     {
-        return multithread;
+        return multithread_;
     }
     std::atomic<uint32_t> &get_worker_round_robin()
     {
-        return worker_round_robin;
+        return worker_round_robin_;
     }
     uint32_t get_worker_count() const
     {
-        return worker_count;
+        return worker_count_;
     }
     WorkerScratch &get_current_scratch();
     void reset_scratch();
@@ -133,12 +135,17 @@ public:
     LowEntityId get_free_id();
     void consume_free_id(LowEntityId new_id);
     bool is_entity_existing(EntityId eid) const;
+    bool is_entity_existing_skip_version(LowEntityId eid) const;
 
     EntityRecord &get_entity_record(EntityId eid);
     Entity get_entity_from_id(EntityId eId);
 
     void set_child_of(EntityId child_id, EntityId parent_id);
     EntityId get_parent(EntityId child_id);
+
+    // True if adding (eid, relation_id -> target_id) would create a cycle, i.e. eid is target_id or
+    // is reachable by following relation_id up the chain of targets starting at target_id.
+    bool would_create_cycle(EntityId eid, EntityId relation_id, EntityId target_id);
 
     // Remove to call Destroy after
     // DynamicArray<EntityId> GetChildren(EntityId eId);
@@ -152,9 +159,11 @@ public:
     template <typename T>
     TypeMetaBuilder<T> relation();
 
+    // Avoid calling TypeInfo &info = ... becausae this might resize and invalidate the address.
     template <typename T>
     void register_type_metadata(TypeMetadata &&type_meta, const std::string_view name);
 
+    // Avoid calling TypeInfo &info = ... becausae this might resize and invalidate the address.
     void register_relationship(EntityId relation_id, EntityId target_eid,
                                const TypeMetadata *relation_tm);
     bool is_type_registerd(EntityId tid) const;
@@ -210,7 +219,8 @@ public:
     void set_move(EntityId eid, EntityId tid, void *data);
     void set_copy(EntityId eid, EntityId tid, const void *data);
 
-    void *get(EntityId eid, EntityId tid);
+    void *get_mut(EntityId eid, EntityId tid);
+    const void *get(EntityId eid, EntityId tid) const;
 
     void swap_back_entity(EntityRecord &r);
     void update_type_info_tracked_queries(Query_T *query);
@@ -260,12 +270,11 @@ public:
 
     void start_defer()
     {
-        deferred = true;
+        deferred_ = true;
     }
     void end_defer()
     {
-        deferred = false;
-        flush_deferred_cmds();
+        deferred_ = false;
     }
 
     void tick();
@@ -273,12 +282,12 @@ public:
 
     const FlatHashMap<EntityId, TypeInfo> &get_type_infos() const
     {
-        return type_infos;
+        return type_infos_;
     }
 
     Vallocator &get_vallocator()
     {
-        return vallocator;
+        return vallocator_;
     }
 };
 } // namespace VoidEngine::ECS

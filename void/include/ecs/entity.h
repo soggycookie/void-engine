@@ -15,7 +15,8 @@ enum TypeAddMode
 enum EntityCommandMode : uint8_t
 {
     ENTITY_SPAWN,
-    ENTITY_PATCH
+    ENTITY_PATCH,
+    ENTITY_DELETE
 };
 
 struct AddCommand
@@ -60,6 +61,7 @@ struct EntityCommand
 
     EntityCommand &operator=(EntityCommand &&other) noexcept
     {
+        ENGINE_ASSERT(this != &other, "Self-move is not allowed!");
         eid = other.eid;
         mode = other.mode;
         add_count = other.add_count;
@@ -69,8 +71,6 @@ struct EntityCommand
         other.eid = ENTITY_INVALID_ID;
         other.add_count = 0;
         other.del_count = 0;
-
-        other.eid = ENTITY_INVALID_ID;
         return *this;
     }
 
@@ -103,7 +103,7 @@ template <typename Derived>
 class EntityMutator
 {
 public:
-    EntityMutator(World *world) : world(world)
+    EntityMutator(World *world) : world_(world)
     {
     }
 
@@ -112,7 +112,7 @@ public:
     {
         using C = std::remove_cvref_t<T>;
         static_assert(std::is_same_v<T, C>, "Type cannot be ref or const or both!");
-        patch.add(world, TypeId<T>::id());
+        ecmd_.add(world_, TypeId<C>::id());
         return self();
     }
 
@@ -121,7 +121,7 @@ public:
     {
         using C = std::remove_cvref_t<T>;
         static_assert(std::is_same_v<T, C>, "Type cannot be ref or const or both!");
-        patch.add(world, TypeId<T>::id());
+        ecmd_.add(world_, TypeId<C>::id());
         return self();
     }
 
@@ -130,7 +130,7 @@ public:
     {
         using C = std::remove_cvref_t<T>;
         static_assert(std::is_same_v<T, C>, "Type cannot be ref or const or both!");
-        patch.add(world, make_relationship(TypeId<T>::id(), target_eid));
+        ecmd_.add(world_, make_relationship(TypeId<C>::id(), target_eid));
         return self();
     }
 
@@ -140,45 +140,14 @@ public:
         using C = std::remove_cvref_t<T>;
         if constexpr (std::is_same_v<T, C>)
         {
-            patch.assign_move(world, TypeId<T>::id(), &data);
+            ecmd_.assign_move(world_, TypeId<C>::id(), &data);
         }
         else
         {
-            patch.assign_copy(world, TypeId<T>::id(), &data);
+            ecmd_.assign_copy(world_, TypeId<C>::id(), &data);
         }
         return self();
     }
-
-    // Derived &AddComponent(EntityId cId)
-    // {
-    //     m_patch.add(m_world, cId);
-    //     return self();
-    // }
-    //
-    // Derived &AddTag(EntityId cId)
-    // {
-    //     m_patch.add(m_world, cId);
-    //     return self();
-    // }
-    //
-    // Derived &AddRelationship(EntityId cId, EntityId targetId)
-    // {
-    //     m_patch.add(m_world, make_relationship(cId, targetId));
-    //     return self();
-    // }
-    //
-    // Derived &AssignComponent(EntityId cId, void *data)
-    // {
-    //     m_patch.assign_move(m_world, cId, &data);
-    //     return self();
-    // }
-    //
-    // Derived &AssignComponent(EntityId cId, const void *data)
-    // {
-    //     m_patch.assign_move(m_world, cId, &data);
-    //     return self();
-    // }
-
 private:
     Derived &self()
     {
@@ -186,8 +155,8 @@ private:
     }
 
 protected:
-    EntityCommand patch;
-    World *world;
+    EntityCommand ecmd_;
+    World *world_;
 };
 
 // =========================================================
@@ -203,8 +172,8 @@ class EntityPatcher : public EntityMutator<EntityPatcher>
 public:
     EntityPatcher(World *world, EntityId eid) : EntityMutator<EntityPatcher>(world)
     {
-        patch.id(eid);
-        patch.mode = EntityCommandMode::ENTITY_PATCH;
+        ecmd_.id(eid);
+        ecmd_.mode = EntityCommandMode::ENTITY_PATCH;
     }
 
     EntityPatcher(EntityPatcher &&other) = default;
@@ -215,18 +184,9 @@ public:
     {
         using C = std::remove_cvref_t<T>;
         static_assert(std::is_same_v<T, C>, "Type cannot be ref or const or both!");
-        patch.remove(world, TypeId<T>::id());
+        ecmd_.remove(world_, TypeId<C>::id());
         return *this;
     }
-
-    // template <typename T>
-    // EntityPatcher &RemoveRelationship(EntityId target_eid)
-    // {
-    //     using C = std::remove_cvref_t<T>;
-    //     static_assert(std::is_same_v<T, C>, "Type cannot be ref or const or both!");
-    //     patch.remove(world, make_relationship(TypeId<T>::id(), target_eid));
-    //     return *this;
-    // }
 
     void build();
 };
@@ -242,6 +202,8 @@ public:
 //
 // =========================================================
 
+// NOTE: an Entity returned by EntityBuilder::build() in deferred mode has no valid id until the
+// deferred flush, so do not use it to patch/add/remove within the same deferred frame.
 class Entity
 {
 public:
@@ -312,6 +274,10 @@ public:
     EntityBuilder &name(const char *name);
     EntityBuilder &parent(EntityId parentId);
 
+    // NOTE: when the world is in deferred mode (e.g. inside a system), the command is queued and the
+    // returned Entity has NO VALID ID until the deferred flush. You cannot build an entity and then
+    // patch()/set()/add/remove on it separately in the same deferred frame. Put everything
+    // (components, relationships, parent()) in the builder before calling build().
     Entity build();
 };
 

@@ -58,15 +58,13 @@ struct QueryTerm
 {
     QueryTerm()
         : tid(ENTITY_INVALID_ID), trav_relation(ENTITY_INVALID_ID), trav_target(ENTITY_INVALID_ID),
-          valid_trav_target(ENTITY_INVALID_ID), trav_method(SELF), op(HAS), access(TermAccess::READ),
-          padding(0)
+          trav_method(SELF), op(HAS), access(TermAccess::READ), padding(0)
     {
     }
 
     EntityId tid;
     EntityId trav_relation;
     EntityId trav_target;
-    EntityId valid_trav_target;
     TraverseMethod trav_method;
     TermOp op;
     TermAccess access;
@@ -89,21 +87,22 @@ struct MatchedArchetype
 {
     MatchedArchetype()
         : hi_term_idx_to_col_idx(nullptr), hi_entity_mask(nullptr), hi_mask_capacity(0), lo_entity_mask{0},
-          lo_term_idx_to_col_idx{0}, mapped_count(0)
+          lo_term_idx_to_col_idx{0}, mapped_count(0), trav_targets_(nullptr)
     {
     }
 
     MatchedArchetype(const Archetype *archetype)
         : archetype(archetype), hi_entity_mask(nullptr), hi_mask_capacity(0), hi_term_idx_to_col_idx(nullptr),
-          lo_entity_mask{0}, lo_term_idx_to_col_idx{0}, mapped_count(0)
+          lo_entity_mask{0}, lo_term_idx_to_col_idx{0}, mapped_count(0), trav_targets_(nullptr)
     {
     }
 
     MatchedArchetype(MatchedArchetype &&other) noexcept
         : archetype(other.archetype), hi_term_idx_to_col_idx(other.hi_term_idx_to_col_idx),
           hi_entity_mask(other.hi_entity_mask), hi_mask_capacity(other.hi_mask_capacity),
-          mapped_count(other.mapped_count)
+          mapped_count(other.mapped_count), trav_targets_(other.trav_targets_)
     {
+        other.trav_targets_ = nullptr;
         std::memcpy(lo_term_idx_to_col_idx, other.lo_term_idx_to_col_idx,
                     sizeof(int32_t) * INLINE_ARR_COUNT);
         std::memcpy(lo_entity_mask, other.lo_entity_mask,
@@ -118,6 +117,13 @@ struct MatchedArchetype
 
     void set_term_idx_to_col_idx(Vallocator &vallocator, int32_t *mapped_cols, uint32_t count);
     int32_t get_column_idx(uint32_t term_idx) const;
+
+    // Per-term matched traversal target (UP/CASCADE). Must be called after set_term_idx_to_col_idx.
+    void set_trav_targets(Vallocator &vallocator, const EntityId *targets, uint32_t count);
+    EntityId get_trav_target(uint32_t term_idx) const
+    {
+        return trav_targets_ ? trav_targets_[term_idx] : ENTITY_INVALID_ID;
+    }
 
     void destroy(Vallocator &vallocator);
 
@@ -136,6 +142,7 @@ struct MatchedArchetype
     uint32_t *hi_entity_mask;
     uint32_t hi_mask_capacity;
     uint32_t mapped_count;
+    EntityId *trav_targets_; // per term idx, mapped_count entries, null if no UP/CASCADE term matched
 };
 
 // =========================================================
@@ -421,6 +428,7 @@ public:
 
     QueryHandle &operator=(QueryHandle &&other) noexcept
     {
+        ENGINE_ASSERT(this != &other, "Self-move is not allowed!");
         query = other.query;
         other.query = nullptr;
         return *this;
@@ -651,7 +659,7 @@ class QueryBuilder
     : public QueryBuilderBase<QueryHandle, QueryBuilder<T...>, QueryCallbackBuilder, T...>
 {
 public:
-    QueryCallbackBuilder cache(EntityId eId);
+    QueryCallbackBuilder cache();
 
     QueryBuilder(World *world)
         : ECS::QueryBuilderBase<QueryHandle, QueryBuilder<T...>, QueryCallbackBuilder, T...>(world)

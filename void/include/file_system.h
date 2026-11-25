@@ -41,23 +41,22 @@ enum DirectoryType
     UNKNOWN_TYPE,
 };
 
-constexpr uint32_t MAX_LOCAL_PATH = 512;
 constexpr uint32_t MAX_OPENED_FILE = 1024;
 
 struct DirectoryInfo
 {
-    String abs_path;
-    StringView dir_name;
-    FileMeta meta;
-    DirectoryType type;
+    String abs_path_;
+    StringView dir_name_;
+    FileMeta meta_;
+    DirectoryType type_;
 
-    DirectoryInfo() : abs_path()
+    DirectoryInfo() : abs_path_()
     {
     }
 
     DirectoryInfo(DirectoryInfo &&other)
-        : abs_path(std::move(other.abs_path)), meta(std::move(other.meta)), type(other.type),
-          dir_name(other.dir_name)
+        : abs_path_(std::move(other.abs_path_)), meta_(std::move(other.meta_)), type_(other.type_),
+          dir_name_(other.dir_name_)
     {
     }
 };

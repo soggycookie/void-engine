@@ -175,6 +175,12 @@ public:
         return MIN_PAYLOAD_SIZE;
     }
 
+    // Usable payload size of a live allocation returned by tlfs_alloc. Not thread-safe.
+    uint64_t get_usable_size(void *addr)
+    {
+        return get_payload_size(get_block_from_payload(addr));
+    }
+
     void init(uint64_t res_size, uint64_t com_size);
     void destroy();
 

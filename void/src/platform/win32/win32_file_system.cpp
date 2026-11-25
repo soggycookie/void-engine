@@ -24,12 +24,12 @@ struct FileNode
 
 struct IOContext
 {
-    HANDLE iocp;
-    FileNode files[MAX_OPENED_FILE];
-    FileNode *free_node;
-    uint32_t file_count;
-    std::atomic<bool> can_write;
-    std::atomic<bool> running;
+    HANDLE iocp_;
+    FileNode files_[MAX_OPENED_FILE];
+    FileNode *free_file_;
+    uint32_t file_count_;
+    std::atomic<bool> can_write_;
+    std::atomic<bool> running_;
 };
 
 
@@ -58,7 +58,7 @@ static IOContext g_ctx;
 // always return wchar with null terminator
 wchar_t *utf8_to_utf16(Arena *arena, const char8_t *utf8, uint32_t path_len)
 {
-    ENGINE_ASSERT(utf8, "Utf8 string is null!");
+    ENGINE_ASSERT(utf8 && path_len > 0, "Utf8 string is null!");
     int32_t wide_char_count =
         MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, RCAST(const char *, utf8), path_len, NULL, 0);
     ENGINE_ASSERT(wide_char_count > 0, "");
@@ -95,21 +95,21 @@ void startup(uint32_t max_concurrency)
 {
     HANDLE iocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, NULL, max_concurrency);
     ENGINE_ASSERT_WIN32(iocp != INVALID_HANDLE_VALUE);
-    g_ctx.iocp = iocp;
-    g_ctx.running.store(true);
-    g_ctx.free_node = nullptr;
+    g_ctx.iocp_ = iocp;
+    g_ctx.running_.store(true);
+    g_ctx.free_file_ = nullptr;
     for (uint32_t idx = 0; idx < MAX_OPENED_FILE; ++idx)
     {
-        g_ctx.files[idx].next = g_ctx.free_node;
-        g_ctx.free_node = &g_ctx.files[idx];
+        g_ctx.files_[idx].next = g_ctx.free_file_;
+        g_ctx.free_file_ = &g_ctx.files_[idx];
     }
-    g_ctx.can_write.store(true, std::memory_order_release);
+    g_ctx.can_write_.store(true, std::memory_order_release);
 }
 
 void shutdown()
 {
-    g_ctx.running.store(false);
-    PostQueuedCompletionStatus(g_ctx.iocp, 0, SHUTDOWN_KEY, nullptr);
+    g_ctx.running_.store(false);
+    PostQueuedCompletionStatus(g_ctx.iocp_, 0, SHUTDOWN_KEY, nullptr);
 }
 
 DirectoryType get_directory_type(StringView path)
@@ -263,24 +263,24 @@ File open(StringView path, FileOptionFlags flags)
     }
 
     bool expected = true;
-    while (!g_ctx.can_write.compare_exchange_strong(expected, false, std::memory_order_acquire,
+    while (!g_ctx.can_write_.compare_exchange_strong(expected, false, std::memory_order_acquire,
                                                     std::memory_order_relaxed))
     {
         expected = true;
     }
 
-    FileNode *node = g_ctx.free_node;
-    g_ctx.free_node = node->next;
+    FileNode *node = g_ctx.free_file_;
+    g_ctx.free_file_ = node->next;
     node->file.handle = handle;
-    ++g_ctx.file_count;
-    ENGINE_ASSERT(g_ctx.file_count <= MAX_OPENED_FILE, "Exceed maximum opened file!");
-    g_ctx.can_write.store(true, std::memory_order_release);
+    ++g_ctx.file_count_;
+    ENGINE_ASSERT(g_ctx.file_count_ <= MAX_OPENED_FILE, "Exceed maximum opened file!");
+    g_ctx.can_write_.store(true, std::memory_order_release);
 
     if (async)
     {
-        ENGINE_ASSERT(g_ctx.iocp != INVALID_HANDLE_VALUE, "Invalid IOCP handle!");
-        HANDLE iocp = CreateIoCompletionPort(node->file.handle, g_ctx.iocp, NULL, 0);
-        ENGINE_ASSERT(iocp == g_ctx.iocp, "IOCP mismatch handle!");
+        ENGINE_ASSERT(g_ctx.iocp_ != INVALID_HANDLE_VALUE, "Invalid IOCP handle!");
+        HANDLE iocp = CreateIoCompletionPort(node->file.handle, g_ctx.iocp_, NULL, 0);
+        ENGINE_ASSERT(iocp == g_ctx.iocp_, "IOCP mismatch handle!");
     }
     return &node->file;
 }
@@ -291,18 +291,18 @@ bool close(File file)
     if (result)
     {
         bool expected = true;
-        while (!g_ctx.can_write.compare_exchange_strong(expected, false, std::memory_order_acquire,
+        while (!g_ctx.can_write_.compare_exchange_strong(expected, false, std::memory_order_acquire,
                                                         std::memory_order_relaxed))
         {
             expected = true;
         }
 
         FileNode *new_head = RCAST(FileNode *, file);
-        new_head->next = g_ctx.free_node;
-        g_ctx.free_node = new_head;
-        ENGINE_ASSERT(g_ctx.file_count > 0, "Double close on some file handle!");
-        --g_ctx.file_count;
-        g_ctx.can_write.store(true, std::memory_order_release);
+        new_head->next = g_ctx.free_file_;
+        g_ctx.free_file_ = new_head;
+        ENGINE_ASSERT(g_ctx.file_count_ > 0, "Double close on some file handle!");
+        --g_ctx.file_count_;
+        g_ctx.can_write_.store(true, std::memory_order_release);
     }
 
     return result;
@@ -540,15 +540,15 @@ DynamicArray<DirectoryInfo> find_children(Arena &arena, StringView path)
         FileMeta meta = extract_metadata(data.nFileSizeLow, data.nFileSizeHigh, data.ftLastWriteTime,
                                          data.ftCreationTime);
         DirectoryInfo node;
-        node.meta = meta;
-        node.type = type;
+        node.meta_ = meta;
+        node.type_ = type;
         int32_t dir_len;
         char8_t *utf8_path_name = utf16_to_utf8(*scratch, data.cFileName, &dir_len);
-        node.abs_path.init(arena, dir_len + path.get_length() + 1);
-        node.abs_path.assign(arena, path);
-        node.abs_path.append(arena, u8"\\");
-        node.abs_path.append(arena, utf8_path_name);
-        node.dir_name = StringView(node.abs_path.data() + (path.get_length() + 1), dir_len);
+        node.abs_path_.init(arena, dir_len + path.get_length() + 1);
+        node.abs_path_.assign(arena, path);
+        node.abs_path_.append(arena, u8"\\");
+        node.abs_path_.append(arena, utf8_path_name);
+        node.dir_name_ = StringView(node.abs_path_.data() + (path.get_length() + 1), dir_len);
         info.push_back(arena, std::move(node));
 
     } while (FindNextFileW(handle, &data));
@@ -560,13 +560,13 @@ DynamicArray<DirectoryInfo> find_children(Arena &arena, StringView path)
 
 void poll_io_completions(void *, void *)
 {
-    while (g_ctx.running)
+    while (g_ctx.running_)
     {
         std::cout << "FS Running 1" << std::endl;
         DWORD byte_transferred;
         OVERLAPPED *overlapped;
         ULONG_PTR completion_key;
-        BOOL result = GetQueuedCompletionStatus(g_ctx.iocp, &byte_transferred, &completion_key,
+        BOOL result = GetQueuedCompletionStatus(g_ctx.iocp_, &byte_transferred, &completion_key,
                                                 &overlapped, INFINITE);
 
         std::cout << "FS Running" << std::endl;
@@ -588,7 +588,7 @@ void poll_io_completions(void *, void *)
         }
         if (completion_key == SHUTDOWN_KEY)
         {
-            CloseHandle(g_ctx.iocp);
+            CloseHandle(g_ctx.iocp_);
             std::cout << "FileSystem Shutdown" << std::endl;
         }
     }

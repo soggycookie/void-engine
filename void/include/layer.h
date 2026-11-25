@@ -1,16 +1,16 @@
 #pragma once
 #include "input_event.h"
-#include "input_manager.h"
 #include "pch.h"
 
 namespace VoidEngine
 {
 class Application;
+class InputManager;
 
 class Layer
 {
 public:
-    Layer(Application *app) : app(app), input_manager() {}
+    Layer(Application *app) : app_(app) {}
 
     virtual ~Layer() = default;
     virtual void on_init() = 0;
@@ -18,13 +18,18 @@ public:
     virtual void on_attach() = 0;
 
     virtual void on_update(double dt) = 0;
-    virtual void on_event(InputEvent &e) { input_manager.add_event(e); };
-    virtual void on_post_update() { input_manager.flush_state(); }
+    // Event routing only (e.g. UI marking an event handled). Input state lives in
+    // Application::get_input(), which is updated before layers see the event.
+    virtual void on_event(InputEvent &e) {}
+    virtual void on_post_update() {}
+    // Called between ImGuiHost begin_frame/end_frame, bottom layer first. ImGui calls only here.
+    virtual void on_imgui_render() {}
 
-    const InputManager &get_input() const { return input_manager; }
 protected:
-    InputManager input_manager;
-    Application *app;
+    // The application's shared input state (state and per-frame event buffer).
+    const InputManager &input() const;
+
+    Application *app_;
 };
 
 } // namespace VoidEngine

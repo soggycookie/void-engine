@@ -1,6 +1,7 @@
 #include "application.h"
 #include "file_system.h"
 #include "game_layer.h"
+#include "platform/vulkan/vulkan_backend.h"
 
 #include "profiler.h"
 
@@ -16,10 +17,8 @@ bool Application::startup()
 
     window_ = Window::create(vallocator_, WindowProperty(), [this](InputEvent &e) { on_event(e); });
 
-    Logger::set_window_handle(window_->get_window_handle());
-
-    Layer *game_layer = construct<GameLayer>(vallocator_, this);
-    layer_stack_.push_layer(game_layer);
+    game_layer_ = construct<GameLayer>(vallocator_, this);
+    layer_stack_.push_layer(game_layer_);
 
     // layer should before this because events dispatch to app
     //  then dispatch to layers, which should already exist
@@ -27,10 +26,27 @@ bool Application::startup()
     {
         return false;
     }
+    // after init: the HWND does not exist before it (fatal message boxes use it as owner)
+    Logger::set_window_handle(window_->get_window_handle());
 
-    // vulkan_backend.StartUp(window, allocator);
     Profiler::StartUp(window_);
+    // Also initializes the main thread's t_scratches, which Vulkan init uses: keep it before Vulkan.
     job_system.startup(vallocator_, 0);
+
+    // Order: window -> Vulkan -> ImGui context + platform -> ImGui renderer (docs/design/imgui.md).
+    vulkan_ = construct<Vulkan::VulkanBackend>(vallocator_);
+    if (!vulkan_->startup(window_))
+    {
+        return false;
+    }
+    if (!imgui_host_.init(window_))
+    {
+        return false;
+    }
+    if (!vulkan_->init_imgui())
+    {
+        return false;
+    }
 
     FS::startup();
     // setup async io polling
@@ -57,11 +73,29 @@ void Application::shutdown()
     resource_system_.shutdown();
     FS::shutdown();
     job_system.shutdown();
-    layer_stack_.destroy();
-    for (uint32_t idx = 0; idx < layer_stack_.get_count(); ++idx) {
-        destruct(vallocator_, layer_stack_[idx]);
+
+    // Order: ImGui renderer (waits idle) -> layers -> ImGui context -> Vulkan -> window.
+    if (vulkan_)
+    {
+        vulkan_->shutdown_imgui();
     }
-    // vulkan_backend.Shutdown();
+
+    layer_stack_.destroy();
+    if (game_layer_)
+    {
+        // By real type: Vallocator::vfree picks the pool from sizeof(T).
+        destruct(vallocator_, game_layer_);
+        game_layer_ = nullptr;
+    }
+
+    imgui_host_.destroy();
+
+    if (vulkan_)
+    {
+        vulkan_->shutdown();
+        destruct(vallocator_, vulkan_);
+        vulkan_ = nullptr;
+    }
     Window::destroy(vallocator_, window_);
     vallocator_.destroy();
 }
@@ -75,13 +109,32 @@ void Application::update()
 
     while (running_)
     {
+        // clear per-frame edges before the pump so events pumped now are visible to on_update
+        input_.begin_frame();
         window_->update();
+        if (!running_)
+        {
+            break; // closed during the message pump: don't render into a closing window
+        }
+
+        // renderer new frame first, then platform + ImGui::NewFrame
+        vulkan_->imgui_new_frame();
+        imgui_host_.begin_frame();
 
         for (uint32_t idx = layer_stack_.get_count(); idx > 0;)
         {
             Layer *layer = layer_stack_[--idx];
             layer->on_update(window_->get_delta_time());
         }
+
+        // bottom -> top, so overlays' windows are submitted last
+        for (uint32_t idx = 0; idx < layer_stack_.get_count(); ++idx)
+        {
+            layer_stack_[idx]->on_imgui_render();
+        }
+
+        ImDrawData *ui = imgui_host_.end_frame();
+        vulkan_->draw_frame(ui);
 
         for (uint32_t idx = layer_stack_.get_count(); idx > 0;)
         {
@@ -91,9 +144,12 @@ void Application::update()
     }
 }
 
-// TODO: create layer to dispatch event to lower layers
 void Application::on_event(InputEvent &e)
 {
+    // state is updated for every event, handled or not, so a layer swallowing a release can't
+    // leave a key stuck
+    input_.on_event(e);
+
     switch (e.get_type())
     {
     case InputEventType::APP_CLOSED:

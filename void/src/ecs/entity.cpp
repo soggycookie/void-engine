@@ -13,21 +13,21 @@ namespace VoidEngine::ECS
 
 EntityBuilder::EntityBuilder(World *world) : EntityMutator<EntityBuilder>(world)
 {
-    patch.mode = EntityCommandMode::ENTITY_SPAWN;
-    patch.eid = 0;
+    ecmd_.mode = EntityCommandMode::ENTITY_SPAWN;
+    ecmd_.eid = 0;
     const TypeInfo &cr = world->get_type_infos()[NAME_ID];
-    const TypeMetadata *tm = cr.meta;
+    const TypeMetadata *tm = cr.meta_;
     AddCommand cmd;
     cmd.data = nullptr;
     cmd.type = TypeAddMode::ASSIGN_CONST_TYPE;
     cmd.tid = NAME_ID;
     cmd.type_meta = tm;
-    patch.add_cmds[patch.add_count++] = cmd;
+    ecmd_.add_cmds[ecmd_.add_count++] = cmd;
 }
 
 EntityBuilder &EntityBuilder::id(EntityId eId)
 {
-    patch.id(eId);
+    ecmd_.id(eId);
     return *this;
 }
 
@@ -38,10 +38,10 @@ EntityBuilder &EntityBuilder::name(const char *name)
         return *this;
     }
 
-    const TypeInfo &cr = world->get_type_infos()[NAME_ID];
-    const TypeMetadata *tm = cr.meta;
+    const TypeInfo &cr = world_->get_type_infos()[NAME_ID];
+    const TypeMetadata *tm = cr.meta_;
 
-    AddCommand &cmd = patch.add_cmds[0];
+    AddCommand &cmd = ecmd_.add_cmds[0];
 
     uint64_t name_len = std::strlen(name);
     if (std::strlen(name) >= EcsNameLength)
@@ -49,7 +49,7 @@ EntityBuilder &EntityBuilder::name(const char *name)
         name_len = EcsNameLength - 1;
     }
 
-    char *temp = SCAST(char *, world->get_current_scratch().push(tm->alignment, tm->size));
+    char *temp = SCAST(char *, world_->get_current_scratch().push(tm->alignment, tm->size));
 
     std::memcpy(temp, name, name_len);
     temp[name_len] = '\0';
@@ -60,15 +60,18 @@ EntityBuilder &EntityBuilder::name(const char *name)
 
 EntityBuilder &EntityBuilder::parent(EntityId parent_eid)
 {
-    patch.add(world, make_relationship(CHILD_OF_ID, parent_eid));
+    ecmd_.add(world_, make_relationship(CHILD_OF_ID, parent_eid));
     return *this;
 }
 
 Entity EntityBuilder::build()
 {
-    patch.sort();
-    world->resolve_entity_cmd(patch);
-    return Entity(world, patch.eid);
+    // In deferred mode the command is queued (replayed FIFO per worker at flush) and the returned
+    // Entity has no valid id until then. Do not spawn and then patch/add/remove on it separately in
+    // the same deferred frame; put everything (components, relationships, parent()) in the builder.
+    ecmd_.sort();
+    world_->resolve_entity_cmd(ecmd_);
+    return Entity(world_, ecmd_.eid);
 }
 
 // =========================================================
@@ -83,7 +86,7 @@ void EntityCommand::add(World *world, EntityId tid)
     // THAT POINT YET
     ENGINE_ASSERT(world, "World is null!");
     ENGINE_ASSERT(add_count < 16, "Entity command exceeds add command array!");
-    const TypeMetadata *tm = world->get_type_infos()[low_32bit(tid)].meta;
+    const TypeMetadata *tm = world->get_type_infos()[low_32bit(tid)].meta_;
     AddCommand cmd;
     cmd.tid = tid;
     cmd.data = nullptr;
@@ -98,7 +101,7 @@ void EntityCommand::assign_move(World *world, EntityId tid, void *data)
     // THAT POINT YET
     ENGINE_ASSERT(world, "World is null!");
     ENGINE_ASSERT(add_count < 16, "Entity command exceeds add command array!");
-    const TypeMetadata *tm = world->get_type_infos()[low_32bit(tid)].meta;
+    const TypeMetadata *tm = world->get_type_infos()[low_32bit(tid)].meta_;
 
     void *temp = world->get_current_scratch().push(tm->alignment, tm->size);
     world->move_to(temp, data, tm);
@@ -116,7 +119,7 @@ void EntityCommand::assign_copy(World *world, EntityId tid, const void *data)
     // THAT POINT YET
     ENGINE_ASSERT(world, "World is null!");
     ENGINE_ASSERT(add_count < 16, "Entity command exceeds add command array!");
-    const TypeMetadata *tm = world->get_type_infos()[low_32bit(tid)].meta;
+    const TypeMetadata *tm = world->get_type_infos()[low_32bit(tid)].meta_;
 
     void *temp = world->get_current_scratch().push(tm->alignment, tm->size);
     world->copy_to(temp, data, tm);
@@ -170,8 +173,8 @@ void EntityCommand::destroy()
 
 void EntityPatcher::build()
 {
-    patch.sort();
-    world->resolve_entity_cmd(patch);
+    ecmd_.sort();
+    world_->resolve_entity_cmd(ecmd_);
 }
 
 } // namespace VoidEngine::ECS

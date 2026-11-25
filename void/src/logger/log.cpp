@@ -8,9 +8,10 @@ static void *g_window_handle;
 
 LogBuffer g_log_buffer{.head_ = 0, .tail_ = 0};
 
-void set_window_handle(void *window_handle)
+void set_window_handle(const void *window_handle)
 {
-    g_window_handle = window_handle;
+    // matches the declaration in log.h; stored non-const for MessageBoxEx's HWND
+    g_window_handle = const_cast<void *>(window_handle);
 }
 
 void show_fatal_mbox(const char *caption, const char *content)

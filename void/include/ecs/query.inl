@@ -45,7 +45,7 @@ CallbackArg Query_T::get_exec_callback_arg(const QueryIter &iter, MatchedArchety
                 int32_t col_idx = matched.get_column_idx(exec_callback.sig_idx_to_term_idx[sig_idx]);
                 ENGINE_ASSERT(col_idx != Archetype::INVALID_COLUMN, "");
 
-                Column &col = matched.archetype->columns[col_idx];
+                Column &col = matched.archetype->columns_[col_idx];
                 const TypeMetadata &ti = *col.type_meta;
                 src = OFFSET_ADDR(col.data, ti.size * eidx);
             }
@@ -58,7 +58,8 @@ CallbackArg Query_T::get_exec_callback_arg(const QueryIter &iter, MatchedArchety
         {
             if (term.op == HAS)
             {
-                if (term.valid_trav_target == ENTITY_INVALID_ID)
+                EntityId trav_target = matched.get_trav_target(exec_callback.sig_idx_to_term_idx[sig_idx]);
+                if (trav_target == ENTITY_INVALID_ID)
                 {
                     ENGINE_ASSERT(false, "");
                 }
@@ -68,7 +69,7 @@ CallbackArg Query_T::get_exec_callback_arg(const QueryIter &iter, MatchedArchety
                 int32_t col_idx = matched.get_column_idx(exec_callback.sig_idx_to_term_idx[sig_idx]);
                 ENGINE_ASSERT(col_idx != Archetype::INVALID_COLUMN, "");
 
-                src = world->get(term.valid_trav_target, term.tid);
+                src = world->get_mut(trav_target, term.tid);
             }
             else
             {
@@ -101,7 +102,7 @@ CallbackArg Query_T::get_filter_callback_arg(const QueryIter &iter, MatchedArche
                 int32_t col_idx = matched.get_column_idx(filter_callback.sig_idx_to_term_idx[sig_idx]);
                 ENGINE_ASSERT(col_idx != Archetype::INVALID_COLUMN, "");
 
-                Column &col = matched.archetype->columns[col_idx];
+                Column &col = matched.archetype->columns_[col_idx];
                 const TypeMetadata &ti = *col.type_meta;
                 src = OFFSET_ADDR(col.data, ti.size * eidx);
             }
@@ -114,14 +115,15 @@ CallbackArg Query_T::get_filter_callback_arg(const QueryIter &iter, MatchedArche
         {
             if (term.op == HAS)
             {
-                ENGINE_ASSERT(term.valid_trav_target != ENTITY_INVALID_ID, "");
+                EntityId trav_target = matched.get_trav_target(filter_callback.sig_idx_to_term_idx[sig_idx]);
+                ENGINE_ASSERT(trav_target != ENTITY_INVALID_ID, "");
 
                 // do absolute nothing but just to check if this component has
                 // data or not
                 int32_t col_idx = matched.get_column_idx(filter_callback.sig_idx_to_term_idx[sig_idx]);
                 ENGINE_ASSERT(col_idx != Archetype::INVALID_COLUMN, "");
 
-                src = world->get(term.valid_trav_target, term.tid);
+                src = world->get_mut(trav_target, term.tid);
             }
             else
             {
@@ -220,12 +222,12 @@ void Query_T::set_execution_callback(void (*cb)(CallbackArgs...), void *ctx)
             // entity level filter
             if (query->is_filtered)
             {
-                for (size_t eIdx = 0; eIdx < archetype->count; ++eIdx)
+                for (size_t eIdx = 0; eIdx < archetype->count_; ++eIdx)
                 {
                     bool valid = query->result[idx].get_mask(eIdx);
                     if (valid)
                     {
-                        iter.eid = archetype->entities[eIdx];
+                        iter.eid = archetype->entities_[eIdx];
                         query->invoke_exec_callback<CallbackArgs...>(
                             callback, iter, query->result[idx], eIdx,
                             std::index_sequence_for<CallbackArgs...>{});
@@ -234,9 +236,9 @@ void Query_T::set_execution_callback(void (*cb)(CallbackArgs...), void *ctx)
             }
             else
             {
-                for (size_t eIdx = 0; eIdx < archetype->count; ++eIdx)
+                for (size_t eIdx = 0; eIdx < archetype->count_; ++eIdx)
                 {
-                    iter.eid = archetype->entities[eIdx];
+                    iter.eid = archetype->entities_[eIdx];
                     // actuallCallback invoke here
                     query->invoke_exec_callback<CallbackArgs...>(
                         callback, iter, query->result[idx], eIdx,
@@ -283,7 +285,7 @@ void Query_T::set_filter_callback(bool (*cb)(CallbackArgs...), void *ctx)
         int64_t sig_id = callback_sig_ids[idx];
         if (sig_id == QUERY_ITER_ID)
         {
-            exec_callback.sig_idx_to_term_idx[idx] = QUERY_ITER_ID;
+            filter_callback.sig_idx_to_term_idx[idx] = QUERY_ITER_ID;
             continue;
         }
 
@@ -329,7 +331,7 @@ void Query_T::set_filter_callback(bool (*cb)(CallbackArgs...), void *ctx)
         auto callback = RCAST(bool (*)(CallbackArgs...), fn);
         QueryIter iter(query->world, 0, ctx, 0);
 
-        iter.eid = matched_arch.archetype->entities[eidx];
+        iter.eid = matched_arch.archetype->entities_[eidx];
         // actuallCallback invoke here
         bool valid = query->invoke_filter_callback(callback, iter, matched_arch, eidx,
                                                  std::index_sequence_for<CallbackArgs...>{});
@@ -502,7 +504,6 @@ Derived &QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::up(EntityId r
                                                                       EntityId target_eid,
                                                                       TermAccess term_access)
 {
-    cur_term.valid_trav_target = target_eid;
     return through(UP).traverse(relation_id, target_eid).access(term_access);
 }
 
@@ -609,7 +610,7 @@ Query_T *QueryBuilderBase<Handle, Derived, CallbackBuilder, T...>::create_query(
 ////////////////////////// QueryBuilder /////////////////////////////
 
 template <typename... T>
-QueryCallbackBuilder QueryBuilder<T...>::cache(EntityId eId)
+QueryCallbackBuilder QueryBuilder<T...>::cache()
 {
     Query_T *q =
         QueryBuilderBase<QueryHandle, QueryBuilder<T...>, QueryCallbackBuilder, T...>::create_query();

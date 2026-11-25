@@ -53,7 +53,7 @@ void TLFS::print()
 
 void TLFS::init(uint64_t res_size, uint64_t com_size)
 {
-    ENGINE_ASSERT(res_size >= com_size && commit_size_ > 0, "Commit size is greater than reserve size!");
+    ENGINE_ASSERT(res_size >= com_size && com_size > 0, "Commit size is greater than reserve size!");
     std::memset(sl_bitmaps_, 0, sizeof(sl_bitmaps_));
     std::memset(freelists_, 0, sizeof(freelists_));
     tail_free_ = false;
@@ -433,7 +433,8 @@ void TLFS::mark_used(Block *block)
     }
 #ifdef VOID_DEBUG
     ENGINE_ASSERT(next_physical_header->debug_tag_.magic_ == MAGIC_NUMBER ||
-                    next_physical_header->debug_tag_.magic_ == DEAD_MAGIC_NUMBER, "");
+                    next_physical_header->debug_tag_.magic_ == DEAD_MAGIC_NUMBER,
+                  "mark_used: next physical block header is corrupted!");
 #endif                                        // VOID_DEBUG
     next_physical_header->size_ &= ~(1ULL << 1); // second LSB
 }
@@ -462,7 +463,12 @@ void TLFS::mark_free(Block *block)
     }
 
 #ifdef VOID_DEBUG
-    ENGINE_ASSERT(next_physical_header->debug_tag_.magic_ == MAGIC_NUMBER, "");
+    // Normally the next block is used (two free blocks are never adjacent). The aligned path in
+    // tlfs_alloc_internal is the exception: it splits off the leading padding and frees it while the
+    // block being allocated (the next one here) is still tagged free until mark_used runs.
+    ENGINE_ASSERT(next_physical_header->debug_tag_.magic_ == MAGIC_NUMBER ||
+                      next_physical_header->debug_tag_.magic_ == DEAD_MAGIC_NUMBER,
+                  "mark_free: next physical block header is corrupted!");
 #endif                                       // VOID_DEBUG
     next_physical_header->size_ |= (1ULL << 1); // second LSB
 }
@@ -906,14 +912,14 @@ void *Vallocator::valloc(uint64_t size, uint64_t align)
 {
     ENGINE_ASSERT(size >= align, "Alignment %llu must be smaller or equal to size %llu", to_ull(align),
                   to_ull(size));
-    ++alloc_count;
+    ++alloc_count_;
     if (size > MAX_SIZE_CLASS)
     {
-        return tlfs.tlfs_alloc(size, align);
+        return tlfs_.tlfs_alloc(size, align);
     }
     size = std::max(next_power_of_2(size), MIN_SIZE_CLASS);
     uint32_t idx = floor_log2(size) - floor_log2(MIN_SIZE_CLASS);
-    return pools[idx].pool_alloc();
+    return pools_[idx].pool_alloc();
 }
 
 void Vallocator::vfree(uint64_t size, void *addr)
@@ -922,15 +928,15 @@ void Vallocator::vfree(uint64_t size, void *addr)
     {
         return;
     }
-    --alloc_count;
+    --alloc_count_;
     if (size > MAX_SIZE_CLASS)
     {
-        tlfs.tlfs_free(addr);
+        tlfs_.tlfs_free(addr);
         return;
     }
     size = std::max(next_power_of_2(size), MIN_SIZE_CLASS);
     uint32_t idx = floor_log2(size) - floor_log2(MIN_SIZE_CLASS);
-    pools[idx].pool_free(addr);
+    pools_[idx].pool_free(addr);
 }
 #endif // VOID_DEBUG
 

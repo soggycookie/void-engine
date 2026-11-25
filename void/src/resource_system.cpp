@@ -103,11 +103,11 @@ void ResourceSystem::startup(StringView path)
     for (uint64_t idx = 0; idx < children.get_count(); ++idx)
     {
         FS::DirectoryInfo &info = children[idx];
-        if (info.type == FS::DIRECTORY_TYPE)
+        if (info.type_ == FS::DIRECTORY_TYPE)
         {
             String sub_resource;
-            sub_resource.init(vallocator_, info.abs_path.get_length());
-            sub_resource.assign(vallocator_, info.abs_path);
+            sub_resource.init(vallocator_, info.abs_path_.get_length());
+            sub_resource.assign(vallocator_, info.abs_path_);
             sub_resource_paths.push_back(vallocator_, std::move(sub_resource));
         }
     }
@@ -129,6 +129,8 @@ void ResourceSystem::shutdown()
         {
             FS::close(asset.file_);
         }
+        // assets_.destroy only frees the array, not what each Asset owns
+        asset.file_name_.destroy(vallocator_);
     }
     resource_registry_.destroy(vallocator_);
     assets_.destroy(vallocator_);
@@ -182,27 +184,27 @@ void ResourceSystem::query_asset(const String &sub_resource_path)
     while (!processing_resource_directories.is_empty())
     {
         FS::DirectoryInfo &info = processing_resource_directories.front();
-        if (info.type == FS::FILE_TYPE)
+        if (info.type_ == FS::FILE_TYPE)
         {
-            StringView ext = FS::get_file_ext(info.dir_name);
-            if (is_supported_ext(ext) && info.meta.size > 0)
+            StringView ext = FS::get_file_ext(info.dir_name_);
+            if (is_supported_ext(ext) && info.meta_.size > 0)
             {
-                if (has_associated_meta_file(info.abs_path))
+                if (has_associated_meta_file(info.abs_path_))
                 {
                     // parse the meta file
-                    parse_resource(info.abs_path);
+                    parse_resource(info.abs_path_);
                 }
                 else
                 {
                     // push into a queue, create meta later so we can compare guid to avoid collision
                     // only sole file can only go to this path
-                    sole_meta_creation_deque.push_back(*scratch, info.abs_path);
+                    sole_meta_creation_deque.push_back(*scratch, info.abs_path_);
                 }
             }
         }
         else
         {
-            DynamicArray<FS::DirectoryInfo> sub_folder_children = FS::find_children(*scratch, info.abs_path);
+            DynamicArray<FS::DirectoryInfo> sub_folder_children = FS::find_children(*scratch, info.abs_path_);
             for (uint64_t idx = 0; idx < sub_folder_children.get_count(); ++idx)
             {
                 processing_resource_directories.push_back(*scratch, std::move(sub_folder_children[idx]));
@@ -300,7 +302,13 @@ void ResourceSystem::parse_resource(StringView abs_rpath)
 
         String meta_file_name = get_sole_meta_file_path(*scratch, abs_rpath);
         FS::File meta_file = FS::open(meta_file_name, FS::READ_ACCESS_FLAG);
-        void *buf = FS::read(vallocator_, meta_file, &size);
+        void *buf = nullptr;
+        if (meta_file != FS::INVALID_FILE)
+        {
+            buf = FS::read(vallocator_, meta_file, &size);
+            // the meta file is only needed for this read
+            FS::close(meta_file);
+        }
         if (buf)
         {
             AssetId guid;
@@ -327,6 +335,8 @@ void ResourceSystem::parse_resource(StringView abs_rpath)
             rdata.data_ = nullptr;
 
             resource_registry_.insert(vallocator_, guid, rdata);
+            // FS::read allocates `size` bytes from vallocator_; the parsed fields are copied out above
+            vallocator_.vfree(size, buf);
         }
         else
         {

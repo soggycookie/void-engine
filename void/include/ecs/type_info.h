@@ -42,6 +42,7 @@ enum TypeMetaFlag : uint32_t
     BIT_DATA_TYPE = 0x40,
     ALLOW_DUPLICATE = 0x80,
     TRIVIAL_DATA = 0x100,
+    ALLOW_CYCLE = 0x200,
 };
 using TypeMetaFlags = uint32_t;
 
@@ -60,6 +61,8 @@ struct TypeMetadata
     bool has_data() const { return (flags & DATA_TYPE) == DATA_TYPE; }
 
     bool is_exclusive() const { return (flags & EXCLUSIVE_TYPE) == (EXCLUSIVE_TYPE); }
+
+    bool is_allow_cycle() const { return (flags & ALLOW_CYCLE) == ALLOW_CYCLE; }
 
     bool is_data_a_bit() const
     {
@@ -99,7 +102,10 @@ struct TypeMetaBuilder
     TypeMetaBuilder<T> &remove_event(RemoveEventHook e);
     TypeMetaBuilder<T> &set_event(SetEventHook e);
 
-    TypeMetaBuilder<T> &id(EntityId eid);
+    // make the id < UINT32_MAX to avoid versioning and mismatching a simple type as if it is a
+    // relationship
+    TypeMetaBuilder<T> &id(LowEntityId eid);
+    TypeMetaBuilder<T> &allow_cycle();
 
     void register_type();
 

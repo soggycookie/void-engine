@@ -12,6 +12,11 @@ public:
 
 using EventCallback = std::function<void(InputEvent &)>;
 
+// Raw OS message hook, called before the window converts a message into an InputEvent.
+// Win32: (HWND, UINT msg, WPARAM, LPARAM). Return nonzero to consume the message (the window
+// procedure returns that value immediately). Used by the ImGui platform backend.
+using NativeMessageHook = intptr_t (*)(void *handle, uint32_t msg, uintptr_t wparam, intptr_t lparam);
+
 struct WindowProperty
 {
     const char *title_ = "void-engine";
@@ -75,7 +80,17 @@ public:
         property_.height_ = height;
     }
 
+    void set_native_message_hook(NativeMessageHook hook)
+    {
+        native_message_hook_ = hook;
+    }
+    NativeMessageHook get_native_message_hook() const
+    {
+        return native_message_hook_;
+    }
+
 protected:
+    NativeMessageHook native_message_hook_ = nullptr;
     // TODO: move this property to APP
     WindowProperty property_;
     EventCallback dispatch_event_callback_;

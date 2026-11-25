@@ -1,5 +1,6 @@
 #pragma once
 #include "layer.h"
+#include "input_manager.h"
 #include "ecs/ecs.h"
 
 namespace VoidEngine
@@ -29,48 +30,20 @@ struct Observer
 
 //////////////// Input Manager ///////////////
 
+// ECS singleton view of the application's shared InputManager (no copy of the state).
 class EcsInputManager
 {
 public:
-    EcsInputManager() : m_mousePos()
-    {
-        prev_input_state.reset();
-        curr_input_state.reset();
-    }
+    bool is_btn_pressed(KeyCode btn) const { return input_ && input_->is_pressed(btn); }
+    bool is_btn_released(KeyCode btn) const { return input_ && input_->is_released(btn); }
+    bool is_btn_held(KeyCode btn) const { return input_ && input_->is_down(btn); }
 
-    bool is_btn_pressed(KeyCode btn)
-    {
-        return prev_input_state[static_cast<uint16_t>(btn)] == 0 &&
-               curr_input_state[static_cast<uint16_t>(btn)] == 1;
-    }
+    MousePos get_mouse_pos() const { return input_ ? input_->get_mouse_pos() : MousePos(0, 0); }
 
-    bool is_btn_released(KeyCode btn)
-    {
-        return prev_input_state[static_cast<uint16_t>(btn)] == 1 &&
-               curr_input_state[static_cast<uint16_t>(btn)] == 0;
-    }
-
-    bool is_btn_held(KeyCode btn)
-    {
-        return prev_input_state[static_cast<uint16_t>(btn)] == 1 &&
-               curr_input_state[static_cast<uint16_t>(btn)] == 1;
-    }
-
-    MousePos get_mouse_pos() const { return m_mousePos; }
-
-    void set(const std::bitset<256> &prev, const std::bitset<256> &curr, int32_t mouse_x,
-             int32_t mouse_y)
-    {
-        prev_input_state = prev;
-        curr_input_state = curr;
-        m_mousePos.mouseX = mouse_x;
-        m_mousePos.mouseY = mouse_y;
-    }
+    void set(const InputManager *input) { input_ = input; }
 
 private:
-    std::bitset<256> prev_input_state;
-    std::bitset<256> curr_input_state;
-    MousePos m_mousePos;
+    const InputManager *input_ = nullptr;
 };
 
 class GameLayer : public Layer
@@ -84,6 +57,7 @@ public:
     void on_update(double dt) override;
     void on_event(InputEvent &e) override;
     void on_post_update() override;
+    void on_imgui_render() override;
 
 private:
     bool paused = false;

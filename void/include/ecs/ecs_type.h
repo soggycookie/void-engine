@@ -58,6 +58,9 @@ constexpr const std::string_view get_type_name()
     return std::string_view(nullptr, 0);
 }
 
+// TODO(relationship-policy): pairs keep only the low 32 bits, so a pair whose target was destroyed
+// can silently re-target a new entity that reuses the slot. Decide a policy: cascade-delete children,
+// have World::remove_entity strip the pairs, or detect dangling pairs via versioned target ids.
 inline EntityId make_relationship(EntityId first, EntityId sec)
 {
     constexpr uint32_t mask = 0xFFFFFFFFULL;
@@ -97,67 +100,77 @@ EntityId TypeId<T>::s_id = 0;
 
 struct TypeSet
 {
-    EntityId *ids;
-    uint32_t count;
+    EntityId *ids_;
+    uint32_t count_;
 
     constexpr static int32_t NOT_FOUND_IDX = -1;
 
-    TypeSet() : ids(nullptr), count(0)
+    TypeSet() : ids_(nullptr), count_(0)
     {
     }
 
     NO_COPY_ASSIGNMENT(TypeSet);
     NO_MOVE_ASSIGNMENT(TypeSet);
 
-    TypeSet(TypeSet &&other) noexcept : ids(other.ids), count(other.count)
+    TypeSet(TypeSet &&other) noexcept : ids_(other.ids_), count_(other.count_)
     {
-        other.ids = nullptr;
-        other.count = 0;
+        other.ids_ = nullptr;
+        other.count_ = 0;
     }
 
     // shallow copy
-    TypeSet(const TypeSet &other) : ids(other.ids), count(other.count)
+    TypeSet(const TypeSet &other) : ids_(other.ids_), count_(other.count_)
     {
     }
 
     bool operator==(const TypeSet &other)
     {
-        if (count != other.count)
+        if (count_ != other.count_)
         {
             return false;
         }
 
-        return std::memcmp(ids, other.ids, count * sizeof(EntityId)) == 0;
-    }
-
-    bool operator!=(const TypeSet &other)
-    {
-        if (count != other.count)
+        if (count_ == 0)
         {
             return true;
         }
 
-        return std::memcmp(ids, other.ids, count * sizeof(EntityId)) != 0;
+        return std::memcmp(ids_, other.ids_, count_ * sizeof(EntityId)) == 0;
+    }
+
+    bool operator!=(const TypeSet &other)
+    {
+        if (count_ != other.count_)
+        {
+            return true;
+        }
+
+        if (count_ == 0)
+        {
+            return false;
+        }
+
+        return std::memcmp(ids_, other.ids_, count_ * sizeof(EntityId)) != 0;
     }
 
     EntityId &operator[](uint32_t idx)
     {
-        ENGINE_ASSERT(idx < count, "Index is out of bound!");
-        return ids[idx];
+        ENGINE_ASSERT(idx < count_, "Index is out of bound!");
+        return ids_[idx];
     }
 
     const EntityId &operator[](uint32_t idx) const
     {
-        ENGINE_ASSERT(idx < count, "Index is out of bound!");
-        return ids[idx];
+        ENGINE_ASSERT(idx < count_, "Index is out of bound!");
+        return ids_[idx];
     }
 
     friend void swap(TypeSet &a, TypeSet &b) noexcept
     {
         using std::swap;
 
-        swap(a.ids, b.ids);
-        swap(a.count, b.count);
+        swap(a.ids_, b.ids_);
+        swap(a.count_, b.count_);
     }
 
     void move(Vallocator &vallocator, TypeSet &&other);
@@ -219,23 +232,25 @@ struct EntityRecord
 
 struct TypeInfo
 {
-    const TypeMetadata *meta;
-    DynamicArray<Archetype *> archetypes;
-    DynamicArray<EntityId> tracked_queries;
+    const TypeMetadata *meta_;
+    DynamicArray<Archetype *> archetypes_;
+    DynamicArray<EntityId> tracked_queries_;
 #ifdef VOID_DEBUG
-    char name[32];
+    char name_[32];
 #endif
 
-    TypeInfo() : meta(nullptr), archetypes(), tracked_queries()
+    TypeInfo() : meta_(nullptr), archetypes_(), tracked_queries_()
     {
     }
 
     TypeInfo(TypeInfo &&other)
-        : meta(other.meta), archetypes(std::move(other.archetypes)),
-          tracked_queries(std::move(other.tracked_queries))
+        : meta_(other.meta_), archetypes_(std::move(other.archetypes_)),
+          tracked_queries_(std::move(other.tracked_queries_))
     {
-        std::memcpy(name, other.name, 32);
-        other.meta = nullptr;
+#ifdef VOID_DEBUG
+        std::memcpy(name_, other.name_, 32);
+#endif // VOID_DEBUG
+        other.meta_ = nullptr;
     }
 
     void init(Vallocator &vallocator, const TypeMetadata *type_meta);
@@ -245,15 +260,15 @@ struct TypeInfo
     {
         using std::swap;
 
-        swap(lhs.meta, rhs.meta);
-        swap(lhs.archetypes, rhs.archetypes);
-        swap(lhs.tracked_queries, rhs.tracked_queries);
+        swap(lhs.meta_, rhs.meta_);
+        swap(lhs.archetypes_, rhs.archetypes_);
+        swap(lhs.tracked_queries_, rhs.tracked_queries_);
 
 #ifdef VOID_DEBUG
-        char temp[sizeof(lhs.name)];
-        std::memcpy(temp, lhs.name, sizeof(temp));
-        std::memcpy(lhs.name, rhs.name, sizeof(lhs.name));
-        std::memcpy(rhs.name, temp, sizeof(temp));
+        char temp[sizeof(lhs.name_)];
+        std::memcpy(temp, lhs.name_, sizeof(temp));
+        std::memcpy(lhs.name_, rhs.name_, sizeof(lhs.name_));
+        std::memcpy(rhs.name_, temp, sizeof(temp));
 #endif
     }
 };
@@ -261,25 +276,25 @@ struct TypeInfo
 struct Archetype
 {
 #ifdef VOID_DEBUG
-    char name[128];
+    char name_[128];
 #endif // VOID_DEBUG
-    uint32_t count;
-    uint32_t capacity;
-    Column *columns;
-    EntityId *entities;
-    TypeSet type_set;
-    int32_t *column_map; // map from component index to column index
-    FlatHashMap<EntityId, Archetype *> add_edges;
-    FlatHashMap<EntityId, Archetype *> del_edges;
-    DynamicArray<TrackedQuery> tracked_queries;
-    uint32_t column_count;
-    ArchetypeId id;
+    uint32_t count_;
+    uint32_t capacity_;
+    Column *columns_;
+    EntityId *entities_;
+    TypeSet type_set_;
+    int32_t *column_map_; // map from component index to column index
+    FlatHashMap<EntityId, Archetype *> add_edges_;
+    FlatHashMap<EntityId, Archetype *> del_edges_;
+    DynamicArray<TrackedQuery> tracked_queries_;
+    uint32_t column_count_;
+    ArchetypeId id_;
 
     constexpr static int32_t INVALID_COLUMN = -1;
 
     Archetype()
-        : id(0), count(0), capacity(0), columns(nullptr), entities(nullptr), type_set(), add_edges(),
-          del_edges(), column_count(0), column_map(), tracked_queries()
+        : id_(0), count_(0), capacity_(0), columns_(nullptr), entities_(nullptr), type_set_(), add_edges_(),
+          del_edges_(), column_count_(0), column_map_(), tracked_queries_()
     {
     }
 
@@ -288,19 +303,19 @@ struct Archetype
     NO_COPY_CTOR(Archetype);
 
     Archetype(Archetype &&other) noexcept
-        : id(other.id), count(other.count), capacity(other.capacity), column_count(other.column_count),
-          columns(other.columns), entities(other.entities), column_map(other.column_map),
-          type_set(std::move(other.type_set)), add_edges(std::move(other.add_edges)),
-          del_edges(std::move(other.del_edges)), tracked_queries(std::move(other.tracked_queries))
+        : id_(other.id_), count_(other.count_), capacity_(other.capacity_), column_count_(other.column_count_),
+          columns_(other.columns_), entities_(other.entities_), column_map_(other.column_map_),
+          type_set_(std::move(other.type_set_)), add_edges_(std::move(other.add_edges_)),
+          del_edges_(std::move(other.del_edges_)), tracked_queries_(std::move(other.tracked_queries_))
     {
 #ifdef VOID_DEBUG
-        std::memcpy(name, other.name, 128);
+        std::memcpy(name_, other.name_, 128);
 #endif // VOID_DEBUG
-        other.columns = nullptr;
-        other.entities = nullptr;
-        other.column_map = nullptr;
-        other.column_count = 0;
-        other.count = 0;
+        other.columns_ = nullptr;
+        other.entities_ = nullptr;
+        other.column_map_ = nullptr;
+        other.column_count_ = 0;
+        other.count_ = 0;
     }
 
     void resize(Vallocator &vallocator);

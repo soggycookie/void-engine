@@ -29,20 +29,20 @@ void Pipeline::build_from_base_phase(World *world, EntityId phase_id)
 
         Stage stage;
         stage.init(world->get_vallocator(), 16);
-        for (uint64_t idx = 0; idx < type_info.archetypes.get_count(); ++idx)
+        for (uint64_t idx = 0; idx < type_info.archetypes_.get_count(); ++idx)
         {
-            const Archetype *archetype = type_info.archetypes[idx];
-            int32_t tidx = archetype->type_set.search(SYSTEM_ID);
+            const Archetype *archetype = type_info.archetypes_[idx];
+            int32_t tidx = archetype->type_set_.search(SYSTEM_ID);
 
             if (tidx != TypeSet::NOT_FOUND_IDX)
             {
                 // EcsDependOn EcsSystem (no EcsPhase) -> normal system entity
-                int32_t col_idx = archetype->column_map[tidx];
+                int32_t col_idx = archetype->column_map_[tidx];
                 ENGINE_ASSERT(col_idx != Archetype::INVALID_COLUMN, "");
-                Column &col = archetype->columns[col_idx];
+                Column &col = archetype->columns_[col_idx];
                 const TypeMetadata *meta = col.type_meta;
 
-                for (uint64_t eidx = 0; eidx < archetype->count; ++eidx)
+                for (uint64_t eidx = 0; eidx < archetype->count_; ++eidx)
                 {
                     System *system = SCAST(System *, OFFSET_ADDR(col.data, meta->size * eidx));
                     build_step(world, accesses, system, stage);
@@ -52,10 +52,11 @@ void Pipeline::build_from_base_phase(World *world, EntityId phase_id)
             {
                 // EcsPhase EcsDependOn [id] -> find next phase
                 // base phase where it does not depend on anyone
-                ENGINE_ASSERT(archetype->type_set.has(PHASE_ID),
+                ENGINE_ASSERT(archetype->type_set_.has(PHASE_ID),
                               "Invalid archetype for pipeline builder!");
+                ENGINE_ASSERT(archetype->count_ > 0, "No phase entity inside archetype!");
                 loop = true;
-                target_eid = archetype->entities[0];
+                target_eid = archetype->entities_[0];
                 relationship_id = make_relationship(DEPEND_ON_ID, target_eid);
                 continue;
             }
@@ -71,7 +72,7 @@ void Pipeline::build_step(World *world, FlatHashMap<EntityId, TermAccess> &acces
     ENGINE_ASSERT(system, "System is null!");
     auto need_sync = [&accesses, system, world]() -> bool
     {
-        Query_T &query = *system->query;
+        Query_T &query = *system->query_;
         for (uint64_t idx = 0; idx < query.term_count; ++idx)
         {
             QueryTerm &term = query.terms[idx];
@@ -112,7 +113,7 @@ void Pipeline::build_step(World *world, FlatHashMap<EntityId, TermAccess> &acces
 
     auto monitor = [&accesses, system, world]()
     {
-        Query_T &query = *system->query;
+        Query_T &query = *system->query_;
         for (uint64_t idx = 0; idx < query.term_count; ++idx)
         {
             accesses.insert(world->get_vallocator(), query.terms[idx].tid, query.terms[idx].access);
@@ -122,12 +123,12 @@ void Pipeline::build_step(World *world, FlatHashMap<EntityId, TermAccess> &acces
     if (need_sync())
     {
         // add sync point
-        appending_stage.push_back(world->get_vallocator(), Step{system->query, true});
+        appending_stage.push_back(world->get_vallocator(), Step{system->query_, true});
         accesses.clear();
     }
     else
     {
-        appending_stage.push_back(world->get_vallocator(), Step{system->query, false});
+        appending_stage.push_back(world->get_vallocator(), Step{system->query_, false});
         monitor();
     }
 }
@@ -144,7 +145,9 @@ void Pipeline::progress(World *world)
                 Step &step = stage[sidx];
                 if (step.sync_point)
                 {
+                    world->end_defer();
                     world->flush_deferred_cmds();
+                    world->start_defer();
                 }
                 step.system->execute();
             }
@@ -157,11 +160,11 @@ void Pipeline::progress(World *world)
             Stage &stage = stages_[idx];
             EcsBatch *batch = world->get_system_batch();
             uint64_t current_step = 0;
+            uint32_t sync_point = 0;
 
             while (current_step < stage.get_count())
             {
                 uint32_t count = 0;
-                uint32_t sync_point = 0;
                 for (; current_step < stage.get_count(); ++current_step)
                 {
                     Step &step = stage[current_step];
@@ -169,7 +172,9 @@ void Pipeline::progress(World *world)
                     {
                         if (current_step == sync_point)
                         {
+                            world->end_defer();
                             world->flush_deferred_cmds();
+                            world->start_defer();
                         }
                         else
                         {
@@ -181,8 +186,8 @@ void Pipeline::progress(World *world)
                 }
                 batch->count = count;
                 batch->cursor.store(0, std::memory_order_relaxed);
-                batch->remaining.store(count, std::memory_order_release);
                 uint32_t worker_dispatch = std::min(count - 1, world->get_worker_count());
+                batch->work_finish_count.store(0, std::memory_order_release);
 
                 for (uint64_t worker = 0; worker < worker_dispatch; ++worker)
                 {
@@ -195,7 +200,8 @@ void Pipeline::progress(World *world)
 
                 World::run_system_main(world, batch);
 
-                while (batch->remaining.load(std::memory_order_acquire) != 0)
+                // every dispatched worker plus the main thread must exit before the batch is reused
+                while (batch->work_finish_count.load(std::memory_order_acquire) != worker_dispatch + 1)
                 {
                     //std::cout << "Waiting for worker to finish" << std::endl;
                 }

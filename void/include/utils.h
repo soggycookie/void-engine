@@ -27,6 +27,46 @@ inline uint32_t str_len(const char8_t *s)
     return std::strlen(RCAST(const char *, s));
 }
 
+// Encode one Unicode code point as UTF-8. Writes 1-4 bytes to out (not null-terminated) and
+// returns the count. Values that are not valid code points (surrogates 0xD800-0xDFFF, or above
+// 0x10FFFF) are written as U+FFFD, the replacement character.
+//   bytes  payload bits  layout
+//   1      7             0xxxxxxx
+//   2      11            110xxxxx 10xxxxxx
+//   3      16            1110xxxx 10xxxxxx 10xxxxxx
+//   4      21            11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+inline uint32_t utf8_encode(uint32_t cp, char8_t out[4])
+{
+    if ((cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF)
+    {
+        cp = 0xFFFD;
+    }
+
+    if (cp < 0x80)
+    {
+        out[0] = SCAST(char8_t, cp);
+        return 1;
+    }
+    if (cp < 0x800)
+    {
+        out[0] = SCAST(char8_t, 0xC0 | (cp >> 6));
+        out[1] = SCAST(char8_t, 0x80 | (cp & 0x3F));
+        return 2;
+    }
+    if (cp < 0x10000)
+    {
+        out[0] = SCAST(char8_t, 0xE0 | (cp >> 12));
+        out[1] = SCAST(char8_t, 0x80 | ((cp >> 6) & 0x3F));
+        out[2] = SCAST(char8_t, 0x80 | (cp & 0x3F));
+        return 3;
+    }
+    out[0] = SCAST(char8_t, 0xF0 | (cp >> 18));
+    out[1] = SCAST(char8_t, 0x80 | ((cp >> 12) & 0x3F));
+    out[2] = SCAST(char8_t, 0x80 | ((cp >> 6) & 0x3F));
+    out[3] = SCAST(char8_t, 0x80 | (cp & 0x3F));
+    return 4;
+}
+
 constexpr uint32_t floor_log2(uint32_t n)
 {
     return std::bit_width(n) - 1;

@@ -61,7 +61,7 @@ TypeMetaBuilder<T> &TypeMetaBuilder<T>::set_event(SetEventHook e)
 }
 
 template <typename T>
-TypeMetaBuilder<T> &TypeMetaBuilder<T>::id(EntityId id)
+TypeMetaBuilder<T> &TypeMetaBuilder<T>::id(LowEntityId id)
 {
     type_meta.tid = id;
     return *this;
@@ -80,6 +80,14 @@ TypeMetaBuilder<T> &TypeMetaBuilder<T>::exclusive()
 {
     ENGINE_ASSERT(type_meta.is_relation(), "Only relation can be exclusive!");
     type_meta.flags |= EXCLUSIVE_TYPE;
+    return *this;
+}
+
+template <typename T>
+TypeMetaBuilder<T> &TypeMetaBuilder<T>::allow_cycle()
+{
+    ENGINE_ASSERT(type_meta.is_relation(), "Only relation can allow cycle!");
+    type_meta.flags |= ALLOW_CYCLE;
     return *this;
 }
 

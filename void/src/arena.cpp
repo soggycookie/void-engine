@@ -96,7 +96,7 @@ void Arena::pop_to(uint64_t pos)
 {
     ENGINE_ASSERT(reserve_size_ > 0, "Reserve size cannot be 0!");
     ENGINE_ASSERT(commit_size_ > 0, "Commit size cannot be 0!");
-    ENGINE_ASSERT(pos_ <= pos, "Position exceeds arena's current posititon!");
+    ENGINE_ASSERT(pos <= pos_, "Position exceeds arena's current posititon!");
     pos_ = pos;
 }
 

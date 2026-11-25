@@ -36,8 +36,22 @@ int32_t MatchedArchetype::get_column_idx(uint32_t term_idx) const
     }
 }
 
+void MatchedArchetype::set_trav_targets(Vallocator &vallocator, const EntityId *targets, uint32_t count)
+{
+    ENGINE_ASSERT(!trav_targets_, "Traversal targets are already set!");
+    ENGINE_ASSERT(count == mapped_count, "Traversal target count must match mapped term count!");
+    trav_targets_ = RCAST(EntityId *, vallocator.valloc(count * sizeof(EntityId), alignof(EntityId)));
+    ENGINE_ASSERT(trav_targets_, "Failed to allocate!");
+    std::memcpy(trav_targets_, targets, count * sizeof(EntityId));
+}
+
 void MatchedArchetype::destroy(Vallocator &vallocator)
 {
+    if (trav_targets_)
+    {
+        vallocator.vfree(mapped_count * sizeof(EntityId), trav_targets_);
+        trav_targets_ = nullptr;
+    }
     if (hi_term_idx_to_col_idx)
     {
         vallocator.vfree((mapped_count - INLINE_ARR_COUNT) * sizeof(int32_t), hi_term_idx_to_col_idx);
@@ -46,11 +60,13 @@ void MatchedArchetype::destroy(Vallocator &vallocator)
     {
         vallocator.vfree(hi_mask_capacity * sizeof(uint32_t), hi_entity_mask);
     }
+    hi_entity_mask = nullptr;
+    hi_term_idx_to_col_idx = nullptr;
 }
 
 void MatchedArchetype::allocate_mask(Vallocator &vallocator)
 {
-    uint32_t cur_mask_count = std::ceil(SCAST(float, archetype->count) / SCAST(float, EntityPerMask));
+    uint32_t cur_mask_count = std::ceil(SCAST(float, archetype->count_) / SCAST(float, EntityPerMask));
     if (cur_mask_count > INLINE_ARR_COUNT)
     {
         uint32_t new_capacity = cur_mask_count - INLINE_ARR_COUNT;
@@ -74,9 +90,9 @@ void MatchedArchetype::allocate_mask(Vallocator &vallocator)
 
 uint32_t &MatchedArchetype::mask(uint32_t eidx)
 {
-    uint32_t mask_count = std::ceil(SCAST(float, archetype->count) / SCAST(float, EntityPerMask));
+    uint32_t mask_count = std::ceil(SCAST(float, archetype->count_) / SCAST(float, EntityPerMask));
     uint32_t mask_idx = SCAST(float, eidx) / SCAST(float, EntityPerMask);
-    ENGINE_ASSERT(mask_idx < mask_count || eidx < archetype->count, "Entity index or mask index is out of bound!");
+    ENGINE_ASSERT(mask_idx < mask_count || eidx < archetype->count_, "Entity index or mask index is out of bound!");
 
     if (mask_idx < INLINE_ARR_COUNT)
     {
@@ -132,8 +148,8 @@ void QueryResult::clear(Vallocator &vallocator)
     for(uint64_t idx = 0; idx < archetypes.get_count(); ++idx)
     {
         archetypes[idx].destroy(vallocator);
-        archetypes[idx].~MatchedArchetype();
     }
+    archetypes.clear();
 }
 
 void QueryResult::destroy(Vallocator &vallocator)
@@ -171,7 +187,7 @@ void Query_T::filter_all()
 {
     for (uint64_t idx = 0; idx < result.archetypes.get_count(); ++idx)
     {
-        for (uint64_t eidx = 0; eidx < result[idx].archetype->count; ++eidx)
+        for (uint64_t eidx = 0; eidx < result[idx].archetype->count_; ++eidx)
         {
             filter_callback.invoker(this, filter_callback.fn, result[idx], eidx,
                                          filter_callback.ctx);
@@ -181,7 +197,7 @@ void Query_T::filter_all()
 
 void Query_T::filter_archetype(MatchedArchetype &marched_archetype)
 {
-    for (uint64_t eidx = 0; eidx < marched_archetype.archetype->count; ++eidx)
+    for (uint64_t eidx = 0; eidx < marched_archetype.archetype->count_; ++eidx)
     {
         filter_callback.invoker(this, filter_callback.fn, marched_archetype, eidx,
                                      filter_callback.ctx);
@@ -214,6 +230,9 @@ void Query_T::filter_entity(MatchedArchetype &marched_archetype, uint32_t eidx)
 //     other.sortedTermIdx = nullptr;
 // }
 
+// TODO: `query_archetypes` does not dedupe (the sweep value only guards the notification path), so
+// matched results are duplicated and the system runs twice per entity. Basically not handle duplicate
+// relation (base) and types yet
 void Query_T::query_archetypes()
 {
     ENGINE_ASSERT(term_count > 0, "Term Count must be greater than 0!");
@@ -231,15 +250,16 @@ void Query_T::query_archetypes()
     else
     {
         anchor_term_tid = make_relationship(
-            anchor_term.trav_relation, anchor_term.trav_target == WILDCARD_ID ? 0 : anchor_term.trav_target);
+            anchor_term.trav_relation,
+            high_32bit(anchor_term.trav_target) == WILDCARD_ID ? 0 : anchor_term.trav_target);
     }
 
     const TypeInfo &anchor_ti = world->get_type_infos()[anchor_term_tid];
 
     // anchor term work as a point to narrow down archetype list
-    for (uint64_t idx = 0; idx < anchor_ti.archetypes.get_count(); ++idx)
+    for (uint64_t idx = 0; idx < anchor_ti.archetypes_.get_count(); ++idx)
     {
-        Archetype *archetype = anchor_ti.archetypes[idx];
+        Archetype *archetype = anchor_ti.archetypes_[idx];
         add_if_match(archetype);
     }
 }
@@ -250,7 +270,16 @@ void Query_T::add_if_match(Archetype *archetype)
         SCAST(int32_t *, world->get_vallocator().valloc(term_count * sizeof(int32_t), alignof(int32_t)));
     ENGINE_ASSERT(term_idx_to_col_idx, "Failed to allocate!");
 
-    const TypeSet &type_set = archetype->type_set;
+    EntityId *trav_targets =
+        SCAST(EntityId *, world->get_vallocator().valloc(term_count * sizeof(EntityId), alignof(EntityId)));
+    ENGINE_ASSERT(trav_targets, "Failed to allocate!");
+    for (uint64_t i = 0; i < term_count; ++i)
+    {
+        trav_targets[i] = ENTITY_INVALID_ID;
+    }
+    bool has_trav_target = false;
+
+    const TypeSet &type_set = archetype->type_set_;
     bool is_valid = true;
 
     for (uint64_t term_idx = 0; term_idx < term_count - structure_change_count; ++term_idx)
@@ -271,7 +300,7 @@ void Query_T::add_if_match(Archetype *archetype)
                 }
                 else
                 {
-                    term_idx_to_col_idx[sorted_term_indices[term_idx]] = archetype->column_map[tidx];
+                    term_idx_to_col_idx[sorted_term_indices[term_idx]] = archetype->column_map_[tidx];
                 }
             }
             else if (term.op == NOT)
@@ -308,7 +337,7 @@ void Query_T::add_if_match(Archetype *archetype)
 
             if (term.op == HAS)
             {
-                int32_t tidx = target_archetype->type_set.search(term.tid);
+                int32_t tidx = target_archetype->type_set_.search(term.tid);
 
                 if (tidx == TypeSet::NOT_FOUND_IDX)
                 {
@@ -316,9 +345,10 @@ void Query_T::add_if_match(Archetype *archetype)
                 }
                 else
                 {
-                    term.valid_trav_target = target;
+                    trav_targets[sorted_term_indices[term_idx]] = target;
+                    has_trav_target = true;
                     term_idx_to_col_idx[sorted_term_indices[term_idx]] =
-                        target_archetype->column_map[tidx];
+                        target_archetype->column_map_[tidx];
                 }
             }
             else if (term.op == NOT)
@@ -356,12 +386,12 @@ void Query_T::add_if_match(Archetype *archetype)
             {
                 while (true)
                 {
-                    int32_t cascaded_tidx = target_archetype->type_set.search(term.tid);
+                    int32_t cascaded_tidx = target_archetype->type_set_.search(term.tid);
 
                     if (cascaded_tidx == TypeSet::NOT_FOUND_IDX)
                     {
                         int32_t target_relationship_idx =
-                            target_archetype->type_set.search(relationship_id);
+                            target_archetype->type_set_.search(relationship_id);
 
                         if (target_relationship_idx == TypeSet::NOT_FOUND_IDX)
                         {
@@ -370,15 +400,16 @@ void Query_T::add_if_match(Archetype *archetype)
                         }
                         else
                         {
-                            target = high_32bit(target_archetype->type_set[target_relationship_idx]);
+                            target = high_32bit(target_archetype->type_set_[target_relationship_idx]);
                             target_archetype = world->get_entity_archetype(target);
                         }
                     }
                     else
                     {
-                        term.valid_trav_target = target;
+                        trav_targets[sorted_term_indices[term_idx]] = target;
+                        has_trav_target = true;
                         term_idx_to_col_idx[sorted_term_indices[term_idx]] =
-                            target_archetype->column_map[cascaded_tidx];
+                            target_archetype->column_map_[cascaded_tidx];
                         break;
                     }
                 }
@@ -390,7 +421,7 @@ void Query_T::add_if_match(Archetype *archetype)
                     if (world->has_type(target, term.tid))
                     {
                         int32_t target_relationship_idx =
-                            target_archetype->type_set.search(relationship_id);
+                            target_archetype->type_set_.search(relationship_id);
 
                         if (target_relationship_idx == TypeSet::NOT_FOUND_IDX)
                         {
@@ -399,7 +430,7 @@ void Query_T::add_if_match(Archetype *archetype)
                         }
                         else
                         {
-                            target = high_32bit(target_archetype->type_set[target_relationship_idx]);
+                            target = high_32bit(target_archetype->type_set_[target_relationship_idx]);
                             target_archetype = world->get_entity_archetype(target);
                         }
                     }
@@ -433,14 +464,19 @@ void Query_T::add_if_match(Archetype *archetype)
     {
         if (eid != ENTITY_INVALID_ID)
         {
-            archetype->tracked_queries.push_back(
+            archetype->tracked_queries_.push_back(
                 world->get_vallocator(),
                 TrackedQuery{low_32bit(eid), SCAST(uint32_t, result.archetypes.get_count())});
         }
 
         MatchedArchetype &ma = result.add(world->get_vallocator(), archetype);
         ma.set_term_idx_to_col_idx(world->get_vallocator(), term_idx_to_col_idx, term_count);
+        if (has_trav_target)
+        {
+            ma.set_trav_targets(world->get_vallocator(), trav_targets, term_count);
+        }
     }
+    world->get_vallocator().vfree(sizeof(EntityId) * term_count, trav_targets);
     world->get_vallocator().vfree(sizeof(int32_t) * term_count, term_idx_to_col_idx);
 }
 
@@ -449,6 +485,7 @@ void Query_T::clear_result()
     result.clear(world->get_vallocator());
 }
 
+// TODO: free the slot inside TypeInfo::tracked_queries_ and cached_queries
 void Query_T::destroy()
 {
     ENGINE_ASSERT(world, "World is null!");
@@ -491,7 +528,7 @@ void QueryCallbackBuilder::create_cache_entity(const char *name)
                    ->entity_builder()
                    // .id(query->eid)
                    .name(name)
-                   .assign_component<Query>(Query{query})
+                   .assign_component<Query>(Query(query))
                    .build();
     query->eid = e.get_eid();
     query->world->update_type_info_tracked_queries(query);
@@ -506,7 +543,7 @@ void SystemCallbackBuilder::create_cache_entity(const char *name)
                         ->entity_builder()
                         // .id(query->eid)
                         .name(name)
-                        .assign_component<System>(System{query});
+                        .assign_component<System>(System(query));
 
     bool has_phase = query->world->has_type(phase_id_, PHASE_ID);
     bool is_depended_on = query->world->has_type(phase_id_, make_relationship(DEPEND_ON_ID, WILDCARD_ID));

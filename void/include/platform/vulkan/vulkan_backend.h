@@ -8,6 +8,9 @@
 #include "glm/glm.hpp"
 
 #ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX // vulkan_win32.h pulls in windows.h
+#endif
 #define VK_USE_PLATFORM_WIN32_KHR
 #else
 
@@ -17,6 +20,18 @@
 #include <vulkan/vulkan_profiles.hpp>
 
 #include "vk_mem_alloc.h"
+
+#include "platform/vulkan/vulkan_host_allocator.h"
+
+struct ImDrawData;
+
+// Scene rendering (pipeline, vertex/index buffers, texture, descriptors, depth, UBO) is compiled out
+// while ImGui is brought up. Only instance -> device -> swapchain -> frames + the ImGui pass run.
+// The code under this flag is stale (old DrawFrame/RecordCommandBuffer); merge it into draw_frame
+// when turning it back on.
+#ifndef VOID_VK_SCENE_PASS
+#define VOID_VK_SCENE_PASS 0
+#endif
 
 namespace VoidEngine::Vulkan
 {
@@ -44,6 +59,7 @@ struct Context
     VkCommandPool graphic_command_pool;
     VkQueue graphic_queue;
     uint32_t swapchain_image_count;
+    uint32_t swapchain_min_image_count; // minImageCount requested at swapchain creation
     uint32_t graphic_queue_family_index;
 };
 
@@ -79,10 +95,12 @@ struct Vertex
     }
 };
 
+// Per frame in flight. The render-finished semaphore that present waits on is per swapchain image
+// (render_finished_sems_), because present has no fence and the semaphore may still be in use when
+// the same frame slot comes around again.
 struct SyncObjects
 {
     VkSemaphore present_complete_sem;
-    VkSemaphore render_finished_sem;
     VkFence draw_fence;
 };
 
@@ -108,9 +126,15 @@ private:
 private:
     Window *window_;
     Vallocator vallocator_;
-    VmaAllocator vma_allocator_;
+    // CPU-side allocator for the driver and VMA bookkeeping (thread-safe) plus GPU memory stats.
+    // Declared before vma_allocator_ and must outlive it, the device and the instance.
+    HostAllocator host_alloc_;
+    VmaAllocator vma_allocator_ = VK_NULL_HANDLE;
 
-    Context context_;
+    Context context_{};
+    VkSemaphore *render_finished_sems_ = nullptr; // one per swapchain image
+    uint32_t render_finished_sem_count_ = 0;
+    bool imgui_initialized_ = false;
     VkSampler m_sampler;
     VkPipelineLayout m_pipelineLayout;
     VkPipeline m_pipeline;
@@ -132,15 +156,30 @@ private:
     VkDebugUtilsMessengerEXT debug_messenger_;
 #endif // VOID_DEBUG
 public:
+    // Public so Application can construct<VulkanBackend>(vallocator). Use startup()/shutdown().
+    DEFAULT_CTOR(VulkanBackend);
+
     void DrawTest();
 
 private:
     friend class Application;
 
-    DEFAULT_CTOR(VulkanBackend);
-
     void shutdown();
     bool startup(Window *window);
+
+    // ImGui renderer half (vulkan_imgui.cpp). init after startup() and ImGuiHost::init;
+    // shutdown before ImGuiHost::destroy and shutdown().
+    bool init_imgui();
+    void shutdown_imgui();
+    void imgui_new_frame();
+    void record_imgui(VkCommandBuffer cmd, ImDrawData *draw_data);
+
+    // Clear the swapchain image and draw the UI on top. Skips the frame while minimized.
+    void draw_frame(ImDrawData *ui);
+
+    void create_present_semaphores();
+    void destroy_present_semaphores();
+    void destroy_swapchain_views_and_images();
 
     void create_instance();
     void create_physical_device();
@@ -148,6 +187,14 @@ private:
     void create_surface();
     void setup_debug_messenger();
     void create_logical_device();
+    void create_vma_allocator();
+
+    // Pass this as pAllocator to every vkCreate*/vkDestroy* call. nullptr when the host allocator is off.
+    const VkAllocationCallbacks *vk_alloc() const
+    {
+        return host_alloc_.get_callbacks();
+    }
+
     void create_swapchain(VkSwapchainKHR old_swapchain = VK_NULL_HANDLE);
     void create_swapchain_image_views();
     void create_graphic_pipeline();

@@ -207,6 +207,8 @@ bool VulkanBackend::startup(Window *window)
     ENGINE_ASSERT(window, "Allocator cannot be null!");
     window_ = window;
     vallocator_.init(gib(8), mib(1), gib(8), mib(1));
+    // Must be ready before the first Vulkan call: the instance is created with these callbacks.
+    host_alloc_.init(gib(1), mib(4), true);
     profile_supported_ = VK_TRUE;
     create_instance();
 
@@ -218,14 +220,17 @@ bool VulkanBackend::startup(Window *window)
 
     create_physical_device();
     create_logical_device();
+    create_vma_allocator();
 
     create_swapchain();
     create_swapchain_image_views();
+    create_present_semaphores();
 
     create_sync_objects();
     create_command_pool();
     create_command_buffers();
 
+#if VOID_VK_SCENE_PASS
     create_tex_image();
     create_tex_sampler();
 
@@ -239,56 +244,54 @@ bool VulkanBackend::startup(Window *window)
 
     CreateVertexBuffer();
     CreateIndexBuffer();
+#endif // VOID_VK_SCENE_PASS
 
     return true;
 }
 
 void VulkanBackend::shutdown()
 {
+    // Nothing may still be executing when objects are destroyed.
+    vkDeviceWaitIdle(context_.device);
+
+#if VOID_VK_SCENE_PASS
     // vkDestroySampler(m_context.device, m_sampler, nullptr);
     // vkDestroyImageView(m_context.device, m_texture.view, nullptr);
     // DestroyImage(m_texture.image);
 
-    // for (size_t idx = 0; idx < s_kMaxFrameInFlight; ++idx)
-    // {
-    //     DestroyBuffer(m_uniformBuffers[idx]);
-    //     FLUSH_LOG();
-    // }
-
-    vkDestroyDescriptorPool(context_.device, m_descriptorPool, nullptr);
-    vkDestroyDescriptorSetLayout(context_.device, descriptor_set_layout_, nullptr);
+    vkDestroyDescriptorPool(context_.device, m_descriptorPool, vk_alloc());
+    vkDestroyDescriptorSetLayout(context_.device, descriptor_set_layout_, vk_alloc());
 
     // DestroyBuffer(m_vertexBuffer);
     // DestroyBuffer(m_indexBuffer);
 
     CleanUpDepthTexture();
 
-    for (size_t idx = 0; idx < s_kMaxFrameInFlight; ++idx)
+    vkDestroyPipeline(context_.device, m_pipeline, vk_alloc());
+    vkDestroyPipelineLayout(context_.device, m_pipelineLayout, vk_alloc());
+#endif // VOID_VK_SCENE_PASS
+
+    for (uint32_t idx = 0; idx < MAX_FRAME_IN_FLIGHT; ++idx)
     {
-        vkDestroySemaphore(context_.device, sync_objs[idx].present_complete_sem, nullptr);
-        vkDestroySemaphore(context_.device, sync_objs[idx].render_finished_sem, nullptr);
-        vkDestroyFence(context_.device, sync_objs[idx].draw_fence, nullptr);
+        vkDestroySemaphore(context_.device, sync_objs[idx].present_complete_sem, vk_alloc());
+        vkDestroyFence(context_.device, sync_objs[idx].draw_fence, vk_alloc());
     }
-    vkDestroyCommandPool(context_.device, context_.graphic_command_pool, nullptr);
+    // Frees the command buffers allocated from it too.
+    vkDestroyCommandPool(context_.device, context_.graphic_command_pool, vk_alloc());
 
-    vkDestroyPipeline(context_.device, m_pipeline, nullptr);
-    vkDestroyPipelineLayout(context_.device, m_pipelineLayout, nullptr);
+    destroy_present_semaphores();
+    destroy_swapchain_views_and_images();
+    vkDestroySwapchainKHR(context_.device, context_.swapchain, vk_alloc());
 
-    for (size_t idx = 0; idx < context_.swapchain_image_count; ++idx)
-    {
-        vkDestroyImageView(context_.device, context_.swapchain_image_views[idx], nullptr);
-    }
-    vkDestroySwapchainKHR(context_.device, context_.swapchain, nullptr);
+    vkDestroySurfaceKHR(context_.instance, context_.surface, vk_alloc());
 
-    // V_FREE(vallocator_, m_context.pSwapchainImageViews);
-    // V_FREE(vallocator_, m_context.pSwapchainImages);
-    //
-    // m_vulkanAllocator->Destroy();
-    // m_vulkanAllocator->~VulkanAllocator();
-    // V_FREE(vallocator_, m_vulkanAllocator);
+    // Prints host usage, tracked GPU usage and VMA heap budgets while the allocator is still alive.
+    host_alloc_.log_stats(vma_allocator_);
 
-    vkDestroySurfaceKHR(context_.instance, context_.surface, nullptr);
-    vkDestroyDevice(context_.device, nullptr);
+    // VMA must go before the device, it frees its VkDeviceMemory blocks here.
+    vmaDestroyAllocator(vma_allocator_);
+    vma_allocator_ = VK_NULL_HANDLE;
+    vkDestroyDevice(context_.device, vk_alloc());
 
 #ifdef VOID_DEBUG
     PFN_vkDestroyDebugUtilsMessengerEXT debug_fn =
@@ -297,7 +300,7 @@ void VulkanBackend::shutdown()
 
     if (debug_fn)
     {
-        debug_fn(context_.instance, debug_messenger_, nullptr);
+        debug_fn(context_.instance, debug_messenger_, vk_alloc());
     }
     else
     {
@@ -305,7 +308,10 @@ void VulkanBackend::shutdown()
     }
 
 #endif // VOID_DEBUG
-    vkDestroyInstance(context_.instance, nullptr);
+    vkDestroyInstance(context_.instance, vk_alloc());
+    // Asserts on any leaked host allocation, which means a Vulkan object leaked or a create/destroy pair
+    // used different callbacks.
+    host_alloc_.destroy();
     vallocator_.destroy();
 }
 
@@ -315,7 +321,7 @@ static bool is_ext_available(const VkExtensionProperties *ext_properties, uint32
     for (uint64_t idx = 0; idx < ext_count; ++idx)
     {
         const VkExtensionProperties &ext = ext_properties[idx];
-        if (strcmp(checking_ext, ext.extensionName))
+        if (strcmp(checking_ext, ext.extensionName) == 0)
         {
             return true;
         }
@@ -329,7 +335,7 @@ static bool is_layer_available(const VkLayerProperties *layer_properties, uint32
     for (uint64_t idx = 0; idx < layer_count; ++idx)
     {
         const VkLayerProperties &layer = layer_properties[idx];
-        if (strcmp(checking_layer, layer.layerName))
+        if (strcmp(checking_layer, layer.layerName) == 0)
         {
             return true;
         }
@@ -389,7 +395,7 @@ void VulkanBackend::create_surface()
         .hwnd = window->get_hwnd(),
     };
 
-    if (vkCreateWin32SurfaceKHR(context_.instance, &surface_create_info, nullptr, &context_.surface) !=
+    if (vkCreateWin32SurfaceKHR(context_.instance, &surface_create_info, vk_alloc(), &context_.surface) !=
         VK_SUCCESS)
     {
         Logger::show_fatal_mbox("Vulkan engine", "Failed to create Win32 surface!");
@@ -418,7 +424,7 @@ void VulkanBackend::setup_debug_messenger()
 
     if (fn)
     {
-        if (fn(context_.instance, &debug_messenger_create_info, nullptr,
+        if (fn(context_.instance, &debug_messenger_create_info, vk_alloc(),
                                            &debug_messenger_) != VK_SUCCESS)
         {
             Logger::show_fatal_mbox("Vulkan engine", "Vulkan debug messenger creation failed!");
@@ -530,7 +536,7 @@ void VulkanBackend::create_logical_device()
     };
 
     VkResult result =
-        vpCreateDevice(context_.physical_device, &vp_device_create_info, nullptr, &context_.device);
+        vpCreateDevice(context_.physical_device, &vp_device_create_info, vk_alloc(), &context_.device);
 
     if (result != VK_SUCCESS)
     {
@@ -548,13 +554,20 @@ void VulkanBackend::create_logical_device()
 
 VkSurfaceFormatKHR VulkanBackend::choose_surface_format(VkSurfaceFormatKHR *formats, uint32_t format_count)
 {
-    for (size_t idx = 0; idx < format_count; ++idx)
+    // UNORM, not *_SRGB: ImGui's colors (and later the scene's final, tonemapped output) are already
+    // sRGB-encoded. An *_SRGB image would encode them a second time on write, which is what made the UI
+    // look washed out. A future scene pass must write sRGB-encoded values to the swapchain (encode in
+    // its final/tonemap pass) or render into an *_SRGB offscreen target first.
+    const VkFormat preferred[] = {VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM};
+    for (VkFormat wanted : preferred)
     {
-        const VkSurfaceFormatKHR &format = formats[idx];
-        if (format.format == VK_FORMAT_B8G8R8A8_SRGB &&
-            format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+        for (size_t idx = 0; idx < format_count; ++idx)
         {
-            return format;
+            const VkSurfaceFormatKHR &format = formats[idx];
+            if (format.format == wanted && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+            {
+                return format;
+            }
         }
     }
 
@@ -599,6 +612,23 @@ VkExtent2D VulkanBackend::choose_swapchain_extent(const VkSurfaceCapabilitiesKHR
     return extent;
 }
 
+void VulkanBackend::create_vma_allocator()
+{
+    VmaAllocatorCreateInfo info = {};
+    info.vulkanApiVersion = VK_API_VERSION_1_3; // must not exceed the instance's apiVersion
+    info.instance = context_.instance;
+    info.physicalDevice = context_.physical_device;
+    info.device = context_.device;
+    // Same callbacks as the device: VMA passes them to vkAllocateMemory/vkCreateBuffer/... and their
+    // destroy counterparts, and uses them for its own bookkeeping.
+    info.pAllocationCallbacks = vk_alloc();
+    // GPU memory statistics, VMA copies the struct.
+    info.pDeviceMemoryCallbacks = host_alloc_.get_device_memory_callbacks();
+
+    VkResult result = vmaCreateAllocator(&info, &vma_allocator_);
+    ENGINE_ASSERT(result == VK_SUCCESS, "Failed to create VMA allocator!");
+}
+
 void VulkanBackend::create_swapchain(VkSwapchainKHR old_swapchain)
 {
     ScopedScratchTemp temp;
@@ -638,8 +668,9 @@ void VulkanBackend::create_swapchain(VkSwapchainKHR old_swapchain)
     {
         image_count = surface_capabilities.maxImageCount;
     }
+    context_.swapchain_min_image_count = image_count;
 
-    VkSwapchainCreateInfoKHR swapchainCreateInfo{
+    VkSwapchainCreateInfoKHR swapchain_create_info{
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .pNext = nullptr,
         .flags = 0,
@@ -658,7 +689,7 @@ void VulkanBackend::create_swapchain(VkSwapchainKHR old_swapchain)
         .oldSwapchain = old_swapchain,
     };
 
-    if (vkCreateSwapchainKHR(context_.device, &swapchainCreateInfo, nullptr, &context_.swapchain) !=
+    if (vkCreateSwapchainKHR(context_.device, &swapchain_create_info, vk_alloc(), &context_.swapchain) !=
         VK_SUCCESS)
     {
         Logger::show_fatal_mbox("Vulkan engine", "Failed to create swapchain!");
@@ -692,6 +723,7 @@ void VulkanBackend::create_swapchain_image_views()
     }
 }
 
+#if VOID_VK_SCENE_PASS // scene pass compiled out while ImGui is brought up
 void VulkanBackend::create_graphic_pipeline()
 {
     auto shader = ReadFile("D:\\Dev\\nvim\\void-engine\\void-"
@@ -823,7 +855,7 @@ void VulkanBackend::create_graphic_pipeline()
         .pushConstantRangeCount = 0,
     };
 
-    vkCreatePipelineLayout(context_.device, &pipelineLayout, nullptr, &m_pipelineLayout);
+    vkCreatePipelineLayout(context_.device, &pipelineLayout, vk_alloc(), &m_pipelineLayout);
 
     VkPipelineDepthStencilStateCreateInfo depthStencil{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
@@ -861,10 +893,10 @@ void VulkanBackend::create_graphic_pipeline()
         .renderPass = nullptr,
     };
 
-    vkCreateGraphicsPipelines(context_.device, VK_NULL_HANDLE, 1, &graphicPipeline, nullptr,
+    vkCreateGraphicsPipelines(context_.device, VK_NULL_HANDLE, 1, &graphicPipeline, vk_alloc(),
                               &m_pipeline);
 
-    vkDestroyShaderModule(context_.device, module, nullptr);
+    vkDestroyShaderModule(context_.device, module, vk_alloc());
 }
 
 VkShaderModule VulkanBackend::CreateShaderModule(const std::vector<char> &binaryCode)
@@ -879,10 +911,12 @@ VkShaderModule VulkanBackend::CreateShaderModule(const std::vector<char> &binary
 
     VkShaderModule shaderModule = VK_NULL_HANDLE;
 
-    vkCreateShaderModule(context_.device, &createInfo, nullptr, &shaderModule);
+    vkCreateShaderModule(context_.device, &createInfo, vk_alloc(), &shaderModule);
 
     return shaderModule;
 }
+
+#endif // VOID_VK_SCENE_PASS
 
 void VulkanBackend::create_command_pool()
 {
@@ -893,9 +927,10 @@ void VulkanBackend::create_command_pool()
         .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
         .queueFamilyIndex = context_.graphic_queue_family_index,
     };
-    vkCreateCommandPool(context_.device, &cmd_pool_create_info, nullptr, &context_.graphic_command_pool);
+    vkCreateCommandPool(context_.device, &cmd_pool_create_info, vk_alloc(), &context_.graphic_command_pool);
 }
 
+#if VOID_VK_SCENE_PASS
 void VulkanBackend::CreateVertexBuffer()
 {
     VkDeviceSize size = sizeof(vertices);
@@ -1007,7 +1042,7 @@ void VulkanBackend::create_descriptor_pool()
         .pPoolSizes = poolSizes.data(),
     };
 
-    vkCreateDescriptorPool(context_.device, &descriptorPoolCreateInfo, nullptr, &m_descriptorPool);
+    vkCreateDescriptorPool(context_.device, &descriptorPoolCreateInfo, vk_alloc(), &m_descriptorPool);
 }
 
 void VulkanBackend::create_descriptor_set_layout()
@@ -1035,7 +1070,7 @@ void VulkanBackend::create_descriptor_set_layout()
         .bindingCount = 2,
         .pBindings = dset_layout_bindings,
     };
-    vkCreateDescriptorSetLayout(context_.device, &dset_layout_create_info, nullptr,
+    vkCreateDescriptorSetLayout(context_.device, &dset_layout_create_info, vk_alloc(),
                                 &descriptor_set_layout_);
 }
 
@@ -1282,7 +1317,7 @@ void VulkanBackend::create_tex_sampler()
         .unnormalizedCoordinates = VK_FALSE,
     };
 
-    vkCreateSampler(context_.device, &samplerCreateInfo, nullptr, &m_sampler);
+    vkCreateSampler(context_.device, &samplerCreateInfo, vk_alloc(), &m_sampler);
 }
 
 void VulkanBackend::create_depth_tex()
@@ -1310,9 +1345,11 @@ void VulkanBackend::create_depth_tex()
 void VulkanBackend::CleanUpDepthTexture()
 {
 
-    vkDestroyImageView(context_.device, m_depthTex.view, nullptr);
+    vkDestroyImageView(context_.device, m_depthTex.view, vk_alloc());
     DestroyImage(m_depthTex.image);
 }
+
+#endif // VOID_VK_SCENE_PASS
 
 VkImageView VulkanBackend::CreateImageView(const VkImage &image, VkFormat format,
                                            VkImageAspectFlags imageFlags)
@@ -1331,7 +1368,7 @@ VkImageView VulkanBackend::CreateImageView(const VkImage &image, VkFormat format
     };
 
     VkImageView view;
-    vkCreateImageView(context_.device, &imageViewCreateInfo, nullptr, &view);
+    vkCreateImageView(context_.device, &imageViewCreateInfo, vk_alloc(), &view);
 
     return view;
 }
@@ -1378,6 +1415,7 @@ VkImageView VulkanBackend::CreateImageView(const VkImage &image, VkFormat format
 //     return Texture{.image = image, .memory = memory};
 // }
 
+#if VOID_VK_SCENE_PASS
 void VulkanBackend::CopyBufferToImage(VkCommandBuffer cmdBuffer, VkBuffer src, VkImage image,
                                       uint32_t width, uint32_t height)
 {
@@ -1450,6 +1488,8 @@ void VulkanBackend::CopyBuffer(VkBuffer dst, VkBuffer src, VkDeviceSize size)
     vkQueueSubmit2(context_.graphic_queue, 1, &submitInfo, VK_NULL_HANDLE);
     vkQueueWaitIdle(context_.graphic_queue);
 }
+
+#endif // VOID_VK_SCENE_PASS
 
 void VulkanBackend::create_command_buffers()
 {
@@ -1624,6 +1664,7 @@ void VulkanBackend::TransitionImageLayout(VkCommandBuffer cmdBuffer, VkImage ima
 //     return buffer;
 // }
 
+#if VOID_VK_SCENE_PASS // stale: superseded by draw_frame, kept for the scene pass merge
 void VulkanBackend::RecordCommandBuffer(uint32_t imageIndex)
 {
     VkCommandBufferBeginInfo beginInfo{
@@ -1722,15 +1763,11 @@ void VulkanBackend::RecordCommandBuffer(uint32_t imageIndex)
     vkEndCommandBuffer(m_graphicCmdBuffers[m_frameIndex]);
 }
 
+#endif // VOID_VK_SCENE_PASS
+
 void VulkanBackend::create_sync_objects()
 {
     VkSemaphoreCreateInfo present_complete{
-        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0,
-    };
-
-    VkSemaphoreCreateInfo render_finished{
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
         .pNext = nullptr,
         .flags = 0,
@@ -1743,14 +1780,210 @@ void VulkanBackend::create_sync_objects()
     };
     for (uint32_t idx = 0; idx < MAX_FRAME_IN_FLIGHT; ++idx)
     {
-        vkCreateSemaphore(context_.device, &present_complete, nullptr,
+        vkCreateSemaphore(context_.device, &present_complete, vk_alloc(),
                           &sync_objs[idx].present_complete_sem);
-        vkCreateSemaphore(context_.device, &render_finished, nullptr,
-                          &sync_objs[idx].render_finished_sem);
-        vkCreateFence(context_.device, &draw_fence, nullptr, &sync_objs[idx].draw_fence);
+        vkCreateFence(context_.device, &draw_fence, vk_alloc(), &sync_objs[idx].draw_fence);
     }
 }
 
+void VulkanBackend::create_present_semaphores()
+{
+    VkSemaphoreCreateInfo info{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+    };
+    render_finished_sem_count_ = context_.swapchain_image_count;
+    render_finished_sems_ = SCAST(VkSemaphore *, vallocator_.valloc(sizeof(VkSemaphore) * render_finished_sem_count_,
+                                                                    alignof(VkSemaphore)));
+    ENGINE_ASSERT(render_finished_sems_, "Failed to allocate!");
+    for (uint32_t idx = 0; idx < render_finished_sem_count_; ++idx)
+    {
+        vkCreateSemaphore(context_.device, &info, vk_alloc(), &render_finished_sems_[idx]);
+    }
+}
+
+void VulkanBackend::destroy_present_semaphores()
+{
+    if (!render_finished_sems_)
+    {
+        return;
+    }
+    for (uint32_t idx = 0; idx < render_finished_sem_count_; ++idx)
+    {
+        vkDestroySemaphore(context_.device, render_finished_sems_[idx], vk_alloc());
+    }
+    vallocator_.vfree(sizeof(VkSemaphore) * render_finished_sem_count_, render_finished_sems_);
+    render_finished_sems_ = nullptr;
+    render_finished_sem_count_ = 0;
+}
+
+void VulkanBackend::destroy_swapchain_views_and_images()
+{
+    if (context_.swapchain_image_views)
+    {
+        for (uint32_t idx = 0; idx < context_.swapchain_image_count; ++idx)
+        {
+            vkDestroyImageView(context_.device, context_.swapchain_image_views[idx], vk_alloc());
+        }
+        vallocator_.vfree(sizeof(VkImageView) * context_.swapchain_image_count,
+                          context_.swapchain_image_views);
+        context_.swapchain_image_views = nullptr;
+    }
+    // The images belong to the swapchain; only the handle array is ours.
+    if (context_.swapchain_images)
+    {
+        vallocator_.vfree(sizeof(VkImage) * context_.swapchain_image_count, context_.swapchain_images);
+        context_.swapchain_images = nullptr;
+    }
+}
+
+void VulkanBackend::draw_frame(ImDrawData *ui)
+{
+    ClientDimension fb = window_->get_framebuffer_size();
+    if (fb.width <= 0 || fb.height <= 0)
+    {
+        return; // minimized: a 0x0 swapchain is invalid
+    }
+    if (SCAST(uint32_t, fb.width) != context_.extent.width ||
+        SCAST(uint32_t, fb.height) != context_.extent.height)
+    {
+        recreate_swapchain();
+    }
+
+    SyncObjects &sync = sync_objs[m_frameIndex];
+    VkCommandBuffer cmd = m_graphicCmdBuffers[m_frameIndex];
+
+    // 1. The previous submit that used this frame slot (cmd buffer, acquire semaphore) must be done.
+    if (vkWaitForFences(context_.device, 1, &sync.draw_fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+    {
+        LOG_ERROR("VULKAN", "vkWaitForFences failed");
+        return;
+    }
+
+    // 2. Acquire.
+    uint32_t image_index = UINT32_MAX;
+    VkResult acquire_result = vkAcquireNextImageKHR(context_.device, context_.swapchain, UINT64_MAX,
+                                                    sync.present_complete_sem, VK_NULL_HANDLE, &image_index);
+    if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        recreate_swapchain();
+        return; // fence untouched, still signaled
+    }
+    if (acquire_result != VK_SUCCESS && acquire_result != VK_SUBOPTIMAL_KHR)
+    {
+        LOG_ERROR("VULKAN", "vkAcquireNextImageKHR failed: %d", SCAST(int, acquire_result));
+        return;
+    }
+
+    // 3. Reset the fence only now that work will definitely be submitted.
+    vkResetFences(context_.device, 1, &sync.draw_fence);
+
+    // 4. Record: clear, UI, transition for present.
+    vkResetCommandBuffer(cmd, 0);
+    VkCommandBufferBeginInfo begin_info{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .pNext = nullptr,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        .pInheritanceInfo = nullptr,
+    };
+    vkBeginCommandBuffer(cmd, &begin_info);
+
+    TransitionSwapchainImageLayout(image_index, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                   VK_ACCESS_2_NONE, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                                   VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                   VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+
+    VkRenderingAttachmentInfo color_attachment{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = context_.swapchain_image_views[image_index],
+        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue = {.color = {{0.1f, 0.1f, 0.12f, 1.0f}}},
+    };
+    VkRenderingInfo rendering_info{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .pNext = nullptr,
+        .renderArea = {.offset = {0, 0}, .extent = context_.extent},
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &color_attachment,
+    };
+    // Scene pass goes here when VOID_VK_SCENE_PASS is re-enabled; the UI pass then uses LOAD_OP_LOAD.
+    vkCmdBeginRendering(cmd, &rendering_info);
+    record_imgui(cmd, ui);
+    vkCmdEndRendering(cmd);
+
+    TransitionSwapchainImageLayout(image_index, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                   VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                                   VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                   VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT);
+    vkEndCommandBuffer(cmd);
+
+    // 5. Submit: wait for acquire, signal the per-image render-finished semaphore and the frame fence.
+    VkSemaphore render_finished = render_finished_sems_[image_index];
+    VkSemaphoreSubmitInfo wait_info{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+        .pNext = nullptr,
+        .semaphore = sync.present_complete_sem,
+        .value = 0,
+        .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+    };
+    VkSemaphoreSubmitInfo signal_info{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+        .pNext = nullptr,
+        .semaphore = render_finished,
+        .value = 0,
+        .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+    };
+    VkCommandBufferSubmitInfo cmd_info{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+        .pNext = nullptr,
+        .commandBuffer = cmd,
+    };
+    VkSubmitInfo2 submit_info{
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+        .pNext = nullptr,
+        .flags = 0,
+        .waitSemaphoreInfoCount = 1,
+        .pWaitSemaphoreInfos = &wait_info,
+        .commandBufferInfoCount = 1,
+        .pCommandBufferInfos = &cmd_info,
+        .signalSemaphoreInfoCount = 1,
+        .pSignalSemaphoreInfos = &signal_info,
+    };
+    if (vkQueueSubmit2(context_.graphic_queue, 1, &submit_info, sync.draw_fence) != VK_SUCCESS)
+    {
+        LOG_ERROR("VULKAN", "vkQueueSubmit2 failed");
+    }
+
+    // 6. Present.
+    VkPresentInfoKHR present_info{
+        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .pNext = nullptr,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &render_finished,
+        .swapchainCount = 1,
+        .pSwapchains = &context_.swapchain,
+        .pImageIndices = &image_index,
+    };
+    VkResult present_result = vkQueuePresentKHR(context_.graphic_queue, &present_info);
+    if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR)
+    {
+        recreate_swapchain();
+    }
+    else if (present_result != VK_SUCCESS)
+    {
+        LOG_ERROR("VULKAN", "vkQueuePresentKHR failed: %d", SCAST(int, present_result));
+    }
+
+    // 7. Next frame slot.
+    m_frameIndex = (m_frameIndex + 1) % MAX_FRAME_IN_FLIGHT;
+}
+
+#if VOID_VK_SCENE_PASS // stale: superseded by draw_frame
 void VulkanBackend::DrawFrame()
 {
 
@@ -1850,24 +2083,34 @@ void VulkanBackend::DrawTest()
     // vkQueueWaitIdle(m_context.graphicQueue);
 }
 
+#endif // VOID_VK_SCENE_PASS
+
 void VulkanBackend::recreate_swapchain()
 {
-    vkQueueWaitIdle(context_.graphic_queue);
-
-    for (uint32_t idx = 0; idx < context_.swapchain_image_count; ++idx)
+    ClientDimension fb = window_->get_framebuffer_size();
+    if (fb.width <= 0 || fb.height <= 0)
     {
-        vkDestroyImageView(context_.device, context_.swapchain_image_views[idx], nullptr);
+        return; // minimized: try again once the window has a size
     }
 
-    VkSwapchainKHR oldSwapchain = context_.swapchain;
-    create_swapchain(oldSwapchain);
+    // Views, images and present semaphores may still be in use by frames in flight / the present engine.
+    vkDeviceWaitIdle(context_.device);
 
-    vkDestroySwapchainKHR(context_.device, oldSwapchain, nullptr);
+    destroy_present_semaphores();
+    destroy_swapchain_views_and_images();
+
+    VkSwapchainKHR old_swapchain = context_.swapchain;
+    create_swapchain(old_swapchain);
+    vkDestroySwapchainKHR(context_.device, old_swapchain, vk_alloc());
 
     create_swapchain_image_views();
+    create_present_semaphores();
 
+#if VOID_VK_SCENE_PASS
     CleanUpDepthTexture();
     create_depth_tex();
+#endif // VOID_VK_SCENE_PASS
+    // ImGui's pipeline uses dynamic rendering + dynamic viewport, so it does not depend on the extent.
 }
 
 void VulkanBackend::create_instance()
@@ -1956,7 +2199,7 @@ void VulkanBackend::create_instance()
         .pEnabledFullProfiles = &PROFILE,
     };
 
-    VkResult result = vpCreateInstance(&vpInstanceCreateInfo, nullptr, &context_.instance);
+    VkResult result = vpCreateInstance(&vpInstanceCreateInfo, vk_alloc(), &context_.instance);
 
     if (result != VK_SUCCESS)
     {
@@ -1996,7 +2239,7 @@ void VulkanBackend::create_physical_device()
             {
                 continue;
             }
-            bool support_wanted_exts = false;
+            bool support_wanted_exts = true;
             VkExtensionProperties *avai_phydevice_exts =
                 arena_push_array<VkExtensionProperties>(*scratch, avai_phydevice_ext_count);
             vkEnumerateDeviceExtensionProperties(avai_phydevices[idx], nullptr, &avai_phydevice_ext_count,
@@ -2004,8 +2247,8 @@ void VulkanBackend::create_physical_device()
 
             for (uint32_t ext_idx = 0; ext_idx < wanted_phydevice_ext_count; ++ext_idx)
             {
-                if (is_ext_available(avai_phydevice_exts, avai_phydevice_ext_count,
-                                     wanted_phydevice_exts[ext_idx]))
+                if (!is_ext_available(avai_phydevice_exts, avai_phydevice_ext_count,
+                                      wanted_phydevice_exts[ext_idx]))
                 {
                     support_wanted_exts = false;
                     break;
@@ -2110,11 +2353,9 @@ void VulkanBackend::create_physical_device()
                 break;
             }
         }
-        else
-        {
-            //TODO: fallback path
-            profile_supported_ = VK_FALSE;
-        }
+        // else: this device lacks the profile; skip it only. (Setting profile_supported_ = VK_FALSE
+        // here used to reject every later device too, e.g. the dGPU enumerated after an iGPU.)
+        // TODO: fallback path for machines with no profile-capable device.
     }
     if (!found_suitable_phydevice)
     {
